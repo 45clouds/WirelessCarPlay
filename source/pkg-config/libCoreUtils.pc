@@ -1,0 +1,13 @@
+## Package Information for pkg-config
+
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: libCoreUtils
+Description: CarPlay Core Utils
+Version: @VERSION@
+Requires: libudev
+Libs: -L\${libdir} -lCoreUtils
+Cflags: -I\${includedir}

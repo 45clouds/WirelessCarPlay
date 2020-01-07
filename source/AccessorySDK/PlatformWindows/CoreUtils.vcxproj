@@ -1,0 +1,670 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug-CFLite|Win32">
+      <Configuration>Debug-CFLite</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug-CFLite|x64">
+      <Configuration>Debug-CFLite</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release-CFLite|Win32">
+      <Configuration>Release-CFLite</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release-CFLite|x64">
+      <Configuration>Release-CFLite</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\External\Curve25519\curve25519-donna.c" />
+    <ClCompile Include="..\External\Ed25519\ed25519.c" />
+    <ClCompile Include="..\External\GladmanAES\aescrypt.c" />
+    <ClCompile Include="..\External\GladmanAES\aeskey.c" />
+    <ClCompile Include="..\External\GladmanAES\aestab.c" />
+    <ClCompile Include="..\External\GladmanAES\aes_modes.c" />
+    <ClCompile Include="..\External\GladmanAES\gcm.c" />
+    <ClCompile Include="..\External\GladmanAES\gf128mul.c" />
+    <ClCompile Include="..\External\LibTomMath\bncore.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_fast_mp_invmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_fast_mp_montgomery_reduce.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_mul_digs.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_mul_high_digs.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_sqr.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_2expt.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_abs.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_add.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_add_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clamp.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clear.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clear_multi.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp_mag.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cnt_lsb.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_copy.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_count_bits.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_2.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_2d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_3.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_is_modulus.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_reduce.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_setup.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exch.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exptmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exptmod_fast.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_grow.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_copy.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_multi.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_size.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_invmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_invmod_slow.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_karatsuba_mul.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_karatsuba_sqr.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_lshd.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod_2d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_calc_normalization.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_reduce.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_setup.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mulmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_2.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_2d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_is_divisible.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_is_prime.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_miller_rabin.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_rabin_miller_trials.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_read_unsigned_bin.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_l.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_setup.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_setup_l.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_is_2k.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_is_2k_l.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_setup.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_rshd.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_set.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_set_int.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sqr.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sqrmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sub.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sub_d.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_toom_mul.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_toom_sqr.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_to_unsigned_bin.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_unsigned_bin_size.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_mp_zero.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_prime_tab.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_reverse.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_add.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_exptmod.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_mul_digs.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_mul_high_digs.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_sqr.c" />
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_sub.c" />
+    <ClCompile Include="..\External\SRP\cstr.c" />
+    <ClCompile Include="..\External\SRP\srp.c" />
+    <ClCompile Include="..\External\SRP\srp6_client.c" />
+    <ClCompile Include="..\External\SRP\srp6_server.c" />
+    <ClCompile Include="..\External\SRP\t_math.c" />
+    <ClCompile Include="..\Support\AESUtils.c" />
+    <ClCompile Include="..\Support\ArrayUtils.c" />
+    <ClCompile Include="..\Support\AsyncConnection.c" />
+    <ClCompile Include="..\Support\AudioUtils.c" />
+    <ClCompile Include="..\Support\AudioUtilsWindows.c" />
+    <ClCompile Include="..\Support\Base64Utils.c" />
+    <ClCompile Include="..\Support\BonjourAdvertiser.c" />
+    <ClCompile Include="..\Support\BonjourBrowser.c" />
+    <ClCompile Include="..\Support\CFCompat.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLite.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLiteBinaryPlist.c" />
+    <ClCompile Include="..\Support\CFLitePreferencesWindows.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLiteRunLoopWindows.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFPrefUtils.c" />
+    <ClCompile Include="..\Support\CFUtils.c" />
+    <ClCompile Include="..\Support\ChaCha20Poly1305.c" />
+    <ClCompile Include="..\Support\ChecksumUtils.c" />
+    <ClCompile Include="..\Support\CommandLineUtils.c" />
+    <ClCompile Include="..\Support\DataBufferUtils.c" />
+    <ClCompile Include="..\Support\DebugServices.c" />
+    <ClCompile Include="..\Support\DispatchLite.c">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClCompile Include="..\Support\DMAP.c" />
+    <ClCompile Include="..\Support\DMAPUtils.c" />
+    <ClCompile Include="..\Support\HIDUtils.c" />
+    <ClCompile Include="..\Support\HIDUtilsWindows.c" />
+    <ClCompile Include="..\Support\HTTPClient.c" />
+    <ClCompile Include="..\Support\HTTPMessage.c" />
+    <ClCompile Include="..\Support\HTTPServer.c" />
+    <ClCompile Include="..\Support\HTTPUtils.c" />
+    <ClCompile Include="..\Support\IEEE80211Utils.c" />
+    <ClCompile Include="..\Support\JSONUtils.c" />
+    <ClCompile Include="..\Support\KeychainLiteWindows.c" />
+    <ClCompile Include="..\Support\KeychainUtils.c" />
+    <ClCompile Include="..\Support\LogUtils.c" />
+    <ClCompile Include="..\Support\MathUtils.c" />
+    <ClCompile Include="..\Support\MD5Utils.c" />
+    <ClCompile Include="..\Support\MFiCertificates.c" />
+    <ClCompile Include="..\Support\MFiClientPlatformWindows.c" />
+    <ClCompile Include="..\Support\MFiRevokedCerts.c" />
+    <ClCompile Include="..\Support\MFiSAP.c" />
+    <ClCompile Include="..\Support\MiscUtils.c" />
+    <ClCompile Include="..\Support\NetTransportChaCha20Poly1305.c" />
+    <ClCompile Include="..\Support\NetTransportGCM.c" />
+    <ClCompile Include="..\Support\NetUtils.c" />
+    <ClCompile Include="..\Support\NetUtilsWindows.c" />
+    <ClCompile Include="..\Support\NetworkChangeListener.c" />
+    <ClCompile Include="..\Support\NTPUtils.c" />
+    <ClCompile Include="..\Support\PairingUtils.c" />
+    <ClCompile Include="..\Support\PrintFUtils.c" />
+    <ClCompile Include="..\Support\RandomNumberUtils.c" />
+    <ClCompile Include="..\Support\SDPUtils.c" />
+    <ClCompile Include="..\Support\SHAUtils.c" />
+    <ClCompile Include="..\Support\SRPUtils.c" />
+    <ClCompile Include="..\Support\StringUtils.c" />
+    <ClCompile Include="..\Support\SystemUtils.c" />
+    <ClCompile Include="..\Support\TestUtils.c" />
+    <ClCompile Include="..\Support\ThreadUtils.c" />
+    <ClCompile Include="..\Support\ThreadUtilsWindows.c" />
+    <ClCompile Include="..\Support\TickUtils.c" />
+    <ClCompile Include="..\Support\TimeUtils.c" />
+    <ClCompile Include="..\Support\TLVUtils.c" />
+    <ClCompile Include="..\Support\URLUtils.c" />
+    <ClCompile Include="..\Support\utfconv.c" />
+    <ClCompile Include="..\Support\UUIDUtils.c" />
+    <ClCompile Include="..\Support\XPCLite.c" />
+    <ClCompile Include="CoreUtilsDLLMain.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="CoreUtils.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\External\Curve25519\curve25519-donna.h" />
+    <ClInclude Include="..\External\Ed25519\ed25519.h" />
+    <ClInclude Include="..\External\Ed25519\ed25519_base.h" />
+    <ClInclude Include="..\External\SRP\cstr.h" />
+    <ClInclude Include="..\External\SRP\srp.h" />
+    <ClInclude Include="..\External\SRP\srp_aux.h" />
+    <ClInclude Include="..\Support\AESUtils.h" />
+    <ClInclude Include="..\Support\ArrayUtils.h" />
+    <ClInclude Include="..\Support\AsyncConnection.h" />
+    <ClInclude Include="..\Support\Base64Utils.h" />
+    <ClInclude Include="..\Support\BonjourAdvertiser.h" />
+    <ClInclude Include="..\Support\BonjourBrowser.h" />
+    <ClInclude Include="..\Support\CFCompat.h" />
+    <ClInclude Include="..\Support\CFLite.h" />
+    <ClInclude Include="..\Support\CFLiteBinaryPlist.h" />
+    <ClInclude Include="..\Support\CFPrefUtils.h" />
+    <ClInclude Include="..\Support\CFUtils.h" />
+    <ClInclude Include="..\Support\ChaCha20Poly1305.h" />
+    <ClInclude Include="..\Support\ChecksumUtils.h" />
+    <ClInclude Include="..\Support\CommandLineUtils.h" />
+    <ClInclude Include="..\Support\CommonServices.h" />
+    <ClInclude Include="..\Support\CoreUtils.h" />
+    <ClInclude Include="..\Support\DataBufferUtils.h" />
+    <ClInclude Include="..\Support\DebugServices.h" />
+    <ClInclude Include="..\Support\DispatchLite.h" />
+    <ClInclude Include="..\Support\DMAP.h" />
+    <ClInclude Include="..\Support\DMAPUtils.h" />
+    <ClInclude Include="..\Support\HIDUtils.h" />
+    <ClInclude Include="..\Support\HTTPClient.h" />
+    <ClInclude Include="..\Support\HTTPMessage.h" />
+    <ClInclude Include="..\Support\HTTPServer.h" />
+    <ClInclude Include="..\Support\HTTPUtils.h" />
+    <ClInclude Include="..\Support\IEEE80211Utils.h" />
+    <ClInclude Include="..\Support\JSONUtils.h" />
+    <ClInclude Include="..\Support\KeychainLite.h" />
+    <ClInclude Include="..\Support\KeychainUtils.h" />
+    <ClInclude Include="..\Support\LogUtils.h" />
+    <ClInclude Include="..\Support\MathUtils.h" />
+    <ClInclude Include="..\Support\MD5Utils.h" />
+    <ClInclude Include="..\Support\MFiCertificates.h" />
+    <ClInclude Include="..\Support\MFiRevokedCerts.h" />
+    <ClInclude Include="..\Support\MFiSAP.h" />
+    <ClInclude Include="..\Support\MiscUtils.h" />
+    <ClInclude Include="..\Support\NetTransportChaCha20Poly1305.h" />
+    <ClInclude Include="..\Support\NetTransportGCM.h" />
+    <ClInclude Include="..\Support\NetUtils.h" />
+    <ClInclude Include="..\Support\NetUtilsWindows.h" />
+    <ClInclude Include="..\Support\NetworkChangeListener.h" />
+    <ClInclude Include="..\Support\NTPUtils.h" />
+    <ClInclude Include="..\Support\PairingUtils.h" />
+    <ClInclude Include="..\Support\PrintFUtils.h" />
+    <ClInclude Include="..\Support\RandomNumberUtils.h" />
+    <ClInclude Include="..\Support\SDPUtils.h" />
+    <ClInclude Include="..\Support\SHAUtils.h" />
+    <ClInclude Include="..\Support\SRPUtils.h" />
+    <ClInclude Include="..\Support\StringUtils.h" />
+    <ClInclude Include="..\Support\SystemUtils.h" />
+    <ClInclude Include="..\Support\TestUtils.h" />
+    <ClInclude Include="..\Support\ThreadUtils.h" />
+    <ClInclude Include="..\Support\ThreadUtilsWindows.h" />
+    <ClInclude Include="..\Support\TickUtils.h" />
+    <ClInclude Include="..\Support\TimeUtils.h" />
+    <ClInclude Include="..\Support\TLVUtils.h" />
+    <ClInclude Include="..\Support\URLUtils.h" />
+    <ClInclude Include="..\Support\utfconv.h" />
+    <ClInclude Include="..\Support\utfconvdata.h" />
+    <ClInclude Include="..\Support\UUIDUtils.h" />
+    <ClInclude Include="..\Support\XPCLite.h" />
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{7D6CC13F-879C-410E-8B64-137E093708E5}</ProjectGuid>
+    <Keyword>Win32Proj</Keyword>
+    <RootNamespace>CoreUtils</RootNamespace>
+    <ProjectName>CoreUtils</ProjectName>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|x64'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+    <PlatformToolset>v120</PlatformToolset>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|Win32'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|x64'">
+    <LinkIncremental>true</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|Win32'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|x64'">
+    <LinkIncremental>false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <PreprocessorDefinitions>WIN32;DEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=0;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=0;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib32/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib32/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtils.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files (x86)\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib32\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|Win32'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level3</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <PreprocessorDefinitions>WIN32;DEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=1;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=1;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtilsCFLite.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files (x86)\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib32\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <PreprocessorDefinitions>WIN32;DEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=0;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=0;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib64/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib64/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtils.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib64\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug-CFLite|x64'">
+    <ClCompile>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level2</WarningLevel>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+      <PreprocessorDefinitions>WIN32;DEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=1;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=1;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib64/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib64/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtilsCFLite.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib64\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=0;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=0;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib32/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib32/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtils.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files (x86)\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib32\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=1;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=1;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtilsCFLite.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files (x86)\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib32\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level2</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=0;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=0;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib64/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib64/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtils.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib64\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release-CFLite|x64'">
+    <ClCompile>
+      <WarningLevel>Level2</WarningLevel>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <Optimization>MaxSpeed</Optimization>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <PreprocessorDefinitions>WIN32;NDEBUG=1;_WINDOWS;_USRDLL;AES_UTILS_USE_GLADMAN_AES=1;AES_UTILS_HAS_GLADMAN_GCM=1;CFLITE_ENABLED=1;DEBUG_EXPORT_ERROR_STRINGS=1;DISPATCH_LITE_ENABLED=1;FRAMEWORK_STYLE_INCLUDES=0;GCD_ENABLED=1;TARGET_HAS_LIBTOMMATH=1;TARGET_HAS_SHA_UTILS=1;TARGET_NO_OPENSSL=1;USE_VIA_ACE_IF_PRESENT=0</PreprocessorDefinitions>
+      <AdditionalIncludeDirectories>../External/AppleLossless;../External/GladmanAES;../External/Curve25519;../External/Ed25519;../External/LibTomMath;../External/SRP;../Sources;../Support;$(AppleApplicationSupportSDK)/AppleInternal/include;$(BONJOUR_SDK_HOME)/Include</AdditionalIncludeDirectories>
+      <TreatWarningAsError>true</TreatWarningAsError>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <AdditionalDependencies>"$(AppleApplicationSupportSDK)/AppleInternal/lib64/CoreFoundation.lib";"$(AppleApplicationSupportSDK)/AppleInternal/lib64/libdispatch.lib";"$(BONJOUR_SDK_HOME)/Lib/$(PlatformName)/dnssd.lib";%(AdditionalDependencies)</AdditionalDependencies>
+      <ModuleDefinitionFile>CoreUtilsCFLite.def</ModuleDefinitionFile>
+    </Link>
+    <PostBuildEvent>
+      <Command>if "$(DSTROOT)" == "" (
+	echo "Copying to local build folder"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(ProjectDir)..\build\$(Configuration)-windows\CoreUtils\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(ProjectDir)..\build\$(Configuration)-windows\" /i /y
+) else (
+	echo "Copying to DSTROOT: $(DSTROOT)"
+	xcopy "$(ProjectDir)..\Support\*.h" "$(DSTROOT)\AppleInternal\include\" /i /y
+	xcopy "$(TargetDir)CoreUtils.dll" "$(DSTROOT)\Program Files\Common Files\Apple\Apple Application Support\" /i /y
+	xcopy "$(TargetDir)CoreUtils.lib" "$(DSTROOT)\AppleInternal\lib64\" /i /y
+)
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

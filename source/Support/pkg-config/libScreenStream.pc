@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: libScreenStream
+Description: CarPlay Screen Support 
+Version: @VERSION@
+Requires: libCoreUtils
+Libs: -L\${libdir} -lScreenStream
+Cflags: -I\${includedir}

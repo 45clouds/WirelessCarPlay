@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: libAirPlay
+Description: Airplay
+Version: @VERSION@
+Requires: libCoreUtils libAirPlaySupport
+Libs: -L\${libdir} -lAirPlay
+Cflags: -I\${includedir}

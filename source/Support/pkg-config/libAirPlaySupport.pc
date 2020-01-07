@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: libAirPlaySupport
+Description: CarPlay AirPlay Support 
+Version: @VERSION@
+Requires: libCoreUtils
+Libs: -L\${libdir} -lAirPlaySupport
+Cflags: -I\${includedir}

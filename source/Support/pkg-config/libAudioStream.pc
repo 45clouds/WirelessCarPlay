@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=@PREFIX@
+exec_prefix=@EXEC_PREFIX@
+libdir=@LIBDIR@
+includedir=@INCLUDEDIR@
+
+Name: libAudioStream
+Description: CarPlay audio Support 
+Version: @VERSION@
+Requires: libCoreUtils
+Libs: -L\${libdir} -lAudioStream
+Cflags: -I\${includedir}

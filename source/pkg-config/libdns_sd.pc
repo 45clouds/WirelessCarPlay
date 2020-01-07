@@ -1,0 +1,32 @@
+################################################################################
+#
+# http://people.freedesktop.org/~dbn/pkg-config-guide.html
+#
+# prefix      : 软件包的安装路径
+# exec_prefix :
+# libdir      :
+# includedir  : 头文件的安装路径
+# Version     : 软件包的版本号
+#
+# 上面5个信息的值（），会被 CMakeList.txt 的 configure_file 规则进行替换。
+#
+# Name        : 软件包名字（建议和 xxx.pc 的 xxx 一致）。pkg-config 使用的是 xxx.pc ，而不是这里的 Name。
+# Description : 软件包功能简单描述
+# Requires    : 本软件包依赖的其他软件包
+# Libs        : 传递给链接器的参数  -Lxxx : 在 xxx目录下查找动态库。 -lxxx :  链接到 libxxx.so 。
+# Cflags      : 传递给编译器的参数  -Ixxx : 在xxx目录下查找头文件。
+#
+################################################################################
+# Package Information for pkg-config
+
+prefix=/usr
+exec_prefix=${prefix}
+libdir=${prefix}/lib
+includedir=${prefix}/include
+
+Name: libdns_sd
+Description: dns_sd share library file
+Version: 0.0
+Requires: libc
+Libs: -L\${libdir} -ldns_sd -lrt
+Cflags: -I\${includedir}

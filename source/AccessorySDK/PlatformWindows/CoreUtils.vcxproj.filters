@@ -1,0 +1,715 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="CoreUtilsDLLMain.c" />
+    <ClCompile Include="..\Support\AESUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\AsyncConnection.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\AudioUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\AudioUtilsWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\Base64Utils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\BonjourAdvertiser.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\BonjourBrowser.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLiteBinaryPlist.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFPrefUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\ChaCha20Poly1305.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\ChecksumUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CommandLineUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\DataBufferUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\DebugServices.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HIDUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HIDUtilsWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HTTPClient.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HTTPMessage.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HTTPServer.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\HTTPUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\JSONUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\KeychainLiteWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\KeychainUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\LogUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MathUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MD5Utils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MFiCertificates.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MFiRevokedCerts.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MFiSAP.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MiscUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NetTransportChaCha20Poly1305.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NetUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NetUtilsWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\PairingUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\PrintFUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\RandomNumberUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\SDPUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\SHAUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\SRPUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\StringUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\SystemUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\TestUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\ThreadUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\ThreadUtilsWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\TickUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\TimeUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\TLVUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\URLUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\utfconv.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\UUIDUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\XPCLite.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\aes_modes.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\aescrypt.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\aeskey.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\aestab.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\Ed25519\ed25519.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\Curve25519\curve25519-donna.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\SRP\cstr.c">
+      <Filter>SRP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\SRP\srp6_client.c">
+      <Filter>SRP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\SRP\srp6_server.c">
+      <Filter>SRP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\SRP\srp.c">
+      <Filter>SRP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\SRP\t_math.c">
+      <Filter>SRP</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NTPUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\IEEE80211Utils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\ArrayUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NetTransportGCM.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\DMAP.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\DMAPUtils.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\gcm.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\GladmanAES\gf128mul.c">
+      <Filter>GladmanAES</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\NetworkChangeListener.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_fast_mp_invmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_fast_mp_montgomery_reduce.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_mul_digs.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_mul_high_digs.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_fast_s_mp_sqr.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_2expt.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_abs.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_add.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_add_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clamp.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clear.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_clear_multi.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cmp_mag.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_cnt_lsb.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_copy.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_count_bits.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_2.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_2d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_3.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_div_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_is_modulus.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_reduce.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_dr_setup.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exch.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exptmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_exptmod_fast.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_grow.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_copy.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_multi.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_init_size.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_invmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_invmod_slow.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_karatsuba_mul.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_karatsuba_sqr.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_lshd.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod_2d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mod_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_calc_normalization.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_reduce.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_montgomery_setup.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_2.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_2d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mul_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_mulmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_is_divisible.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_is_prime.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_miller_rabin.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_prime_rabin_miller_trials.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_read_unsigned_bin.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_l.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_setup.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_2k_setup_l.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_is_2k.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_is_2k_l.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_reduce_setup.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_rshd.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_set.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_set_int.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sqr.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sqrmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sub.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_sub_d.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_to_unsigned_bin.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_toom_mul.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_toom_sqr.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_unsigned_bin_size.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_mp_zero.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_prime_tab.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_reverse.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_add.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_exptmod.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_mul_digs.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_mul_high_digs.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_sqr.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bn_s_mp_sub.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\External\LibTomMath\bncore.c">
+      <Filter>LibTomMath</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\MFiClientPlatformWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLite.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\DispatchLite.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLiteRunLoopWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFCompat.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Support\CFLitePreferencesWindows.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="CoreUtils.def" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="SRP">
+      <UniqueIdentifier>{91d533ad-714f-4c24-8ee5-3225b13a687f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="GladmanAES">
+      <UniqueIdentifier>{44e5cbfe-9172-42ab-8daa-d90f73901732}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Support">
+      <UniqueIdentifier>{10fc10d2-7d9e-48e8-94c4-3810a97a6212}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="LibTomMath">
+      <UniqueIdentifier>{73f11512-95e6-49bd-a5bf-ab554f291b95}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\Support\AESUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\AsyncConnection.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\Base64Utils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\BonjourAdvertiser.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\BonjourBrowser.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CFLiteBinaryPlist.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CFPrefUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CFUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\ChaCha20Poly1305.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\ChecksumUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CommandLineUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CommonServices.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CoreUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\DataBufferUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\DebugServices.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\HIDUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\HTTPClient.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\HTTPMessage.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\HTTPServer.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\HTTPUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\JSONUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\KeychainLite.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\KeychainUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\LogUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MathUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MD5Utils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MFiCertificates.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MFiRevokedCerts.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MFiSAP.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\MiscUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NetTransportChaCha20Poly1305.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NetUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NetUtilsWindows.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\PairingUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\PrintFUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\RandomNumberUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\SDPUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\SHAUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\SRPUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\StringUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\SystemUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\TestUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\ThreadUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\ThreadUtilsWindows.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\TickUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\TimeUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\TLVUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\URLUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\utfconv.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\utfconvdata.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\UUIDUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\XPCLite.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\Ed25519\ed25519.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\Ed25519\ed25519_base.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\Curve25519\curve25519-donna.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\SRP\cstr.h">
+      <Filter>SRP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\SRP\srp.h">
+      <Filter>SRP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\External\SRP\srp_aux.h">
+      <Filter>SRP</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NTPUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\IEEE80211Utils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\ArrayUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NetTransportGCM.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\DMAP.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\DMAPUtils.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\NetworkChangeListener.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CFLite.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\CFCompat.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Support\DispatchLite.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>
