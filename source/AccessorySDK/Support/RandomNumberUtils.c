@@ -2,7 +2,7 @@
 	File:    	RandomNumberUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "RandomNumberUtils.h"
@@ -312,24 +312,11 @@ char *	RandomString( const char *inCharSet, size_t inCharSetSize, size_t inMinCh
 
 #if( !EXCLUDE_UNIT_TESTS )
 
-#include "TestUtils.h"
-
-static void	RandomBytesTest( TUTestContext *inTestCtx );
-
 //===========================================================================================================================
 //	RandomNumberUtilsTest
 //===========================================================================================================================
 
-void	RandomNumberUtilsTest( void )
-{
-	TUPerformTest( RandomBytesTest );
-}
-
-//===========================================================================================================================
-//	RandomBytesTest
-//===========================================================================================================================
-
-static void	RandomBytesTest( TUTestContext *inTestCtx )
+OSStatus RandomNumberUtilsTest( void )
 {
 	OSStatus		err;
 	uint8_t			buf[ 16 ];
@@ -340,19 +327,19 @@ static void	RandomBytesTest( TUTestContext *inTestCtx )
 	
 	memset( buf, 0, sizeof( buf ) );
 	err = RandomBytes( buf, sizeof( buf ) );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	n = 0;
 	for( i = 0; i < countof( buf ); ++i ) { if( buf[ i ] != 0 ) ++n; }
-	tu_require( n >= ( countof( buf ) / 2 ), exit );
+	require( n >= ( countof( buf ) / 2 ), exit );
 	
 	// Make sure it doesn't return the same bytes twice.
 	
 	for( i = 0; i < countof( buf ); ++i ) buf2[ i ] = buf[ i ];
 	err = RandomBytes( buf2, sizeof( buf2 ) );
-	tu_require_noerr( err, exit );
-	tu_require( memcmp( buf, buf2, sizeof( buf ) ) != 0, exit );
+	require_noerr( err, exit );
+	require_action( memcmp( buf, buf2, sizeof( buf ) ) != 0, exit, err = kMismatchErr );
 	
 exit:
-	return;
+	return err;
 }
 #endif // !EXCLUDE_UNIT_TESTS

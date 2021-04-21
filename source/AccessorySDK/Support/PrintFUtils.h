@@ -2,7 +2,7 @@
 	File:    	PrintFUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__PrintFUtils_h__
@@ -56,10 +56,6 @@
 
 #include "CommonServices.h"
 #include "DebugServices.h"
-
-#if( COMPILER_OBJC )
-	#import <Foundation/Foundation.h>
-#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,7 +74,6 @@ extern "C" {
 	Support for the "?" flag for optional suppression. Arg=Non-zero int to include, zero int to suppress.
 	%@		- Cocoa/CoreFoundation object. Param is the object. For containers, field width is the indent level.
 			  Note: Non-Mac builds must defined DEBUG_CF_OBJECTS_ENABLED to 1 for this feature to be enabled.
-	%#@		- Same as %@, but writes the object in XML plist format.
 	%.2a	- CEC/HDMI address (2-byte big endian converted to a.b.c.d). Arg=ptr to network address.
 	%.4a	- IPv4 address (big endian). Arg=ptr to network address.
 	%.6a	- MAC address (6 bytes, AA:BB:CC:DD:EE:FF). Arg=ptr to network address.
@@ -116,45 +111,17 @@ extern "C" {
 	%S		- UTF-16 string, 0x0000 terminated. Host order if no BOM. Precision is UTF-16 count. Precision includes BOM.
 	%#S		- Big Endian UTF-16 string (unless BOM overrides). Otherwise, the same as %S.
 	%##S	- Little Endian UTF-16 string (unless BOM overrides). Otherwise, the same as %S.
-	%T		- Windows TCHAR string. Arg=wchar_t * if UNICODE/_UNICODE defined, otherwise char *. Otherwise same as %s/%S.
 	%U		- Universally Unique Identifier (UUID) in Microsoft little endian format. Arg=ptr to 16-byte UUID.
 			  Little endian: 10 b8 a7 6b ad 9d d1 11 80 b4 00 c0 4f d4 30 c8 -> "6ba7b810-9dad-11d1-80b4-00c04fd430c8".
 	%#U		- Universally Unique Identifier (UUID) in big endian format. Arg=ptr to 16-byte UUID.
 			  Big endian: 6b a7 b8 10 9d ad 11 d1 80 b4 00 c0 4f d4 30 c8 -> "6ba7b810-9dad-11d1-80b4-00c04fd430c8".
-	%v		- NumVersion-style version (e.g. 1.2.3b4). Arg is uint32_t.
 	%V		- Nested PrintF format string and va_list. 1st arg=const char *format, 2nd arg=va_list *args. Note: 2nd is a ptr.
 	
 	%{<extension>} extensions:
 	
-	%{asbd}		CoreAudio AudioStreamBasicDescription. Arg=AudioStreamBasicDescription *.
-	%{cec}		HDMI CEC message. Args: const void *ptr, int len.
-	%{dur}		Time Duration (e.g. 930232 seconds prints "10d 18h 23m 52s"). Arg=Same as %u.
-	%#{dur}		Time Duration (e.g. 930232 seconds prints "10d 18:23:52"). Arg=Same as %u.
-	%{end}		End printing. Used with ?, such as "%?{end}", for conditional suppression. No args.
-	%{fill}		Repeat a single character N times. Args:int inCharacter, size_t inLen.
-	%{flags}	Bit flags. Args=int value, const char *descriptors. Use size modifiers for non-int value.
-				Descriptors is a list of <1:bit number> <label string\0> pairs. A pair with an empty label ends the list.
-	%#{flags}	Same as %{flags}, but prepends the value in hex (e.g. "0x12 < BUSY LINK >").
-	%{pid}		Process name. Arg=pid_t.
-	%#{pid}		Process name with numeric PID. Arg=pid_t.
-	%{ptr}		Obfuscated pointer as a 16-bit hex value. Arg=const void *.
-	%{sline}	Single line string. \r and \n are replaced with ⏎. Arg=ptr to string.
 	%{text}		Multi-line text. const void *ptr, size_t len. Field width is indent count of each line.
-	%{tlv8}		8-bit Type-Length-Value (TLV) data. const char *descriptors, const void *ptr, int len. Field width is indent count.
-				Descriptors is a list of <1:type> <label string\0> pairs. A pair with an empty label ends the list.
-	%{tpl}		EFI only: Current TPL. const void *ptr, size_t len.
-	%#{tpl}		EFI only: Specified TPL. Arg=EFI_TPL.
-	%{txt}		DNS TXT record: print one name=value pair per line. const void *ptr, size_t len. Field width is indent count.
-	%#{txt}		DNS TXT record: print everything one line. const void *ptr, size_t len.
-	%{xml}		XML-escaped text. Args:const char *inText, size_t inLen.
-	%{xpc}		XPC object description. xpc_object_t. Field width is indent count.
 ===========================================================================================================================*/
 
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		PrintFRegisterExtension / PrintFDeregisterExtension
-	@abstract	Registers or deregisters a PrintF extension handler.
-	@discussion	Extensions are specified as %{xyz} where xyz is the extension name.
-*/
 typedef struct PrintFContext		PrintFContext;
 typedef struct
 {
@@ -175,24 +142,11 @@ typedef struct
 	
 }	PrintFFormat;
 typedef struct { va_list args; } PrintFVAList;
-typedef int	( *PrintFExtensionHandler_f )( PrintFContext *ctx, PrintFFormat *inFormat, PrintFVAList *inArgs, void *inUserContext );
-
-OSStatus	PrintFRegisterExtension( const char *inName, PrintFExtensionHandler_f inHandler, void *inContext );
-OSStatus	PrintFDeregisterExtension( const char *inName );
 
 // Core APIs for use by extensions only.
 
 int	PrintFCore( PrintFContext *inContext, const char *inFormat, ... );
 int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list inArgs );
-
-#if( COMPILER_OBJC )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NSPrintF/NSPrintV
-	@abstract	PrintF and return as an NSString.
-*/
-NSString *	NSPrintF( const char *inFormat, ... );
-NSString *	NSPrintV( const char *inFormat, va_list inArgs );
-#endif
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	SNPrintF/VSNPrintF

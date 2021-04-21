@@ -2,7 +2,7 @@
 	File:    	DispatchLite.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__DispatchLite_h__
@@ -231,37 +231,6 @@ void
 		uint64_t			inLeeway );
 
 void	dispatch_after_f( dispatch_time_t inWhen, dispatch_queue_t inQueue, void *inContext, dispatch_function_t inFunction );
-
-#if 0
-#pragma mark == Groups ==
-#endif
-
-//===========================================================================================================================
-//	Groups
-//===========================================================================================================================
-
-typedef struct dispatch_group_s *		dispatch_group_t;
-
-dispatch_group_t	dispatch_group_create( void );
-
-void
-	dispatch_group_async_f( 
-		dispatch_group_t	inGroup, 
-		dispatch_queue_t	inQueue, 
-		void *				inContext, 
-		dispatch_function_t	inFunction );
-
-void	dispatch_group_wait( dispatch_group_t inGroup, uint64_t inTimeout );
-
-void
-	dispatch_group_notify_f( 
-		dispatch_group_t	inGroup, 
-		dispatch_queue_t	inQueue, 
-		void *				inContext, 
-		dispatch_function_t	inFunction );
-
-void	dispatch_group_enter( dispatch_group_t inGroup );
-void	dispatch_group_leave( dispatch_group_t inGroup );
 
 #if 0
 #pragma mark == Once ==

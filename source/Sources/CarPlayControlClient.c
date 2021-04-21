@@ -1,14 +1,14 @@
 /*
 	File:    	CarPlayControlClient.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,18 +48,16 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2014-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2014-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "CarPlayControlClient.h"
 	#include "CarPlayControlCommon.h"
 
-#include <CoreUtils/BonjourBrowser.h>
-#include <CoreUtils/HTTPUtils.h>
-#include <CoreUtils/HTTPClient.h>
-#include <CoreUtils/PrintFUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/TickUtils.h>
+#include "BonjourBrowser.h"
+#include "HTTPUtils.h"
+#include "HTTPClient.h"
+#include "TickUtils.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -67,14 +65,14 @@
 #include "AirPlayVersion.h"
 #include "AirPlayReceiverServerPriv.h"
 #include "dns_sd.h"
-#include <glib.h>
+
 #include CF_HEADER
 
 //===========================================================================================================================
 //	Constants
 //===========================================================================================================================
 
-#define kCarPlayControlClient_ConnectionTimeoutSeconds		5
+#define kCarPlayControlClient_ConnectionTimeoutSeconds		2
 
 //===========================================================================================================================
 //	Configuration
@@ -118,7 +116,7 @@ static void	_DNSServiceSocketEventCallback( void *inCtx )
 	}
 }
 
-static void	_DNSServiceSocketCancelCallback( void *inCtx )
+static void	_DNSServiceCleanup( void *inCtx )
 {
 	DNSServiceContext *		ctx = (DNSServiceContext*) inCtx;
 
@@ -126,6 +124,7 @@ static void	_DNSServiceSocketCancelCallback( void *inCtx )
 	{
 		DNSServiceRefDeallocate( ctx->service );
 	}
+	dispatch_source_forget( &ctx->source );
 	dispatch_release_null_safe( ctx->queue );
 	free( ctx );
 }
@@ -160,7 +159,6 @@ static OSStatus
 	ctx->service = inService;
 	dispatch_set_context( ctx->source, ctx );
 	dispatch_source_set_event_handler_f( ctx->source, _DNSServiceSocketEventCallback );
-	dispatch_source_set_cancel_handler_f( ctx->source, _DNSServiceSocketCancelCallback );
 	dispatch_resume( ctx->source );
 
 	*outServiceCtx = ctx;
@@ -173,7 +171,7 @@ exit:
 
 static void _DNSServiceDispose( DNSServiceContext *inServiceCtx )
 {
-	dispatch_source_forget( &inServiceCtx->source );
+	dispatch_async_f( inServiceCtx->queue, inServiceCtx, _DNSServiceCleanup);
 }
 
 //===========================================================================================================================
@@ -208,7 +206,7 @@ static void _CarPlayBonjourServiceFinalize( CFTypeRef inObj )
 	ForgetCF( &service->serviceType );
 	ForgetMem( &service->hostName );
 	
-	cpcc_ulog( kLogLevelVerbose, "Finalized CarPlayBonjourService [%{ptr}]\n", inObj );
+	cpcc_ulog( kLogLevelVerbose, "Finalized CarPlayBonjourService [%p]\n", inObj );
 }
 
 //===========================================================================================================================
@@ -347,7 +345,7 @@ static void _CarPlayBonjourServiceResolveAddress( void *inCtx )
 exit:
 	service->resolutionError = err;
 	
-	cpcc_ulog( kLogLevelNotice, "CarPlayBonjourService [%{ptr}] resolved to: %s port: %u interfaceNdx: %lu (%#m)\n",
+	cpcc_ulog( kLogLevelNotice, "CarPlayBonjourService [%p] resolved to: %s port: %u interfaceNdx: %lu (%#m)\n",
 		service, service->hostName ? service->hostName : "<null>", service->port, service->interfaceNdx, err );
 
 	dispatch_release_null_safe( dnsServiceSemaphore );
@@ -457,7 +455,7 @@ static OSStatus
 	
 	err = kNoErr;
 	
-	cpcc_ulog( kLogLevelTrace, "Created CarPlayBonjourService [%{ptr}] for:\n%1@\n", obj, inServiceType, inService );
+	cpcc_ulog( kLogLevelTrace, "Created CarPlayBonjourService [%p] for:\n%1@\n", obj, inServiceType, inService );
 
 	*outController = obj;
 	obj = NULL;
@@ -496,7 +494,7 @@ static void	_CarPlayControllerFinalize( CFTypeRef inObj )
 	ForgetCF( &controller->inactiveWiFiServices );
 	controller->client = NULL;
 	
-	cpcc_ulog( kLogLevelVerbose, "Finalized CarPlayController [%{ptr}]\n", inObj );
+	cpcc_ulog( kLogLevelVerbose, "Finalized CarPlayController [%p]\n", inObj );
 }
 
 //===========================================================================================================================
@@ -561,7 +559,7 @@ static OSStatus _CarPlayControllerCreate( CarPlayController **outController, Car
 	
 	err = kNoErr;
 	
-	cpcc_ulog( kLogLevelTrace, "Created controller [%{ptr}]\n", obj );
+	cpcc_ulog( kLogLevelTrace, "Created controller [%p]\n", obj );
 
 	*outController = obj;
 	obj = NULL;
@@ -598,7 +596,7 @@ static void _CarPlayControllerDeactivateService( const void *inService, void *in
 	if( wifi )
 		CFDictionarySetValue( controller->inactiveWiFiServices, serviceInterfaceNdx, service );
 	
-	cpcc_ulog( kLogLevelNotice, "Controller [%{ptr}] %s Service [%{ptr}]\n",
+	cpcc_ulog( kLogLevelNotice, "Controller [%p] %s Service [%p]\n",
 		 controller, wifi ? "Deactivated" : "Removed", service );
 	
 	CFRelease( service );
@@ -649,7 +647,7 @@ static void _CarPlayControllerActivateService( const void *inService, void *inCt
 		CarPlayBonjourServiceResolveAddress( service );
 	}
 	
-	cpcc_ulog( kLogLevelNotice, "Controller [%{ptr}] Activated Service [%{ptr}]\n", controller, service );
+	cpcc_ulog( kLogLevelNotice, "Controller [%p] Activated Service [%p]\n", controller, service );
 	
 exit:
 	return;
@@ -783,8 +781,8 @@ static void _CarPlayControllerCopyBestService( void *inCtx )
 		}
 		ForgetCF( &serviceKeys );
 	}
-
-	cpcc_ulog( kLogLevelTrace, "Controller [%{ptr}] found best Service [%{ptr}] (%s) from:\nActiveServices:%@\nInactiveServices:%@\n",
+	
+	cpcc_ulog( kLogLevelTrace, "Controller [%p] found best Service [%p] (%s) from:\nActiveServices:%@\nInactiveServices:%@\n",
 		ctx->controller, ctx->bestService, ctx->bestService ? ( active ? "Active" : "Inactive" ) : "N/A",
 		ctx->controller->activeServices, ctx->controller->inactiveWiFiServices );
 	require_action_quiet( ctx->bestService, exit, ctx->err = kNotFoundErr );
@@ -866,31 +864,6 @@ exit:
 }
 
 //===========================================================================================================================
-//	CarPlayControllerCopyDNSName
-//===========================================================================================================================
-
-OSStatus CarPlayControllerCopyDNSName( CarPlayControllerRef inController, CFStringRef *outIfName )
-{
-	OSStatus			err;
-	CFDictionaryRef		device = NULL;
-	CFStringRef			name;
-	
-	require_action( inController, exit, err = kParamErr );
-	require_action( outIfName, exit, err = kParamErr );
-	
-	device = _CarPlayControllerCopyCurrentDevice( inController );
-	name = CFDictionaryGetCFString( device, CFSTR( kBonjourDeviceKey_DNSName ), NULL );
-	require_action( name, exit, err = kUnknownErr );
-	
-	*outIfName = (CFStringRef) CFRetain( name );
-	err = kNoErr;
-	
-exit:
-	CFRelease( device );
-	return( err );
-}
-
-//===========================================================================================================================
 //	CarPlayControllerGetBluetoothMacAddress
 //===========================================================================================================================
 
@@ -937,6 +910,49 @@ exit:
 	return( err );
 }
 
+//===========================================================================================================================
+//	CarPlayControllerGetInterfaceName
+//===========================================================================================================================
+
+OSStatus CarPlayControllerGetInterfaceName( CarPlayControllerRef inController, CFStringRef *outName )
+{
+    OSStatus			err;
+    CFDictionaryRef		device = NULL;
+    CFStringRef			name = NULL;
+    CFIndex				i, n;
+    CFDictionaryRef		serviceDict;
+    
+    require_action( inController, exit, err = kParamErr );
+    require_action( outName, exit, err = kParamErr );
+    
+    device = _CarPlayControllerCopyCurrentDevice( inController );
+    CFArrayRef services = NULL;
+    services = CFDictionaryGetCFArray( device, CFSTR(kBonjourDeviceKey_Services), NULL);
+    
+    require_action_quiet( services, exit, err = kUnknownErr );
+    
+    n = CFArrayGetCount( services );
+    for( i = 0; i < n; ++i )
+    {
+        serviceDict = CFArrayGetCFDictionaryAtIndex( services, i, NULL );
+        if( !serviceDict ) continue;
+        
+        name = CFDictionaryGetCFString( serviceDict, CFSTR( kBonjourDeviceKey_InterfaceName ), NULL );
+        
+        if (name != NULL) {
+            break;
+        }
+    }
+    
+    require_action( name, exit, err = kUnknownErr );
+    
+    *outName = (CFStringRef) CFRetain( name );
+    err = kNoErr;
+    
+exit:
+    CFRelease( device );
+    return( err );
+}
 
 //===========================================================================================================================
 //	_CarPlayControllerForgetInactiveServices
@@ -1050,7 +1066,7 @@ CFTypeID CarPlayControlClientGetTypeID( void )
 }
 
 //===========================================================================================================================
-//	CarPlayControlClientCreate
+//	CarPlayControlClientCreateWithServer
 //===========================================================================================================================
 
 OSStatus CarPlayControlClientCreateWithServer(
@@ -1082,7 +1098,6 @@ OSStatus CarPlayControlClientCreateWithServer(
 	
 	obj->server = inServer;
 	CFRetainNullSafe( obj->server );
-	require_action( obj->server, exit, err = kParamErr );
 	
 	obj->controllers = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
 	require_action( obj->controllers, exit, err = kNoMemoryErr );
@@ -1128,13 +1143,13 @@ static void _CarPlayControlClientEnsureStarted( void *inCtx )
 	
 	require_action_quiet( !client->started, exit, err = kNoErr );
 	
-	if( client->deviceID == 0 )
-		client->deviceID = AirPlayGetDeviceID( NULL );
+	if( client->deviceID == 0 && client->server != NULL)
+		client->deviceID = AirPlayGetDeviceID(client->server, NULL );
 
 	check( !client->browser );
 	err = BonjourBrowser_Create( &client->browser, "CarPlayControlClient" );
 	require_noerr( err, exit );
-		
+    
 	BonjourBrowser_SetDispatchQueue( client->browser, client->internalQueue );
 	BonjourBrowser_SetEventHandler( client->browser, _CarPlayControlClientBrowseCallback, client );
 	err = BonjourBrowser_Start( client->browser,
@@ -1321,7 +1336,6 @@ static void _CarPlayControlClientRemoveController( CarPlayControlClientRef inCli
 
 static void _CarPlayControlClientHandleBonjourRemove( CarPlayControlClientRef inClient, CFDictionaryRef inEventInfo )
 {
-
 	uint64_t				deviceID;
 	CFIndex					ndx, count, serviceCount;
 	CarPlayController *		controller;
@@ -1352,7 +1366,6 @@ static void _CarPlayControlClientHandleBonjourRemove( CarPlayControlClientRef in
 
 static void _CarPlayControlClientHandleBonjourStopOrRestart( CarPlayControlClient * inClient, BonjourBrowserEventType inEventType )
 {
-
 	CFIndex					ndx, count;
 	CarPlayController *		controller;
 	
@@ -1383,7 +1396,6 @@ static void _CarPlayControlClientHandleBonjourStopOrRestart( CarPlayControlClien
 
 static void _CarPlayControlClientBrowseCallback( BonjourBrowserEventType inEventType, CFDictionaryRef inEventInfo, void *inCtx )
 {
-
 	CarPlayControlClient *		client = (CarPlayControlClient*) inCtx;
 	
 	cpcc_ulog( kLogLevelTrace, "BrowseCallback: event=%s, info=%@\n", BonjourBrowserEventTypeToString(inEventType), inEventInfo );
@@ -1431,11 +1443,12 @@ static OSStatus
 	err = CarPlayBonjourServiceGetAddress( inService, &hostName, &port, &interfaceNdx );
 	require_noerr( err, exit );
 	
-	ASPrintF( &hostNameWithInterfaceNdx, "%s%%%lu", hostName, interfaceNdx );
+	asprintf( &hostNameWithInterfaceNdx, "%s%%%u", hostName, (unsigned)interfaceNdx );
 
 	// Connect to the controller
 	
 	cpcc_ulog( kLogLevelNotice, "CarPlayControl connecting to %s on port %d\n", hostNameWithInterfaceNdx, (int) port );
+	
 	err = HTTPClientCreate( &httpClient );
 	require_noerr( err, exit );
 	
@@ -1457,13 +1470,15 @@ static OSStatus
 	err = HTTPMessageCreate( &httpMessage );
 	require_noerr( err, exit );
 	
-	err = HTTPMessageInitRequest( httpMessage, kHTTPVersionString_1pt1, kHTTPMethodString_GET, "/ctrl-int/1/%s", inCommand );
+	char url[32];
+	snprintf( url, sizeof(url), "/ctrl-int/1/%s", inCommand );
+	err = HTTPHeader_InitRequest( &httpMessage->header, kHTTPMethodString_GET, url, kHTTPVersionString_1pt1 );
 	require_noerr( err, exit );
-	err = HTTPMessageSetHeaderField( httpMessage, kHTTPHeader_Host, "%s", hostName );
+	err = HTTPHeader_AddField( &httpMessage->header, kHTTPHeader_Host, hostName );
 	require_noerr( err, exit );
-	err = HTTPMessageSetHeaderField( httpMessage, kHTTPHeader_UserAgent, "%s", kAirPlayUserAgentStr );
+	err = HTTPHeader_AddField( &httpMessage->header, kHTTPHeader_UserAgent, kAirPlayUserAgentStr );
 	require_noerr( err, exit );
-	err = HTTPMessageSetHeaderField( httpMessage, "AirPlay-Receiver-Device-ID", "%llu", inClient->deviceID );
+	err = HTTPHeader_AddFieldF( &httpMessage->header, "AirPlay-Receiver-Device-ID", "%llu", inClient->deviceID );
 	require_noerr( err, exit );
 	
 	cpcc_ulog( kLogLevelTrace, "********** CarPlayControl Request **********\n" );

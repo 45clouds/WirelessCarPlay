@@ -2,7 +2,7 @@
 	File:    	NetUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2006-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2006-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__NetUtils_h__
@@ -100,17 +100,6 @@
 	#include <sys/uio.h>
 #endif
 
-
-#if( TARGET_OS_BSD )
-	#define APPLE_HAVE_ROUTING_SUPPORT		1
-#else
-	#define APPLE_HAVE_ROUTING_SUPPORT		0
-#endif
-
-#if( APPLE_HAVE_ROUTING_SUPPORT )
-	#include <net/route.h>
-#endif
-
 #if( TARGET_OS_LINUX )
 	#include <sys/ioctl.h>
 #endif
@@ -119,37 +108,11 @@
 extern "C" {
 #endif
 
-#if( APPLE_HAVE_ROUTING_SUPPORT )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CreateUsableInterfaceList
-	@abstract	Creates a linked list of ifaddr structures for all the usable IPv4 and IPv6 interfaces.
-	@discussion	You must use ReleaseUsableInterfaceList rather than freeifaddrs to free the returned interface list.
-*/
-OSStatus	CreateUsableInterfaceList( const char *inInterfaceName, int inFamily, struct ifaddrs **outList );
-void		ReleaseUsableInterfaceList( struct ifaddrs *inList );
-OSStatus	ValidateInterfaceUsability( SocketRef inInfoSock, const struct ifaddrs *inIA );
-#define		WaitForUsableInterfaces()		CreateUsableInterfaceList( NULL, AF_UNSPEC, NULL )
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	InterfaceRemoveAllAddrs
-	@abstract	Removes IPv4 and IPv6 addresses for the specified interface.
-*/
-#if( TARGET_OS_POSIX )
-	void	InterfaceRemoveAllAddrs( const char *ifname );
-#endif
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	DrainUDPSocket
 	@abstract	Drains any packets from a UDP socket.
 */
 OSStatus	DrainUDPSocket( SocketRef inSock, int inTimeoutSecs, int *outDrainedPackets );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HostIsPotentiallyReachable
-	@abstract	Quick check if a host is potentially reachable with or without dialing a modem, etc.
-*/
-Boolean	HostIsPotentiallyReachable( const char *inHost, Boolean inAllowModemConnect );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	GetLoopbackInterfaceInfo
@@ -172,28 +135,6 @@ uint64_t	GetPrimaryMACAddress( uint8_t outMAC[ 6 ], OSStatus *outErr );
 extern OSStatus	GetPrimaryMACAddressPlatform( uint8_t outMAC[ 6 ] );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetUDPOutgoingSockAddr
-	@abstract	Determines the outgoing (source) sockaddr we'd use to send a UDP packet to the specified remote sockaddr.
-	
-	@param		inRemoteAddr		sockaddr of remote host.
-	@param		outLocalAddr		Receives sockaddr we'd use as a source address when sending to "inRemoteAddr".
-									This should be a sockaddr_storage so it's big enough to hold any sockaddr.
-*/
-OSStatus	GetUDPOutgoingSockAddr( const void *inRemoteAddr, void *outLocalAddr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	LocalHostIsOnAppleInternalNetwork
-	@abstract	Check if the current computer can access the Apple internal network with minimal network activity.
-*/
-Boolean	LocalHostIsOnAppleInternalNetwork( void );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NetworkStackSupportsIPv4MappedIPv6Addresses
-	@abstract	Return true if the network stack supports IPv4-mapped IPv6 addresses (i.e. IPv6 socket can handle IPv4 and IPv6).
-*/
-Boolean	NetworkStackSupportsIPv4MappedIPv6Addresses( void );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	OpenSelfConnectedLoopbackSocket
 	@abstract	Opens a UDP socket bound to the loopback interface and connected to itself. Useful for thread communication.
 */
@@ -204,13 +145,6 @@ OSStatus	OpenSelfConnectedLoopbackSocket( SocketRef *outSock );
 	@abstract	Sends a message to a socket set up with OpenSelfConnectedLoopbackSocket().
 */
 OSStatus	SendSelfConnectedLoopbackMessage( SocketRef inSock, const void *inMsg, size_t inLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SendUDPQuitPacket
-	@abstract	Sends an empty UDP packet to the IPv4 or IPv6 loopback address.
-	@discussion	Used by internal code to send a quit packet to gracefully exit a thread.
-*/
-OSStatus	SendUDPQuitPacket( int inPort, SocketRef inSockV4, SocketRef inSockV6 );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TCPServerSocketPairOpen / UDPServerSocketPairOpen / ServerSocketPairOpen
@@ -253,30 +187,6 @@ OSStatus
 		int *		outPort, 
 		int			inRcvBufSize, 
 		SocketRef *	outSock );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	UDPClientSocketOpen
-	@abstract	Opens a UDP socket for use by a client.
-	
-	@param		inFamily		IPv4 or IPv6 family of socket to create. May be AF_UNSPEC to use the same family as inPeerAddr.
-	@param		inPeerAddr		Address of peer to connect socket to. May be NULL to not connect it to a peer.
-	@param		inPeerPort		Port number to override inPeerAddr. Use 0 to not override the port number.
-	@param		inListenPort	Port number to bind the socket to for listening.
-								< -1: Try negated port, but if in use, let the network stack choose a port.
-								  -1: Don't bind the socket for listening.
-								   0: Let the network stack choose a port.
-								 > 0: Try to bind to the specified port and fail if that port is in use.
-	@param		outListenPort	Receives port number that was bound. May be NULL.
-	@param		outSock			Receives created socket. If function returns kNoErr, caller must close this socket.
-*/
-OSStatus
-	UDPClientSocketOpen( 
-		int				inFamily, 
-		const void *	inPeerAddr, 
-		int				inPeerPort, 
-		int				inListenPort, 
-		int *			outListenPort, 
-		SocketRef *		outSock );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	UpdateIOVec
@@ -358,19 +268,6 @@ typedef OSStatus
 
 typedef OSStatus	( *NetSocket_WriteFunc )( NetSocketRef inSock, const void *inBuffer, size_t inSize, int32_t inTimeoutSecs );
 typedef OSStatus	( *NetSocket_WriteVFunc )( NetSocketRef inSock, iovec_t *inArray, int inCount, int32_t inTimeoutSecs );
-#if( TARGET_HAVE_FDREF )
-	typedef OSStatus
-		( *NetSocket_WriteFileFunc )( 
-			NetSocketRef	inSock, 
-			iovec_t *		inHeaderArray, 
-			int				inHeaderCount, 
-			iovec_t *		inTrailerArray, 
-			int				inTrailerCount, 
-			FDRef			inFileFD, 
-			int64_t			inFileOffset, 
-			int64_t			inFileAmount, 
-			int32_t			inTimeoutSecs );
-#endif
 
 typedef void		( *NetSocket_FreeFunc )( NetSocketRef inSock );
 
@@ -397,9 +294,6 @@ struct NetSocket
 	NetSocket_ReadFunc			readFunc;		// Function for reading data. Can be overridden by subclasses.
 	NetSocket_WriteFunc			writeFunc;		// Function for writing data. Can be overridden by subclasses.
 	NetSocket_WriteVFunc		writeVFunc;		// Function for writing via iovec's. Can be overridden by subclasses.
-#if( TARGET_HAVE_FDREF )
-	NetSocket_WriteFileFunc		writeFileFunc;	// Function for writing a file. Can be overridden by subclasses.
-#endif
 	NetSocket_FreeFunc			freeFunc;		// Function for subclasses to clean up. May be NULL.
 	
 	char *						leftoverPtr;	// Optional ptr for leftover body data when reading headers, etc.
@@ -475,16 +369,6 @@ OSStatus
 		int				inFlags,
 		int32_t			inTimeoutSecs );
 
-#if( TARGET_HAVE_FDREF )
-	OSStatus
-		NetSocket_ReadFile( 
-			NetSocketRef	inSock, 
-			int64_t			inAmount, 
-			FDRef			inFileFD, 
-			int64_t			inFileOffset, 
-			int32_t			inTimeoutSecs );
-#endif
-
 // Writing
 
 #define NetSocket_Write( NETSOCK, BUFFER, SIZE, TIMEOUT_SECS )	\
@@ -493,48 +377,11 @@ OSStatus
 #define NetSocket_WriteV( NETSOCK, IOVEC_ARRAY, IOVEC_COUNT, TIMEOUT_SECS )	\
 	(NETSOCK)->writeVFunc( (NETSOCK), (IOVEC_ARRAY), (IOVEC_COUNT), (TIMEOUT_SECS) )
 
-#define NetSocket_WriteFile( NETSOCK, 					\
-	HEADER_IOVEC_ARRAY,  HEADER_IOVEC_COUNT, 			\
-	TRAILER_IOVEC_ARRAY, TRAILER_IOVEC_COUNT,			\
-	FILE_FD, FILE_OFFSET, FILE_AMOUNT, 					\
-	TIMEOUT_SECS )										\
-														\
-	(NETSOCK)->writeFileFunc( (NETSOCK), 				\
-		(HEADER_IOVEC_ARRAY),  (HEADER_IOVEC_COUNT), 	\
-		(TRAILER_IOVEC_ARRAY), (TRAILER_IOVEC_COUNT),	\
-		(FILE_FD), (FILE_OFFSET), (FILE_AMOUNT), 		\
-		TIMEOUT_SECS )
-
 OSStatus	NetSocket_WriteInternal( NetSocketRef inSock, const void *inBuffer, size_t inSize, int32_t inTimeoutSecs );
 #if( TARGET_OS_POSIX || TARGET_OS_WINDOWS )
 	OSStatus	NetSocket_WriteVInternal( NetSocketRef inSock, iovec_t *inArray, int inCount, int32_t inTimeoutSecs );
 #endif
 OSStatus	NetSocket_WriteVSlow( NetSocketRef inSock, iovec_t *inArray, int inCount, int32_t inTimeoutSecs );
-#if( TARGET_HAVE_FDREF )
-	OSStatus
-		NetSocket_WriteFileInternal( 
-			NetSocketRef	inSock, 
-			iovec_t *		inHeaderArray, 
-			int				inHeaderCount, 
-			iovec_t *		inTrailerArray, 
-			int				inTrailerCount, 
-			FDRef			inFileFD, 
-			int64_t			inFileOffset, 
-			int64_t			inFileAmount, 
-			int32_t			inTimeoutSecs );
-	
-	OSStatus
-		NetSocket_WriteFileSlow( 
-			NetSocketRef	inSock, 
-			iovec_t *		inHeaderArray, 
-			int				inHeaderCount, 
-			iovec_t *		inTrailerArray, 
-			int				inTrailerCount, 
-			FDRef			inFileFD, 
-			int64_t			inFileOffset, 
-			int64_t			inFileAmount, 
-			int32_t			inTimeoutSecs );
-#endif
 
 // Waiting
 
@@ -662,13 +509,6 @@ OSStatus
 		char *				outIfName );	// May be NULL.
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SocketReadAll / SocketWriteAll
-	@abstract	Blocks until all the data is read or written (or the connection ends).
-*/
-OSStatus	SocketReadAll( SocketRef inSock, void *inData, size_t inSize );
-OSStatus	SocketWriteAll( SocketRef inSock, const void *inData, size_t inSize, int32_t inTimeoutSecs );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	SocketReadData
 	@abstract	Reads data into the specified buffer in a non-blocking manner.
 	@discussion
@@ -711,94 +551,6 @@ OSStatus	SocketReadData( SocketRef inSock, void *inBuffer, size_t inSize, size_t
 		The data could not be read because of an error. The socket should be closed.
 */
 OSStatus	SocketWriteData( SocketRef inSock, iovec_t **ioArray, int *ioCount );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SocketSendFile
-	@abstract	Zero-copy way to send file data across the network with optional header and/or trailer data.
-	@discussion
-	
-	Here's the steps needed before the first call to this function:
-	
-	1.	If you need to send header data, initialize an iovec array with the ptr/len of the header data.
-		Assign an iovec * with the address of the iovec structure and pass its address in "ioHeaderArray".
-		Assign an int the number of iovec structures in the iovec array and pass its address in "ioHeaderCount".
-		These fields will be updated if needed for any subsequent calls to this function.
-		
-		If you don't need to send header data, pass NULL for ioHeaderArray and NULL for ioHeaderCount.
-	
-	2.	If you need to send trailer data, initialize an iovec array with the ptr/len of the trailer data.
-		Assign an iovec * with the address of the iovec structure and pass its address in "ioTrailerArray".
-		Assign an int the number of iovec structures in the iovec array and pass its address in "ioTrailerCount".
-		These fields will be updated if needed for any subsequent calls to this function.
-		
-		If you don't need to send trailer data, pass NULL for ioTrailerArray and NULL for ioTrailerCount.
-	
-	3.	Assign an int64_t with the offset in the file to send.
-		Assign an int64_t with the number of bytes file data to send.
-	
-	Then call this function and it will return one of the following error codes:
-	
-	kNoErr:
-		All the data was read successfully.
-	
-	EWOULDBLOCK:
-		All the data could not be sent immediately. Al the parameters have been updated for the next call. 
-		Call this function again the when the socket becomes writable.
-	
-	Any other error:
-		The data could not be read because of an error. The socket should be closed.
-	
-	Example:
-	
-	iovec_t			headerv[ 1 ];
-	iovec_t *		headerp;
-	int				headern;
-	iovec_t			trailerv[ 1 ];
-	iovec_t *		trailerp;
-	int				trailern;
-	int64_t			fileOffset;
-	int64_t			fileAmount;
-	
-	headerv[ 0 ].iov_base = "abcd";
-	headerv[ 0 ].iov_len  = 4;
-	headerp = headerv;
-	headern = 1;
-	
-	trailerv[ 0 ].iov_base = "xyz";
-	trailerv[ 0 ].iov_len  = 3;
-	trailerp = trailerv;
-	trailern = 1;
-	
-	fileOffset = 20; // Start send from 20 bytes into the file.
-	fileAmount = 50; // Send 50 bytes from offset 20 (bytes 20-69 inclusive).
-	
-	for( ;; )
-	{
-		err = SocketSendFile( sock, &headerp, &headern, &trailerp, &trailern, fileFD, &fileOffset, &fileAmount );
-		if( err == kNoErr )			break;
-		if( err == EWOULDBLOCK )	err = kNoErr;
-		if( err == EPIPE )			goto exit;
-		require_noerr( err, exit );
-		
-		... select, kevent, WaitForMultipleObjects or whatever to wait until socket becomes writable again.
-	}
-*/
-#if( TARGET_OS_MACOSX )
-	#define TARGET_HAS_SENDFILE		1
-	
-	OSStatus
-		SocketSendFile( 
-			SocketRef	inSock, 
-			iovec_t **	ioHeaderArray,	// May be NULL.
-			int *		ioHeaderCount, 	// May be NULL.
-			iovec_t **	ioTrailerArray,	// May be NULL.
-			int *		ioTrailerCount,	// May be NULL.
-			FDRef		inFileFD, 
-			int64_t *	ioFileOffset, 	// Initialize to offset then maintain across calls.
-			int64_t *	ioFileAmount );	// Initialize to amount then maintain across calls.
-#else
-	#define TARGET_HAS_SENDFILE		0
-#endif
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	SocketTransportRead / SocketTransportWriteV
@@ -1112,24 +864,6 @@ int	SockAddrCompareAddrEx( const void *inA1, const void *inA2, Boolean inUseIPv6
 void	SockAddrCopy( const void *inSrc, void *inDst );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SockAddrConvertToIPv6
-	@abstract	Converts a sockaddr to IPv6 sockaddr_in6 (if AF_INET, convert to IPv4-mapped IPv6, if AF_INET6, just copy).
-	
-	@param		inSrc	Address to convert.
-	@param		outDst	Receives the converted address. May point to the same memory as "inSrc".
-	
-	@discussion	This function can be useful convert an address from an IPv4 socket so it's usable by an IPv6 socket.
-*/
-OSStatus	SockAddrConvertToIPv6( const void *inSrc, void *outDst );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SockAddrGetIPv4
-	@abstract	Gets the 32-bit, network byte order IPv4 address out of a sockaddr structure, if it contains an IPv4 
-				address (IPv4 or IPv4-mapped/compat IPv6).
-*/
-OSStatus	SockAddrGetIPv4( const void *inSrc, uint32_t *outIPv4 );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	SockAddrSimplify
 	@abstract	Converts a sockaddr to its simplest form; e.g. if it's IPv6 address wrapping an IPv4 address, convert to IPv4.
 	
@@ -1161,123 +895,8 @@ OSStatus	SockAddrSimplify( const void *inSrc, void *outDst );
 uint64_t	SockAddrToDeviceID( const void *inSockAddr );
 
 #if 0
-#pragma mark -
-#pragma mark == Addressing ==
-#endif
-
-//===========================================================================================================================
-//	Addressing
-//===========================================================================================================================
-
-// Converts a prefix bit count to a mask (e.g. 24 would be 255.255.255.0 or 0xFFFFFF00). Must be <= 32.
-// Note: the mask returned is in host byte order.
-
-#define IPv4BitsToMask( BITS )		( (uint32_t)( ( (BITS) != 0 ) ? ( UINT32_C( 0xFFFFFFFF ) << ( 32 - (BITS) ) ) : 0 ) )
-
-// Calculates the default router address for the specified address and subnet (e.g. 10.0.20.6 and 0xFFFFFF00 -> 10.0.20.1).
-// Note: ADDR and SUBNET must be in network byte order. Result is in network byte order.
-
-#define IPv4DefaultRouterForAddressAndSubnet( ADDR, SUBNET )	( htonl( ( ntohl( (ADDR) ) & ntohl( (SUBNET) ) ) | 1 ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IsIPv4MartianAddress/IsIPv6MartianAddress
-	@abstract	Returns true if "inAddr" is a martian address. Returns false otherwise.
-	@discussion	For details, see <http://6session.wordpress.com/2009/04/08/ipv6-martian-and-bogon-filters/>.
-*/
-#define kMartianFlags_None					0
-#define kMartianFlags_AllowUnspecified		( 1 << 0 ) //! Don't consider ::/128 martian.
-#define kMartianFlags_AllowLinkLocal		( 1 << 1 ) //! Don't consider fe80::/10 martian.
-#define kMartianFlags_AllowUniqueLocal		( 1 << 2 ) //! Don't consider fc00::/7 martian.
-
-Boolean	IsIPv4MartianAddress( uint32_t inAddr );						// Note: network byte order IPv4 address (same as sin_addr.s_addr).
-Boolean	IsIPv6MartianAddress( const void *inAddr );						// Note: 16-byte IPv6 address (not a sockaddr_in6).
-Boolean	IsIPv6MartianAddressEx( const void *inAddr, uint32_t inFlags );	// Note: 16-byte IPv6 address (not a sockaddr_in6).
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IsGlobalIPv4Address
-	@abstract	Returns non-zero if the network byte order IPv4 address is not :
-					IPv4 Link Local
-					RFC 1918 private address
-					Loopback
-					Multicast
-					the zero address
-	
-	@param		inIPv4	32-bit IPv4 address in network byte order (i.e. same format as sin_addr.s_addr).
-	
-	@result		Non-zero = Global Address.
-				0		 = Not a global address.
-*/
-int	IsGlobalIPv4Address( uint32_t inIPv4 );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IsPrivateIPv4Address
-	@abstract	Returns non-zero if the network byte order IPv4 address is an RFC 1918 private address or 0 otherwise.
-	
-	@param		inIPv4	32-bit IPv4 address in network byte order (i.e. same format as sin_addr.s_addr).
-	
-	@result		Non-zero = Private Address.
-				0		 = Not a private address.
-*/
-int	IsPrivateIPv4Address( uint32_t inIPv4 );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IsRoutableIPv4Address
-	@abstract	Returns non-zero if the network byte order IPv4 address is not :
-					IPv4 Link Local
-					the zero address
-	
-	@param		inIPv4	32-bit IPv4 address in network byte order (i.e. same format as sin_addr.s_addr).
-	
-	@result		Non-zero = Routable Address.
-				0		 = Not a Routable address.
-*/
-int	IsRoutableIPv4Address( uint32_t inIPv4 );
-
-#if 0
 #pragma mark == Misc ==
 #endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CompareMACAddresses
-	@abstract	Compare two Ethernet MAC addresses, return :
-					 0 - addresses are the same
-					>0 - address 1 is greater than address 2 
-					<0 - address 1 is less than address 2 
-	
-	@param		inMACAddress1		6-byte Ethernet address of interface
-	@param		inMACAddress2		6-byte Ethernet address of interface
-*/
-int	CompareMACAddresses( const void *inMACAddress1, const void *inMACAddress2 );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetInterfaceExtendedFlags
-	@abstract	Returns extended flags for an interface (e.g. IFEF_* constants from the private version of if.h).
-*/
-uint64_t	GetInterfaceExtendedFlags( const char *inIfName );
-Boolean		IsP2PInterface( const char *inIfName );
-Boolean		IsWiFiNetworkInterface( const char *inIfName );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetIPAddress
-	@abstract	Returns IPv4 address and/or IPv4 netmask of interface
-	
-	@param		inInterfaceName		interface name (i.e., "eth0")
-	@param		outIPAddress		32-bit IPv4 address in network byte order (i.e. same format as sin_addr.s_addr) - may be NULL.
-	@param		outNetmask			32-bit IPv4 netmask in network byte order (i.e. same format as sin_addr.s_addr) - may be NULL.
-*/
-OSStatus	GetIPAddress( const char *inInterfaceName, uint32_t *outIPAddress, uint32_t *outNetmask );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetPrimaryIPAddress
-	@abstract	Returns the primary IPv4 and/or IPv6 address.
-*/
-OSStatus	GetPrimaryIPAddress( sockaddr_ip *outIPv4, sockaddr_ip *outIPv6 );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetLocalHostName
-	@abstract	Returns the local hostname, such as "mycomputer.local", suitable for resolving via DNS or Bonjour.
-*/
-OSStatus	GetLocalHostName( char *inBuf, size_t inMaxLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	GetInterfaceMACAddress
@@ -1287,24 +906,6 @@ OSStatus	GetLocalHostName( char *inBuf, size_t inMaxLen );
 	@param		outMACAddress		6-byte Ethernet address of interface
 */
 OSStatus	GetInterfaceMACAddress( const char *inInterfaceName, uint8_t *outMACAddress );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SetInterfaceMACAddress
-	@abstract	sets the Ethernet MAC address of interface
-	
-	@param		inInterfaceName		interface name (i.e., "eth0")
-	@param		inMACAddress		6-byte Ethernet address of interface
-*/
-OSStatus	SetInterfaceMACAddress( const char *inInterfaceName, const uint8_t *inMACAddress );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetPeerMACAddress
-	@abstract	Search the ARP/ND table for a peer by IPv4/IPv6 address and if found, return its MAC address.
-	
-	@param		inPeerAddr		sockaddr_in/sockaddr_in6 of the peer to search for.
-	@param		outMAC			Receives 6-byte MAC address of peer on success.
-*/
-OSStatus	GetPeerMACAddress( const void *inPeerAddr, uint8_t outMAC[ 6 ] );
 
 #if( !EXCLUDE_UNIT_TESTS )
 //---------------------------------------------------------------------------------------------------------------------------

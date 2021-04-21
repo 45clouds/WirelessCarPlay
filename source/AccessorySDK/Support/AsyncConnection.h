@@ -2,7 +2,7 @@
 	File:    	AsyncConnection.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AsyncConnection_h__
@@ -138,7 +138,6 @@ typedef struct
 	void *							progressArg;			// Argument to pass to progress function. May be NULL.
 	AsyncConnectionHandlerFunc		handlerFunc;			// Function to call when connection succeeds or fails.
 	void *							handlerArg;				// Argument to pass to handler function. May be NULL.
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_queue_t				handlerQueue;			// Dispatch queue to invoke callbacks on.
 	LogCategory *					logCategory;			// Log category to use for logging. NULL uses a custom category.
 	uint64_t						ipv6DelayNanos;			// Nanoseconds to delay IPv6 connection attempts. Use 0 for no delay.

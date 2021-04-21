@@ -2,7 +2,7 @@
 	File:    	HIDUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__HIDUtils_h__
@@ -127,150 +127,23 @@ extern "C" {
 //===========================================================================================================================
 
 
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDGetOverrideDescriptor
-	@abstract	Looks up the HID device and if there's an override HID descriptor for it, returns a malloc'd copy of it.
-*/
-typedef struct
-{
-	uint16_t	vendorID;
-	uint16_t	productID;
-	
-}	HIDInfo;
-
-#define HIDInfoInit( PTR )		memset( (PTR), 0, sizeof( HIDInfo ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDRegisterOverrideDescriptor
-	@abstract	Registers an override HID descriptor for a specific HID device.
-*/
-OSStatus	HIDRegisterOverrideDescriptor( const HIDInfo *inInfo, const void *inPtr, size_t inLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDDeregisterOverrideDescriptor
-	@abstract	Deregisters an existing override HID descriptor for a specific HID device.
-*/
-OSStatus	HIDDeregisterOverrideDescriptor( const HIDInfo *inInfo );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDGetOverrideDescriptor
-	@abstract	Looks up the HID device and if there's an override HID descriptor for it, returns a malloc'd copy of it.
-*/
-OSStatus	HIDCopyOverrideDescriptor( const HIDInfo *inInfo, uint8_t **outPtr, size_t *outLen );
-
-#if 0
-#pragma mark -
-#pragma mark == HIDBrowser ==
-#endif
-
-//===========================================================================================================================
-//	HIDBrowser
-//===========================================================================================================================
-
-#if( !defined( HIDUTILS_HID_RAW ) )
-	#define HIDUTILS_HID_RAW		1
-#endif
-
-// [Array] Snapshot array of HIDDeviceRef's for currently attached devices. Use an event handler to detect attach/detach.
-#define kHIDBrowserProperty_Devices		CFSTR( "devices" )
-
-// [Boolean] Enable/disable native HID device discovery (disabling only discovers virtual HID devices). Defaults to on.
-#define kHIDBrowserProperty_HIDRaw		CFSTR( "hidRaw" )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserGetTypeID
-	@abstract	Gets the CF type ID of all HIDBrowser objects.
-*/
-CFTypeID	HIDBrowserGetTypeID( void );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserCreate
-	@abstract	Creates a new HID browser.
-*/
-typedef struct HIDBrowserPrivate *		HIDBrowserRef;
-
-OSStatus	HIDBrowserCreate( HIDBrowserRef *outBrowser );
-#define 	HIDBrowserForget( X ) do { if( *(X) ) { HIDBrowserStop( *(X) ); CFRelease( *(X) ); *(X) = NULL; } } while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserCopyProperty
-	@abstract	Copies a property from the browser. See kHIDBrowserProperty_* constants.
-*/
-CFTypeRef	HIDBrowserCopyProperty( HIDBrowserRef inBrowser, CFStringRef inProperty, CFTypeRef inQualifier, OSStatus *outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserSetProperty
-	@abstract	Sets a property of the browser. See kHIDBrowserProperty_* constants.
-*/
-OSStatus	HIDBrowserSetProperty( HIDBrowserRef inBrowser, CFStringRef inProperty, CFTypeRef inQualifier, CFTypeRef inValue );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserSetDispatchQueue
-	@abstract	Sets the queue to deliver event callbacks. Defaults to the main queue.
-*/
-void	HIDBrowserSetDispatchQueue( HIDBrowserRef inBrowser, dispatch_queue_t inQueue );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserSetEventHandler
-	@abstract	Sets the function to call when an event arrives.
-*/
-typedef uint32_t	HIDBrowserEventType;
-#define kHIDBrowserEventStopped			1 // Browser was stopped.
-#define kHIDBrowserEventAttached		2 // HID device attached.
-#define kHIDBrowserEventDetached		3 // HID device detached.
-#define kHIDBrowserEventStarted			4 // Browser has started.
-
-#define HIDBrowserEventToString( X ) ( \
-	( (X) == kHIDBrowserEventStarted )	? "Started"		: \
-	( (X) == kHIDBrowserEventStopped )	? "Stopped"		: \
-	( (X) == kHIDBrowserEventAttached )	? "Attached"	: \
-	( (X) == kHIDBrowserEventDetached )	? "Detached"	: \
-										  "?" )
-
-typedef void ( *HIDBrowserEventHandler_f )( HIDBrowserEventType inType, CFTypeRef inParam, void *inContext );
-void		HIDBrowserSetEventHandler( HIDBrowserRef inBrowser, HIDBrowserEventHandler_f inHandler, void *inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserStart
-	@abstract	Starts discovery of HID devices.
-	@discussion	Events are delivered to the event callback function.
-*/
-OSStatus	HIDBrowserStart( HIDBrowserRef inBrowser );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserStop
-	@abstract	Stops discovery of HID devices.
-	@discussion	When discovery has fully stopped, the kHIDBrowserEventStopped will be delivered.
-*/
-void	HIDBrowserStop( HIDBrowserRef inBrowser );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDBrowserStopDevices
-	@abstract	Stops all devices being tracked by the browser.
-*/
-void	HIDBrowserStopDevices( HIDBrowserRef inBrowser );
-
 #if 0
 #pragma mark -
 #pragma mark == HIDDevice ==
-#endif
-
-// IPC mappings
-
-#if( defined( HIDUTILS_IPC ) && HIDUTILS_IPC )
-	#define HIDDeviceCreateVirtual		HIDDeviceCreateVirtual_ipc
-	#define HIDDeviceCopyProperty		HIDDeviceCopyProperty_ipc
-	#define HIDDeviceSetProperty		HIDDeviceSetProperty_ipc
-	#define HIDRegisterDevice			HIDRegisterDevice_ipc
-	#define HIDDevicePostReport			HIDDevicePostReport_ipc
-	#define HIDPostReport				HIDPostReport_ipc
-	#define HIDDeviceStop				HIDDeviceStop_ipc
 #endif
 
 //===========================================================================================================================
 //	HIDDevice
 //===========================================================================================================================
 
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	HIDCopyDevices
+ @abstract	Copies a property from the browser. See kHIDBrowserProperty_* constants.
+ */
+CFArrayRef HIDCopyDevices( OSStatus *outErr );
+
+void HIDSetSession( void *inContext );
+	
 // [Number] USB-style HID country code.
 #define kHIDDeviceProperty_CountryCode			CFSTR( "countryCode" )
 
@@ -289,9 +162,6 @@ void	HIDBrowserStopDevices( HIDBrowserRef inBrowser );
 // [Number] Sample rate of the device in Hz.
 #define kHIDDeviceProperty_SampleRate			CFSTR( "sampleRate" )
 
-// [String] UUID for the HID device. Note this may not be persistent across detaches and re-attaches.
-#define kHIDDeviceProperty_UUID					CFSTR( "uuid" )
-
 // [Number] USB vendor ID of the device.
 #define kHIDDeviceProperty_VendorID				CFSTR( "vendorID" )
 
@@ -308,42 +178,15 @@ CFTypeID	HIDDeviceGetTypeID( void );
 	@abstract	Creates a virtual HID device.
 */
 OSStatus	HIDDeviceCreateVirtual( HIDDeviceRef *outDevice, CFDictionaryRef inProperties );
-#define		HIDDeviceForget( X ) do { if( *(X) ) { HIDDeviceStop( *(X) ); CFRelease( *(X) ); *(X) = NULL; } } while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDDeviceSetDispatchQueue
-	@abstract	Sets the queue to deliver event callbacks. Defaults to the main queue.
-*/
-void	HIDDeviceSetDispatchQueue( HIDDeviceRef inDevice, dispatch_queue_t inQueue );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDDeviceSetEventHandler
-	@abstract	Sets the function to call when an event arrives.
-*/
-typedef uint32_t	HIDDeviceEventType;
-#define kHIDDeviceEventStopped		1 // Device was stopped.
-#define kHIDDeviceEventReport		2 // HID report.
-
-#define HIDDeviceEventToString( X ) ( \
-	( (X) == kHIDDeviceEventStopped )	? "Stopped"	: \
-	( (X) == kHIDDeviceEventReport )	? "Report"	: \
-										  "?" )
-
-typedef void
-	( *HIDDeviceEventHandler_f )( 
-		HIDDeviceRef		inDevice, 
-		HIDDeviceEventType	inType, 
-		OSStatus			inStatus, 
-		const uint8_t *		inPtr, 
-		size_t				inLen, 
-		void *				inContext );
-void	HIDDeviceSetEventHandler( HIDDeviceRef inDevice, HIDDeviceEventHandler_f inHandler, void *inContext );
+#define		HIDDeviceForget( X ) do { if( *(X) ) { CFRelease( *(X) ); *(X) = NULL; } } while( 0 )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HIDDeviceCopyProperty
 	@abstract	Copies a property from the device. See kHIDDeviceProperty_* constants.
 */
 CFTypeRef	HIDDeviceCopyProperty( HIDDeviceRef inDevice, CFStringRef inProperty, CFTypeRef inQualifier, OSStatus *outErr );
+
+CFStringRef HIDDeviceCopyID( HIDDeviceRef inDevice );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HIDDeviceSetProperty
@@ -356,20 +199,6 @@ OSStatus	HIDDeviceSetProperty( HIDDeviceRef inDevice, CFStringRef inProperty, CF
 	@abstract	Posts a HID report.
 */
 OSStatus	HIDDevicePostReport( HIDDeviceRef inDevice, const void *inReportPtr, size_t inReportLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDDeviceStart
-	@abstract	Starts listening for events.
-	@discussion	Events are delivered to the event callback function.
-*/
-OSStatus	HIDDeviceStart( HIDDeviceRef inDevice );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HIDDeviceStop
-	@abstract	Stops listening for events.
-	@discussion	When event listening has fully stopped, the kHIDDeviceEventStopped will be delivered.
-*/
-void	HIDDeviceStop( HIDDeviceRef inDevice );
 
 #if 0
 #pragma mark -
@@ -397,17 +226,15 @@ OSStatus	HIDDeregisterDevice( HIDDeviceRef inDevice );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HIDPostReport
-	@abstract	Posts a report from a HID device specified by UUID.
+	@abstract	Posts a report from a HID device specified by UID.
 */
-OSStatus	HIDPostReport( CFStringRef inUUID, const void *inReportPtr, size_t inReportLen );
+OSStatus	HIDPostReport( uint32_t inUID, const void *inReportPtr, size_t inReportLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HIDUtilsTest	
 	@abstract	Unit test.
 */
 OSStatus	HIDUtilsTest( void );
-
-OSStatus	HIDRemoveFileConfig( void );
 
 #ifdef __cplusplus
 }

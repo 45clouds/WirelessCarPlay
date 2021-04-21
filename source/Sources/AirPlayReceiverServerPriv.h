@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverServerPriv.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayReceiverServerPriv_h__
@@ -56,23 +56,22 @@
 
 #include "AirPlayCommon.h"
 #include "AirPlayReceiverServer.h"
-#include "APAdvertiser.h"
 
 #include CF_HEADER
 #include CF_RUNTIME_HEADER
 #include "dns_sd.h"
 #include LIBDISPATCH_HEADER
 
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DataBufferUtils.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/HTTPServer.h>
+#include "CommonServices.h"
+#include "DataBufferUtils.h"
+#include "DebugServices.h"
+#include "HTTPServer.h"
 
 #if( TARGET_OS_POSIX )
-	#include <CoreUtils/NetworkChangeListener.h>
+	#include "NetworkChangeListener.h"
 #endif
-	#include <CoreUtils/MFiSAP.h>
-	#include <CoreUtils/PairingUtils.h>
+#include "MFiSAP.h"
+#include "PairingUtils.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,9 +81,6 @@ extern "C" {
 //	Server Internals
 //===========================================================================================================================
 
-extern AirPlayReceiverServerRef		gAirPlayReceiverServer;
-extern AirPlayCompressionType		gAirPlayAudioCompressionType;
-
 struct AirPlayReceiverServerPrivate
 {
 	CFRuntimeBase						base;			// CF type info. Must be first.
@@ -92,12 +88,11 @@ struct AirPlayReceiverServerPrivate
 	dispatch_queue_t					queue;			// Internal queue used by the server.
 	AirPlayReceiverServerDelegate		delegate;		// Hooks for delegating functionality to external code.
 	
-	// Advertiser
-	APAdvertiserRef				advertiser;				// advertiser object
-	
 	// Bonjour
-	
-	Boolean						advertisingRestartPending;// True if we're waiting until playback stops to restart advertising.
+	Boolean						bonjourRestartPending;	// True if we're waiting until playback stops to restart Bonjour.
+	uint64_t					bonjourStartTicks;		// Time when Bonjour was successfully started.
+	dispatch_source_t			bonjourRetryTimer;		// Timer to retry Bonjour registrations if they fail.
+	DNSServiceRef				bonjourAirPlay;			// _airplay._tcp Bonjour service.
 	
 	// Servers
 
@@ -107,26 +102,13 @@ struct AirPlayReceiverServerPrivate
 	HTTPServerRef				httpServerLegacy;		// HTTP server to support legacy BTLE clients that use hardcoded port 5000.
 #endif
 	uint8_t						httpTimedNonceKey[ 16 ];
-	
+
 	Boolean						playing;				// True if we're currently playing.
 	Boolean						serversStarted;			// True if the network servers have been started.
 	Boolean						started;				// True if we've been started. Prefs may still disable network servers.
-	
-	// Settings
-	
-	Boolean						denyInterruptions;		// True if hijacking is disabled.
-	Boolean						deviceActivated;		// True if device is activated.
 	uint8_t						deviceID[ 6 ];			// Globally unique device ID (i.e. primary MAC address).
-	char						name[ 64 ];				// Name that people will see in the AirPlay pop up (e.g. "Kitchen Apple TV").
-	int							overscanOverride;		// -1=Compensate if the TV is overscanned. 0=Don't compensate. 1=Always compensate.
-	Boolean						pairAll;				// True if pairing is required for all connections.
-	Boolean						pairPIN;				// PIN required to pair.
-	char						pairPINStr[ 8 ];		// PIN to use for pairing.
-	uint64_t					pairPINLastTicks;		// Last time PIN was generated.
-	Boolean						qosDisabled;			// If true, don't use QoS.
+	char						ifname[ IF_NAMESIZE + 1 ]; // Name of the interface to advertise on (all if empty).
 	int							timeoutDataSecs;		// Timeout for data (defaults to kAirPlayDataTimeoutSecs).
-	CFDictionaryRef				audioStreamOptions;		// Collection of vendor-specific audio stream options.
-	CFDictionaryRef				screenStreamOptions;	// Collection of vendor-specific screen stream options.
 	char *						configFilePath;			// Path to airplay.conf/airplay.ini
 	CFDictionaryRef				config;
 };
@@ -166,7 +148,6 @@ struct AirPlayReceiverConnectionPrivate
 	
 	Boolean						httpAuthentication_IsAuthenticated;
 	
-	AirPlayCompressionType		compressionType;
 	uint32_t					framesPerPacket;
 	
 	AirPlayReceiverLogsRef		logs;
@@ -200,15 +181,14 @@ CF_RETURNS_RETAINED CFDictionaryRef
 	AirPlayCopyServerInfo(
 		AirPlayReceiverSessionRef inSession,
 		CFArrayRef inProperties,
-		uint8_t *inMACAddr,
 		OSStatus *outErr );
 
-uint64_t			AirPlayGetDeviceID( uint8_t *outDeviceID );
+uint64_t			AirPlayGetDeviceID( AirPlayReceiverServerRef inServer,  uint8_t *outDeviceID );
 OSStatus			AirPlayGetDeviceName( char *inBuffer, size_t inMaxLen );
-AirPlayFeatures		AirPlayGetFeatures( void );
-OSStatus			AirPlayGetMinimumClientOSBuildVersion( char *inBuffer, size_t inMaxLen );
+AirPlayFeatures		AirPlayGetFeatures( AirPlayReceiverServerRef inServer );
+OSStatus			AirPlayGetMinimumClientOSBuildVersion( AirPlayReceiverServerRef inServer, char *inBuffer, size_t inMaxLen );
 	OSStatus		AirPlayCopyHomeKitPairingIdentity( char ** outIdentifier, uint8_t outPK[ 32 ] );
-AirPlayStatusFlags	AirPlayGetStatusFlags( void );
+AirPlayStatusFlags	AirPlayGetStatusFlags( AirPlayReceiverServerRef inServer );
 void				AirPlayReceiverServerSetLogLevel( void );
 void				AirPlayReceiverServerSetLogPath( void );
 

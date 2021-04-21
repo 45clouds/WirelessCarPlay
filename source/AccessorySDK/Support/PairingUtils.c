@@ -2,7 +2,7 @@
 	File:    	PairingUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "PairingUtils.h"
@@ -57,7 +57,6 @@
 #include "ChaCha20Poly1305.h"
 #include "CommonServices.h"
 #include "DebugServices.h"
-#include "PrintFUtils.h"
 #include "RandomNumberUtils.h"
 #include "SHAUtils.h"
 #include "SRPUtils.h"
@@ -269,7 +268,7 @@ struct PairingSessionPrivate
 	size_t					activeIdentifierLen;	// Number of bytes in activeIdentifierPtr.
 	char *					identifierPtr;			// Malloc'd identifier ptr set manually.
 	size_t					identifierLen;			// Number of bytes in identifierPtr.
-	uint8_t *				peerIdentifierPtr;		// Malloc'd peer identifier ptr.
+	char *					peerIdentifierPtr;		// Malloc'd peer identifier ptr.
 	size_t					peerIdentifierLen;		// Number of bytes in peerIdentifierPtr.
 	char *					setupCodePtr;			// Malloc'd setup code ptr.
 	size_t					setupCodeLen;			// Number of bytes in setupCodePtr.
@@ -405,13 +404,13 @@ static void		_PairingResetThrottle( void );
 	static OSStatus
 		_PairingSessionFindPeerKeychain( 
 			PairingSessionRef	inSession, 
-			const void *		inIdentifierPtr, 
+			const char *		inIdentifierPtr,
 			size_t				inIdentifierLen, 
 			uint8_t *			outPK );
 	static OSStatus
 		_PairingSessionSavePeerKeychain( 
 			PairingSessionRef	inSession, 
-			const void *		inIdentifierPtr, 
+			const char *		inIdentifierPtr,
 			size_t				inIdentifierLen, 
 			const uint8_t *		inPK );
 #endif
@@ -1272,7 +1271,7 @@ static OSStatus
 			// Verify signature of accessory's info.
 			
 			ForgetPtrLen( &me->peerIdentifierPtr, &me->peerIdentifierLen );
-			me->peerIdentifierPtr = TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
+			me->peerIdentifierPtr = (char*)TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
 			require_noerr( err, exit );
 			require_action( me->peerIdentifierLen > 0, exit, err = kSizeErr );
 			
@@ -1596,7 +1595,7 @@ static OSStatus
 			// Verify signature of controller's info.
 			
 			ForgetPtrLen( &me->peerIdentifierPtr, &me->peerIdentifierLen );
-			me->peerIdentifierPtr = TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
+			me->peerIdentifierPtr = (char*)TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
 			require_noerr( err, exit );
 			require_action( me->peerIdentifierLen > 0, exit, err = kSizeErr );
 			
@@ -1824,7 +1823,7 @@ static OSStatus
 			// Look up accessory's LTPK.
 			
 			ForgetPtrLen( &me->peerIdentifierPtr, &me->peerIdentifierLen );
-			me->peerIdentifierPtr = TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
+			me->peerIdentifierPtr = (char*)TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
 			require_noerr( err, exit );
 			require_action( me->peerIdentifierLen > 0, exit, err = kSizeErr );
 			
@@ -2079,7 +2078,7 @@ static OSStatus
 			// Look up accessory's LTPK.
 			
 			ForgetPtrLen( &me->peerIdentifierPtr, &me->peerIdentifierLen );
-			me->peerIdentifierPtr = TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
+			me->peerIdentifierPtr = (char*)TLV8CopyCoalesced( eptr, eend, kTLVType_Identifier, &me->peerIdentifierLen, NULL, &err );
 			require_noerr( err, exit );
 			require_action( me->peerIdentifierLen > 0, exit, err = kSizeErr );
 			
@@ -2477,6 +2476,9 @@ exit:
 //	Assumes global pairing lock is held.
 //===========================================================================================================================
 
+#define thirtyTwoByteHexFormat "%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x%02x"
+#define thirtyTwoBytes(buffer) buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7], buffer[8], buffer[9], buffer[10], buffer[11], buffer[12], buffer[13], buffer[14], buffer[15], buffer[16], buffer[17], buffer[18], buffer[19], buffer[20], buffer[21], buffer[22], buffer[23], buffer[24], buffer[25], buffer[26], buffer[27], buffer[28], buffer[29], buffer[30], buffer[31]
+
 static OSStatus	_PairingSessionCreateIdentityKeychain( PairingSessionRef me, char **outIdentifier, uint8_t *outPK, uint8_t *outSK )
 {
 	OSStatus			err;
@@ -2506,10 +2508,10 @@ static OSStatus	_PairingSessionCreateIdentityKeychain( PairingSessionRef me, cha
 		identifierLen = strlen( identifierBuf );
 	}
 	Ed25519_make_key_pair( pk, sk );
-	SNPrintF( pkAndSKHex, sizeof( pkAndSKHex ), "%.3H+%.3H", pk, 32, 32, sk, 32, 32 );
+	snprintf( pkAndSKHex, sizeof( pkAndSKHex ), thirtyTwoByteHexFormat"+"thirtyTwoByteHexFormat, thirtyTwoBytes(pk), thirtyTwoBytes(sk) );
 	
 	label = NULL;
-	ASPrintF( &label, "%@: %.*s", me->keychainIdentityLabel, (int) identifierLen, identifierPtr );
+	asprintf( &label, "%s: %.*s", CFStringGetCStringPtr(me->keychainIdentityLabel, kCFStringEncodingUTF8), (int) identifierLen, identifierPtr );
 	require_action( label, exit, err = kNoMemoryErr );
 	
 	err = KeychainAddFormatted( NULL, 
@@ -2531,7 +2533,7 @@ static OSStatus	_PairingSessionCreateIdentityKeychain( PairingSessionRef me, cha
 		#if( !TARGET_IPHONE_SIMULATOR )
 		kSecAttrAccessGroup,	me->keychainAccessGroup, 
 		#endif
-		kSecAttrAccessible,		kSecAttrAccessibleAlways_compat,
+		kSecAttrAccessible,		kSecAttrAccessibleAlways,
 		kSecAttrType,			me->keychainIdentityType, 
 		kSecAttrLabel,			label, 
 		kSecAttrDescription,	me->keychainIdentityDesc, 
@@ -2883,7 +2885,7 @@ exit:
 static OSStatus
 	_PairingSessionFindPeerKeychain( 
 		PairingSessionRef	me, 
-		const void *		inIdentifierPtr, 
+		const char *		inIdentifierPtr,
 		size_t				inIdentifierLen, 
 		uint8_t *			outPK )
 {
@@ -2935,7 +2937,7 @@ exit:
 OSStatus
 	PairingSessionSavePeer( 
 		PairingSessionRef	me, 
-		const void *		inIdentifierPtr, 
+		const char *		inIdentifierPtr,
 		size_t				inIdentifierLen, 
 		const uint8_t *		inPK )
 {
@@ -2972,7 +2974,7 @@ exit:
 static OSStatus
 	_PairingSessionSavePeerKeychain( 
 		PairingSessionRef	me, 
-		const void *		inIdentifierPtr, 
+		const char *		inIdentifierPtr,
 		size_t				inIdentifierLen, 
 		const uint8_t *		inPK )
 {
@@ -3004,7 +3006,7 @@ static OSStatus
 	// Create the new Keychain entry.
 	
 	label = NULL;
-	ASPrintF( &label, "%@: %.*s", me->keychainPeerLabel, (int) inIdentifierLen, inIdentifierPtr );
+	asprintf( &label, "%s: %.*s", CFStringGetCStringPtr(me->keychainPeerLabel, kCFStringEncodingUTF8), (int) inIdentifierLen, inIdentifierPtr );
 	require_action( label, exit, err = kNoMemoryErr );
 	
 	DataToHexCString( inPK, 32, hex );
@@ -3031,7 +3033,7 @@ static OSStatus
 		#endif
 		kSecAttrAccessible,		( me->keychainFlags & kPairingKeychainFlag_HighSecurity ) ? 
 									kSecAttrAccessibleWhenUnlocked : 
-									kSecAttrAccessibleAlways_compat, 
+									kSecAttrAccessibleAlways, 
 		kSecAttrType,			me->keychainPeerType, 
 		kSecAttrLabel,			label, 
 		kSecAttrDescription,	me->keychainPeerDesc, 
@@ -3706,9 +3708,9 @@ static OSStatus	_PairingUtilsTest_Cleanup( void )
 		CFSTR( "PairingUtilsTestPeerLabel" ), 
 		CFSTR( "PairingUtilsTestPeerDescription" ), 
 		0 );
-#endif
 	PairingSessionDeleteIdentity( session );
 	PairingSessionDeletePeer( session, NULL, 0 );
+#endif
 	CFRelease( session );
 	session = NULL;
 	
@@ -3730,9 +3732,9 @@ static OSStatus	_PairingUtilsTest_Cleanup( void )
 		CFSTR( "PairingUtilsTestPeerLabel" ), 
 		CFSTR( "PairingUtilsTestPeerDescription" ), 
 		0 );
-#endif
 	PairingSessionDeleteIdentity( session );
 	PairingSessionDeletePeer( session, NULL, 0 );
+#endif
 	CFRelease( session );
 	session = NULL;
 	

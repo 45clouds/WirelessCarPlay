@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverSessionScreen.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,19 +48,20 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "AirPlayReceiverSessionScreen.h"
 
-#include <CoreUtils/AESUtils.h>
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/ScreenUtils.h>
-#include <CoreUtils/TickUtils.h>
+#include "AESUtils.h"
+#include "CFUtils.h"
+#include "DebugServices.h"
+#include "ScreenUtils.h"
+#include "TickUtils.h"
 #include <errno.h>
 #include "AirPlayCommon.h"
 #include "AirPlayUtils.h"
+#include "ScreenUtils.h"
 
 //===========================================================================================================================
 //	Internals
@@ -72,11 +73,6 @@
 
 struct AirPlayReceiverSessionScreenPrivate
 {
-	dispatch_queue_t								queue;
-	AirPlayReceiverSessionScreenEventHandlerFunc	eventHandlerFunc;
-	void *											eventHandlerData;
-	dispatch_queue_t								eventHandlerQueue;
-
 	int64_t											videoLatencyMs;
 	
 	AirPlayReceiverSessionScreenTimeSynchronizer	timeSynchronizer;
@@ -101,13 +97,6 @@ struct AirPlayReceiverSessionScreenPrivate
 };
 
 // Prototypes
-
-static void			_AirPlayReceiverSessionScreen_Finalize( void *inContext );
-static void
-	_AirPlayReceiverSessionScreen_PostEvent(
-		AirPlayReceiverSessionScreenRef	inSession,
-		CFStringRef						inEventName,
-		CFDictionaryRef					inEventData );
 
 static void			_AirPlayReceiverSessionScreen_Cleanup( AirPlayReceiverSessionScreenRef me );
 static OSStatus
@@ -138,11 +127,6 @@ OSStatus AirPlayReceiverSessionScreen_Create( AirPlayReceiverSessionScreenRef *o
 	obj = (AirPlayReceiverSessionScreenRef) calloc( 1, sizeof( *obj ) );
 	require_action( obj, exit, err = kNoMemoryErr );
 	
-	obj->queue = dispatch_queue_create( "AirPlayReceiverSessionScreen", NULL );
-	require_action( obj->queue, exit, err = kNoMemoryErr );
-	dispatch_set_context( obj->queue, obj );
-	dispatch_set_finalizer_f( obj->queue, _AirPlayReceiverSessionScreen_Finalize );
-	
 	obj->commandSock = kInvalidSocketRef;
 	
 	*outRef = obj;
@@ -150,7 +134,7 @@ OSStatus AirPlayReceiverSessionScreen_Create( AirPlayReceiverSessionScreenRef *o
 	err = kNoErr;
 	
 exit:
-	if( obj ) _AirPlayReceiverSessionScreen_Finalize( obj );
+	if( obj ) AirPlayReceiverSessionScreen_Delete( obj );
 	return( err );
 }
 
@@ -160,82 +144,16 @@ exit:
 
 void AirPlayReceiverSessionScreen_Delete( AirPlayReceiverSessionScreenRef inSession )
 {
-	dispatch_forget( &inSession->eventHandlerQueue );
-	dispatch_release( inSession->queue ); // Must happen last.
-}
+	check( inSession->commandSock == kInvalidSocketRef );
 
-//===========================================================================================================================
-//	_AirPlayReceiverSessionScreen_Finalize
-//===========================================================================================================================
-
-static void _AirPlayReceiverSessionScreen_Finalize( void *inContext )
-{
-	AirPlayReceiverSessionScreenRef const	me = (AirPlayReceiverSessionScreenRef) inContext;
-
-	check( me->commandSock == kInvalidSocketRef );
-
-	if( me->aesValid )
+	if( inSession->aesValid )
 	{
-		me->aesValid = false;
-		AES_CTR_Final( &me->aesContext );
+		inSession->aesValid = false;
+		AES_CTR_Final( &inSession->aesContext );
 	}
-	MemZeroSecure( &me->chachaCryptor, sizeof( me->chachaCryptor ) );
+	MemZeroSecure( &inSession->chachaCryptor, sizeof( inSession->chachaCryptor ) );
 
-	free( me );
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetEventHandler
-//===========================================================================================================================
-
-void
-	AirPlayReceiverSessionScreen_SetEventHandler(
-		AirPlayReceiverSessionScreenRef					inSession,
-		AirPlayReceiverSessionScreenEventHandlerFunc	inHandler,
-		void *											inUserData,
-		dispatch_queue_t								inQueue )
-{
-	inSession->eventHandlerFunc		= inHandler;
-	inSession->eventHandlerData		= inUserData;
-	
-	if( !inQueue ) inQueue = dispatch_get_main_queue();
-	ReplaceDispatchQueue( &inSession->eventHandlerQueue, inQueue );
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously
-//===========================================================================================================================
-
-typedef struct
-{
-	AirPlayReceiverSessionScreenRef					session;
-	AirPlayReceiverSessionScreenEventHandlerFunc	handler;
-	void *											userData;
-	dispatch_queue_t								queue;
-} AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronouslyParams;
-
-static void	_AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously( void *inContext );
-
-void
-	AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously(
-		AirPlayReceiverSessionScreenRef					inSession,
-		AirPlayReceiverSessionScreenEventHandlerFunc	inHandler,
-		void *											inUserData,
-		dispatch_queue_t								inQueue )
-{
-	if( inSession->eventHandlerQueue == NULL ) {
-		AirPlayReceiverSessionScreen_SetEventHandler( inSession, inHandler, inUserData, inQueue );
-	}
-	else {
-		AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronouslyParams params = { inSession, inHandler, inUserData, inQueue };
-		dispatch_sync_f( inSession->eventHandlerQueue, &params, _AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously );
-	}
-}
-
-static void	_AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously( void *inContext )
-{
-	AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronouslyParams * const		params = (AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronouslyParams *) inContext;
-	AirPlayReceiverSessionScreen_SetEventHandler( params->session, params->handler, params->userData, params->queue );
+	free( inSession );
 }
 
 //===========================================================================================================================
@@ -250,166 +168,7 @@ void
 	inSession->timeSynchronizer = *inTimeSynchronizer;
 }
 
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetUserVersion
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetUserVersion( AirPlayReceiverSessionScreenRef inSession, uint32_t inUserVersion )
-{
-	(void) inSession;
-	(void) inUserVersion;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetOverscanOverride
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetOverscanOverride( AirPlayReceiverSessionScreenRef inSession, int inOverscanOverride )
-{
-	(void) inSession;
-	(void) inOverscanOverride;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetSessionUUID
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetSessionUUID( AirPlayReceiverSessionScreenRef inSession, uint8_t inUUID[ 16 ] )
-{
-	(void) inSession;
-	(void) inUUID;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetClientDeviceID
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetClientDeviceID( AirPlayReceiverSessionScreenRef inSession, uint64_t inDeviceID )
-{
-	(void) inSession;
-	(void) inDeviceID;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetClientDeviceUDID
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetClientDeviceUDID( AirPlayReceiverSessionScreenRef inSession, CFStringRef inDeviceUDID )
-{
-	(void) inSession;
-	(void) inDeviceUDID;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetClientIfMACAddr
-//===========================================================================================================================
-
-void 
-	AirPlayReceiverSessionScreen_SetClientIfMACAddr( 
-		AirPlayReceiverSessionScreenRef		inSession, 
-		uint8_t *							inIfMACAddr, 
-		size_t								inIfMACAddrLen )
-{
-	(void) inSession;
-	(void) inIfMACAddr;
-	(void) inIfMACAddrLen;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetClientModelCode
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetClientModelCode( AirPlayReceiverSessionScreenRef inSession, CFStringRef inModelCode )
-{
-	(void) inSession;
-	(void) inModelCode;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetClientOSBuildVersion
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetClientOSBuildVersion( AirPlayReceiverSessionScreenRef inSession, CFStringRef inOSBuildVersion )
-{
-	(void) inSession;
-	(void) inOSBuildVersion;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetIFName
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetIFName( AirPlayReceiverSessionScreenRef inSession, char inIfName[ IF_NAMESIZE + 1 ] )
-{
-	(void) inSession;
-	(void) inIfName;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetTransportType
-//===========================================================================================================================
-
-void 
-	AirPlayReceiverSessionScreen_SetTransportType( 
-		AirPlayReceiverSessionScreenRef inSession, NetTransportType inTransportType )
-{
-	(void) inSession;
-	(void) inTransportType;
-}
-
-//===========================================================================================================================
-//	_AirPlayReceiverSessionScreen_PostEvent
-//===========================================================================================================================
-
-typedef struct
-{
-	AirPlayReceiverSessionScreenRef		session;
-	CFStringRef							eventName;
-	CFDictionaryRef						eventData;
-	
-}	AirPlayReceiverSessionScreen_PostEventParams;
-
-static void	_AirPlayReceiverSessionScreen_PostClientEvent( void *inArg );
-
-static void
-	_AirPlayReceiverSessionScreen_PostEvent(
-		AirPlayReceiverSessionScreenRef	inSession,
-		CFStringRef						inEventName,
-		CFDictionaryRef					inEventData )
-{
-	AirPlayReceiverSessionScreen_PostEventParams	*params;
-
-	if( inSession->eventHandlerFunc && inSession->eventHandlerQueue )
-	{
-		params = (AirPlayReceiverSessionScreen_PostEventParams *) malloc( sizeof( *params ) );
-		require( params, exit );
-		params->session = inSession;
-		params->eventName = inEventName;
-		params->eventData = inEventData;
-		dispatch_retain( inSession->queue );
-		CFRetain( inEventName );
-		CFRetainNullSafe( inEventData );
-
-		dispatch_async_f( inSession->eventHandlerQueue, params, _AirPlayReceiverSessionScreen_PostClientEvent );
-	}
-	
-exit:
-	return;
-}
-
-static void	_AirPlayReceiverSessionScreen_PostClientEvent( void *inArg )
-{
-	AirPlayReceiverSessionScreen_PostEventParams * const	params	= (AirPlayReceiverSessionScreen_PostEventParams *) inArg;
-	AirPlayReceiverSessionScreenRef const					session	= params->session;
-
-	session->eventHandlerFunc( session, params->eventName, params->eventData, session->eventHandlerData );
-
-	dispatch_release( session->queue );
-	CFRelease( params->eventName );
-	CFReleaseNullSafe( params->eventData );
-	free( params );
-}
-
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 //===========================================================================================================================
 //	AirPlayReceiverSessionScreen_CopyDisplaysInfo
 //===========================================================================================================================
@@ -492,36 +251,7 @@ exit:
 	if( outErr ) *outErr = err;
 	return( info );
 }
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_CopyDisplayUUID
-//===========================================================================================================================
-
-CFStringRef	AirPlayReceiverSessionScreen_CopyDisplayUUID( AirPlayReceiverSessionScreenRef inSession, OSStatus *outErr )
-{
-	OSStatus					err;
-	ScreenRef					mainScreen = NULL;
-	CFTypeRef					obj = NULL;
-	CFStringRef					str = NULL;
-
-	(void) inSession;
-
-	mainScreen = ScreenCopyMain( &err );
-	require_noerr( err, exit );
-
-	obj = ScreenCopyProperty( mainScreen, kScreenProperty_UUID, NULL, NULL );
-	if( CFIsType( obj, CFString ) )
-	{
-		str = (CFStringRef) obj;
-		obj = NULL;
-	}
-
-exit:
-	CFReleaseNullSafe( mainScreen );
-	ForgetCF( &obj );
-	if( outErr ) *outErr = err;
-	return( str );
-}
+#endif
 
 //===========================================================================================================================
 //	AirPlayReceiverSessionScreen_CopyTimestampInfo
@@ -691,13 +421,9 @@ exit:
 //	AirPlayReceiverSessionScreen_StartSession
 //===========================================================================================================================
 
-OSStatus AirPlayReceiverSessionScreen_StartSession( AirPlayReceiverSessionScreenRef inSession, CFDictionaryRef inScreenStreamOptions )
+OSStatus AirPlayReceiverSessionScreen_StartSession( AirPlayReceiverSessionScreenRef inSession, void* context )
 {
 	OSStatus		err;
-	ScreenRef		screen;
-	CFTypeRef		obj;
-	
-	(void) inScreenStreamOptions;
 
 	inSession->ticksPerSecF			= (double) UpTicksPerSecond();
 	inSession->lateFrames			= 0;
@@ -710,17 +436,7 @@ OSStatus AirPlayReceiverSessionScreen_StartSession( AirPlayReceiverSessionScreen
 	
 	err = ScreenStreamCreate( &inSession->screenStream );
 	require_noerr( err, exit );
-	
-	screen = ScreenCopyMain( &err );
-	require_noerr( err, exit );
-	
-	obj = ScreenCopyProperty( screen, kScreenProperty_PlatformLayer, NULL, NULL );
-	if( obj )
-	{
-		ScreenStreamSetProperty( inSession->screenStream, kScreenStreamProperty_PlatformLayer, NULL, obj );
-		CFRelease( obj );
-	}
-	CFRelease( screen );
+	ScreenStreamSetDelegateContext( inSession->screenStream, context);
 	
 	err = ScreenStreamStart( inSession->screenStream );
 	require_noerr( err, exit );
@@ -766,7 +482,7 @@ static OSStatus
 	uint64_t		displayTicks;
 	uint64_t		nowTicks;
 	size_t			tempSize;
-
+	
 	if( inHeader->opcode == kAirPlayScreenOpCode_VideoFrame )
 	{
 		// Processing timestamps.
@@ -830,12 +546,11 @@ static OSStatus
 	{
 		me->respectTimestamps = ( inHeader->smallParam[ 1 ] & kAirPlayScreenFlag_RespectTimestamps ) != 0;
 		
-		ScreenStreamSetPropertyDouble( me->screenStream, kScreenStreamProperty_WidthPixels, NULL, inHeader->params[ 1 ].f32[ 0 ] );
-		ScreenStreamSetPropertyDouble( me->screenStream, kScreenStreamProperty_HeightPixels, NULL, inHeader->params[ 1 ].f32[ 1 ] );
+		ScreenStreamSetWidthHeight( me->screenStream, inHeader->params[ 1 ].f32[ 0 ], inHeader->params[ 1 ].f32[ 1 ] );
 		
 		if( inHeader->bodySize > 0 )
 		{
-			err = ScreenStreamSetPropertyData( me->screenStream, kScreenStreamProperty_AVCC, NULL, inFramePtr, inHeader->bodySize );
+			err = ScreenStreamSetAVCC( me->screenStream, inFramePtr, inHeader->bodySize );
 			require_noerr( err, exit );
 		}
 	}
@@ -878,7 +593,6 @@ static OSStatus	_AirPlayReceiverSessionScreen_ProcessCommand( AirPlayReceiverSes
 	OSStatus		err;
 	char			buf[ kAirPlayReceiverSessionScreenCommandMaxSize ];
 	ssize_t			n;
-	uint32_t		sessionID;
 	
 	n = recv( me->commandSock, buf, sizeof( buf ), 0 );
 	err = map_global_value_errno( n > 0, n );
@@ -889,19 +603,6 @@ static OSStatus	_AirPlayReceiverSessionScreen_ProcessCommand( AirPlayReceiverSes
 		case kAirPlayReceiverSessionScreenCommand_Quit:
 			apvs_ulog( kLogLevelNotice, "User quit event received\n" );
 			err = kEndingErr;
-			goto exit;
-		
-		case kAirPlayReceiverSessionScreenCommand_ForceKeyFrame:
-			_AirPlayReceiverSessionScreen_PostEvent( me, CFSTR( kAirPlayReceiverSessionScreenEvent_ForceKeyFrameNeeded ), NULL );
-			break;
-		
-		case kAirPlayReceiverSessionScreenCommand_Stop:
-			require_action( ( n - 1 ) >= 4, exit, err = kCommandErr );
-			memcpy( &sessionID, &buf[ 1 ], 4 );
-			
-			apvs_ulog( kLogLevelNotice, "Stop event received for session %u\n", sessionID );
-			err = kEndingErr;
-			goto exit;
 			break;
 		
 		default:
@@ -953,58 +654,3 @@ exit:
 #if 0
 #pragma mark -
 #endif
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetReceiveEndTime
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetReceiveEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime )
-{
-	(void) inSession;
-	(void) inTime;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetAuthEndTime
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetAuthEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime )
-{
-	(void) inSession;
-	(void) inTime;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_SetNTPEndTime
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_SetNTPEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime )
-{
-	(void) inSession;
-	(void) inTime;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_LogStarted
-//===========================================================================================================================
-
-void
-	AirPlayReceiverSessionScreen_LogStarted(
-		AirPlayReceiverSessionScreenRef		inSession,
-		CFDictionaryRef						inParams,
-		NetTransportType					inTransportType )
-{
-	(void) inSession;
-	(void) inParams;
-	(void) inTransportType;
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionScreen_LogEnded
-//===========================================================================================================================
-
-void AirPlayReceiverSessionScreen_LogEnded( AirPlayReceiverSessionScreenRef inSession, OSStatus inReason )
-{
-	(void) inSession;
-	(void) inReason;
-}

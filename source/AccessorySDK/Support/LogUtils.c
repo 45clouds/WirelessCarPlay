@@ -2,7 +2,7 @@
 	File:    	LogUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -146,11 +146,6 @@ static OSStatus		_LogOutputCreate( const char *inConfigStr, LogOutput **outOutpu
 static void			_LogOutputDelete( LogOutput *inOutput );
 static void			_LogOutputDeleteUnused( void );
 
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-	static OSStatus	_LogOutputASL_Setup( LogOutput *inOutput, const char *inParams );
-	static void		_LogOutputASL_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen );
-#endif
-
 static OSStatus		_LogOutputCallBack_Setup( LogOutput *inOutput, const char *inParams );
 static void			_LogOutputCallBack_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen );
 
@@ -161,11 +156,6 @@ static void			_LogOutputCallBack_Writer( LogPrintFContext *inContext, LogOutput 
 	static void		_LogOutputFile_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen );
 	static OSStatus	_LogOutputFile_BackupLogFiles( LogOutput *inOutput );
 	static OSStatus	_LogOutputFile_CopyLogFile( const char *inSrcPath, const char *inDstPath );
-#endif
-
-#if( DEBUG_IDEBUG_ENABLED )
-	static OSStatus	_LogOutputiDebug_Setup( LogOutput *inOutput, const char *inParams );
-	static void		_LogOutputiDebug_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen );
 #endif
 
 #if( DEBUG_MAC_OS_X_IOLOG_ENABLED )
@@ -755,8 +745,7 @@ OSStatus	LogSetOutputCallback( const char *inCategoryRegex, int inOutputNum, Log
 	char *			cmd;
 	
 	cmd = NULL;
-	ASPrintF( &cmd, "%s:output%?d=callback;func=%p;arg=%p", inCategoryRegex ? inCategoryRegex : ".*", 
-		inOutputNum > 1, inOutputNum, inCallback, inContext );
+	ASPrintF( &cmd, "%s:output%?d=callback;func=%p;arg=%p", inCategoryRegex ? inCategoryRegex : ".*", inOutputNum > 1, inOutputNum, inCallback, inContext );
 	require_action( cmd, exit, err = kNoMemoryErr );
 	
 	LogUtils_EnsureInitialized();
@@ -1611,13 +1600,6 @@ static OSStatus	_LogOutputCreate( const char *inConfigStr, LogOutput **outOutput
 	if( c != '\0' ) ++inConfigStr;
 	
 	if( 0 ) {}
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-	else if( strnicmpx( typeSrc, typeLen, "asl" ) == 0 )
-	{
-		err = _LogOutputASL_Setup( output, inConfigStr );
-		require_noerr_quiet( err, exit );
-	}
-#endif
 	else if( strnicmpx( typeSrc, typeLen, "callback" ) == 0 )
 	{
 		err = _LogOutputCallBack_Setup( output, inConfigStr );
@@ -1647,13 +1629,6 @@ static OSStatus	_LogOutputCreate( const char *inConfigStr, LogOutput **outOutput
 	else if( strnicmpx( typeSrc, typeLen, "file" ) == 0 )
 	{
 		err = _LogOutputFile_Setup( output, inConfigStr );
-		require_noerr_quiet( err, exit );
-	}
-#endif
-#if( DEBUG_IDEBUG_ENABLED )
-	else if( strnicmpx( typeSrc, typeLen, "iDebug" ) == 0 )
-	{
-		err = _LogOutputiDebug_Setup( output, inConfigStr );
 		require_noerr_quiet( err, exit );
 	}
 #endif
@@ -1729,13 +1704,6 @@ exit:
 
 static void	_LogOutputDelete( LogOutput *inOutput )
 {
-#if( TARGET_OS_DARWIN )
-	if( inOutput->type == kLogOutputType_ASL )
-	{
-		ForgetMem( &inOutput->config.asl.facility );
-		ForgetMem( &inOutput->config.asl.sender );
-	}
-#endif
 #if( DEBUG_FPRINTF_ENABLED )
 	if( inOutput->type == kLogOutputType_File )
 	{
@@ -1790,122 +1758,6 @@ static void	_LogOutputDeleteUnused( void )
 		next = &curr->next;
 	}
 }
-
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-//===========================================================================================================================
-//	_LogOutputASL_Setup
-//===========================================================================================================================
-
-static OSStatus	_LogOutputASL_Setup( LogOutput *inOutput, const char *inParams )
-{
-	OSStatus			err;
-	const char *		namePtr;
-	size_t				nameLen;
-	const char *		valuePtr;
-	size_t				valueLen;
-	char				c;
-	char				buf[ 32 ];
-	char *				cptr;
-	int					level;
-	int					priority;
-	
-	inOutput->config.asl.priority = ASL_LEVEL_NOTICE;
-	
-	while( *inParams != '\0' )
-	{
-		namePtr = inParams;
-		while( ( ( c = *inParams ) != '\0' ) && ( c != '=' ) ) ++inParams;
-		require_action_quiet( c != '\0', exit, err = kMalformedErr );
-		nameLen = (size_t)( inParams - namePtr );
-		++inParams;
-		
-		valuePtr = inParams;
-		while( ( ( c = *inParams ) != '\0' ) && ( c != ';' ) ) ++inParams;
-		valueLen = (size_t)( inParams - valuePtr );
-		if( c != '\0' ) ++inParams;
-		
-		if( strnicmpx( namePtr, nameLen, "facility" ) == 0 )
-		{
-			// Format: facility=<ASL_KEY_FACILITY name>.
-			
-			cptr = (char *) malloc( valueLen + 1 );
-			require_action_quiet( cptr, exit, err = kNoMemoryErr );
-			memcpy( cptr, valuePtr, valueLen );
-			cptr[ valueLen ] = '\0';
-			
-			ForgetMem( &inOutput->config.asl.facility );
-			inOutput->config.asl.facility = cptr;
-		}
-		else if( strnicmpx( namePtr, nameLen, "level" ) == 0 )
-		{
-			// Format: level=<log level to use>.
-			
-			valueLen = Min( valueLen, sizeof( buf ) - 1 );
-			memcpy( buf, valuePtr, valueLen );
-			buf[ valueLen ] = '\0';
-			
-			level = LUStringToLevel( buf );
-			if(      level == kLogLevelUninitialized )	continue;
-			else if( level >= kLogLevelEmergency )		priority = ASL_LEVEL_EMERG;
-			else if( level >= kLogLevelAlert )			priority = ASL_LEVEL_ALERT;
-			else if( level >= kLogLevelCritical )		priority = ASL_LEVEL_CRIT;
-			else if( level >= kLogLevelError )			priority = ASL_LEVEL_ERR;
-			else if( level >= kLogLevelWarning )		priority = ASL_LEVEL_WARNING;
-			else if( level >= kLogLevelNotice )			priority = ASL_LEVEL_NOTICE;
-			else if( level >= kLogLevelInfo )			priority = ASL_LEVEL_INFO;
-			else										priority = ASL_LEVEL_DEBUG;
-			inOutput->config.asl.priority = priority;
-		}
-		else if( strnicmpx( namePtr, nameLen, "sender" ) == 0 )
-		{
-			// Format: sender=<ASL_KEY_SENDER name>.
-			
-			cptr = (char *) malloc( valueLen + 1 );
-			require_action_quiet( cptr, exit, err = kNoMemoryErr );
-			memcpy( cptr, valuePtr, valueLen );
-			cptr[ valueLen ] = '\0';
-			
-			ForgetMem( &inOutput->config.asl.sender );
-			inOutput->config.asl.sender = cptr;
-		}
-		else
-		{
-			err = kUnsupportedErr;
-			goto exit;
-		}
-	}
-	
-	inOutput->writer = _LogOutputASL_Writer;
-	inOutput->type   = kLogOutputType_ASL;
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_LogOutputASL_Writer
-//===========================================================================================================================
-
-static void	_LogOutputASL_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen )
-{
-	aslmsg		msg;
-	
-	(void) inContext;
-	
-	msg = asl_new( ASL_TYPE_MSG );
-	require_quiet( msg, exit );
-	if( inOutput->config.asl.facility )	asl_set( msg, ASL_KEY_FACILITY, inOutput->config.asl.facility );
-	if( inOutput->config.asl.sender )	asl_set( msg, ASL_KEY_SENDER,   inOutput->config.asl.sender );
-	
-	if( ( inLen > 0 ) && ( inStr[ inLen - 1 ] == '\n' ) ) --inLen; // Strip trailing newline.
-	asl_log( NULL, msg, inOutput->config.asl.priority, "%.*s", (int) inLen, inStr );
-	asl_free( msg );
-	
-exit:
-	return;
-}
-#endif // TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES
 
 //===========================================================================================================================
 //	_LogOutputCallBack_Setup
@@ -2281,72 +2133,6 @@ exit:
 }
 
 #endif // DEBUG_FPRINTF_ENABLED
-
-#if( DEBUG_IDEBUG_ENABLED )
-//===========================================================================================================================
-//	_LogOutputiDebug_Setup
-//===========================================================================================================================
-
-static OSStatus	_LogOutputiDebug_Setup( LogOutput *inOutput, const char *inParams )
-{
-	OSStatus		err;
-	
-	(void) inParams;
-	
-#if( TARGET_OS_DARWIN_KERNEL )	
-	extern uint32_t *		_giDebugReserved1;
-	
-	// Emulate the iDebugSetOutputType macro in iDebugServices.h.
-	// Note: This is not thread safe, but neither is iDebugServices.h nor iDebugKext.
-	
-	if( !_giDebugReserved1 )
-	{
-		_giDebugReserved1 = (uint32_t *) IOMalloc( sizeof( uint32_t ) );
-		require_action_quiet( _giDebugReserved1, exit, err = kNoMemoryErr );
-	}
-	*_giDebugReserved1 = 0x00010000U;
-	
-	inOutput->writer = _LogOutputiDebug_Writer;
-	inOutput->type   = kLogOutputType_iDebug;
-	err = kNoErr;
-	
-exit:
-#else
-	__private_extern__ void	iDebugSetOutputTypeInternal( uint32_t inType );
-	
-	iDebugSetOutputTypeInternal( 0x00010000U );
-	err = kNoErr;
-#endif
-	
-	return( err );
-}
-
-//===========================================================================================================================
-//	_LogOutputiDebug_Write
-//===========================================================================================================================
-
-static void	_LogOutputiDebug_Writer( LogPrintFContext *inContext, LogOutput *inOutput, const char *inStr, size_t inLen )
-{
-	(void) inContext;
-	(void) inOutput;
-	
-#if( TARGET_OS_DARWIN_KERNEL )
-	// Locally declared here so we do not need to include iDebugKext.h. Note: IOKit uses a global namespace and only 
-	// a partial link occurs at build time. When the KEXT is loaded, the runtime linker will link in this extern'd
-	// symbol. _giDebugLogInternal is actually part of IOKit proper so this should link even if iDebug is not present.
-	
-	typedef void ( *iDebugLogFunctionPtr )( uint32_t inLevel, uint32_t inTag, const char *inFormat, ... );
-	
-	extern iDebugLogFunctionPtr		_giDebugLogInternal;
-	
-	if( _giDebugLogInternal ) _giDebugLogInternal( 0, 0, "%.*s", (int) inLen, inStr );
-#else
-	__private_extern__ void	iDebugLogInternal( uint32_t inLevel, uint32_t inTag, const char *inFormat, ... );
-	
-	iDebugLogInternal( 0, 0, "%.*s", (int) inLen, inStr );
-#endif
-}
-#endif // DEBUG_IDEBUG_ENABLED
 
 //===========================================================================================================================
 //	_LogOutputIOLog_Writer

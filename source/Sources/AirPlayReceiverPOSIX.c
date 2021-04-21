@@ -1,14 +1,14 @@
 /*
 	File:    	AirPlayReceiverPOSIX.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,30 +48,24 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2013-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2013-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	POSIX platform plugin for AirPlay.
 */
 
-#include <CoreUtils/AudioUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/SystemUtils.h>
+#include "AudioUtils.h"
 
 #include "AirPlayCommon.h"
 #include "AirPlayReceiverServer.h"
 #include "AirPlayReceiverServerPriv.h"
 #include "AirPlayReceiverSession.h"
 #include "AirPlayReceiverSessionPriv.h"
-#include "AirPlaySettings.h"
-	#include "APSAudioSession.h"
-
-	#include <CoreUtils/HIDUtils.h>
-	#include <CoreUtils/ScreenUtils.h>
+#include "HIDUtils.h"
+#include "ScreenUtils.h"
 
 #if 0
 #pragma mark == Structures ==
 #endif
-#include <glib.h>
 
 //===========================================================================================================================
 //	Structures
@@ -113,9 +107,6 @@ typedef struct
 	AirPlayAudioStreamPlatformContext		altAudioCtx;
 	Boolean									sessionStarted;
 	
-	HIDBrowserRef							hidBrowser;
-	dispatch_semaphore_t					hidBrowserStartedSignal;
-	
 }	AirPlayReceiverSessionPlatformData;
 
 #if 0
@@ -143,22 +134,14 @@ static void
 		void *		inBuffer, 
 		size_t		inLen, 
 		void *		inContext );
-static void _HandleAudioSessionEvent( APSAudioSessionEventType inType, CFTypeRef inParam, void *inContext );
 
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	static CFArrayRef	_HIDCopyDevices( AirPlayReceiverSessionRef inSession, OSStatus *outErr );
 	static OSStatus		_HIDStart( AirPlayReceiverSessionRef inSession );
 	static void			_HIDStop( AirPlayReceiverSessionRef inSession );
-	static void			_HIDBrowserEventHandler( HIDBrowserEventType inType, CFTypeRef inParam, void *inContext );
-	static void
-		_HIDDeviceEventHandler( 
-			HIDDeviceRef		inDevice, 
-			HIDDeviceEventType	inType, 
-			OSStatus			inStatus, 
-			const uint8_t *		inPtr, 
-			size_t				inLen, 
-			void *				inContext );
 
 	static CFArrayRef	_CopyDisplayDescriptions( AirPlayReceiverSessionRef inSession, OSStatus *outErr );
+#endif
 
 #if 0
 #pragma mark == Globals ==
@@ -229,12 +212,6 @@ OSStatus
 	
 	if( 0 ) {}
 	
-	// UpdatePrefs
-	
-	else if( CFEqual( inCommand, CFSTR( kAirPlayCommand_UpdatePrefs ) ) )
-	{
-	}
-	
 	// Other
 	
 	else if( server->delegate.control_f )
@@ -251,48 +228,6 @@ OSStatus
 	
 exit:
 	return( err );
-}
-
-//===========================================================================================================================
-//	APSAudioSessionGetCompatibilityInputFormats
-//===========================================================================================================================
-
-APSAudioSessionAudioFormat	APSAudioSessionGetCompatibilityInputFormats( AudioStreamType inStreamType )
-{
-	APSAudioSessionAudioFormat		formats;
-	
-	formats = 0;
-	
-	// $$$ TODO: This is where the accessory provides a list of audio input formats it supports in hardware.
-	// It is important that, at a minimum, all sample rates required by the specification are included here.
-	if( inStreamType == kAudioStreamType_MainAudio ) {
-		formats |= 		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
-						kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
-						kAirPlayAudioFormat_PCM_8KHz_16Bit_Mono;
-	}
-	
-	return( formats );
-}
-
-//===========================================================================================================================
-//	APSAudioSessionGetCompatibilityOutputFormats
-//===========================================================================================================================
-
-APSAudioSessionAudioFormat	APSAudioSessionGetCompatibilityOutputFormats( AudioStreamType inStreamType )
-{
-	APSAudioSessionAudioFormat		formats;
-	
-	formats = APSAudioSessionGetCompatibilityInputFormats( inStreamType );
-
-	// $$$ TODO: This is where the accessory provides a list of audio output formats it supports in hardware.
-	// It is expected that the list of supported audio output formats is a superset of the supported audio
-	// input formats.  As with input formats, it is important that, at a minimum, all sample rates required
-	// by the specification are included here.
-	formats |= 		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo; 
-//		|
-//					kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo;
-	
-	return( formats );
 }
 
 //===========================================================================================================================
@@ -314,114 +249,6 @@ CFTypeRef
 	(void) inFlags;
 	
 	if( 0 ) {}
-	
-	// AudioFormats
-
-	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_AudioFormats ) ) )
-	{
-		AirPlayAudioFormat		formats;
-		AirPlayStreamType		streamTypes[] = {
-										kAirPlayStreamType_MainAudio, // Must be first for backward compatibility
-										kAirPlayStreamType_AltAudio, // Must be second for backward compatibility
-										kAirPlayStreamType_MainHighAudio
-									};
-		CFStringRef				audioTypes[] = {
-										CFSTR( kAirPlayAudioType_Compatibility ), // Must be first for backward compatibility
-										CFSTR( kAirPlayAudioType_Default ),
-										CFSTR( kAirPlayAudioType_Media ),
-										CFSTR( kAirPlayAudioType_Telephony ),
-										CFSTR( kAirPlayAudioType_SpeechRecognition ),
-										CFSTR( kAirPlayAudioType_Alert ),
-									};
-		uint32_t				streamTypeNdx, audioTypeNdx;
-		
-		value = CFArrayCreateMutable( NULL, countof( streamTypes ), &kCFTypeArrayCallBacks );
-		require_action( value, exit, err = kNoMemoryErr );
-		
-		// Outer loop must be audioType for backward compatibility 
-		for ( audioTypeNdx = 0; audioTypeNdx < countof( audioTypes ); ++audioTypeNdx )
-		{
-			for( streamTypeNdx = 0; streamTypeNdx < countof( streamTypes ); ++streamTypeNdx )
-			{
-				if( CFEqual( audioTypes[ audioTypeNdx ], CFSTR( kAirPlayAudioType_Compatibility ) ) )
-				{
-					// Compatibility type may not have same values for input and output
-					if(( streamTypes[ streamTypeNdx ] != kAirPlayStreamType_MainHighAudio)
-							&& ( streamTypes[ streamTypeNdx ] != kAirPlayStreamType_AltAudio ))
-					{
-						// Compatibility is not valid for MainHighAudio
-						AirPlayAudioFormat		inputFormats, outputFormats;
-
-						inputFormats = APSAudioSessionGetCompatibilityInputFormats( streamTypes[ streamTypeNdx ] );
-						outputFormats = APSAudioSessionGetCompatibilityOutputFormats( streamTypes[ streamTypeNdx ] );
-
-						if( inputFormats || outputFormats )
-						{
-							CFMutableDictionaryRef	dict;
-
-							dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-							require_action( dict, exit, err = kNoMemoryErr );
-							CFArrayAppendValue( (CFMutableArrayRef) value, dict );
-
-							CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_Type ), streamTypes[ streamTypeNdx ] );
-							CFDictionarySetValue( dict, CFSTR( kAirPlayKey_AudioType ), audioTypes[ audioTypeNdx ] );
-
-							if( inputFormats && streamTypes[ streamTypeNdx ] == kAirPlayStreamType_MainAudio ) {
-								CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioInputFormats ), inputFormats );
-							}
-							if( outputFormats )  {
-								CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioOutputFormats ), outputFormats );
-							}
-
-							CFRelease( dict );
-						}
-					}
-				}
-				else
-				{
-					AirPlayAudioFormat		formats;
-#ifndef B511 //NAGIVI
-					if( streamTypes[ streamTypeNdx ] != kAirPlayStreamType_MainHighAudio)
-#endif						
-					{
-						formats = APSAudioSessionGetSupportedFormats( streamTypes[ streamTypeNdx ], audioTypes[ audioTypeNdx ] );
-						if ( formats )
-						{
-							CFMutableDictionaryRef	dict;
-
-							dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-							require_action( dict, exit, err = kNoMemoryErr );
-							CFArrayAppendValue( (CFMutableArrayRef) value, dict );
-
-							CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_Type ), streamTypes[ streamTypeNdx ] );
-							CFDictionarySetValue( dict, CFSTR( kAirPlayKey_AudioType ), audioTypes[ audioTypeNdx ] );
-
-							// Since audio types are, by definition, duplex or not, we can use the same values for input and output
-							// Input values are not valid for Media and Alert types or Alternate Audio
-							if( streamTypes[ streamTypeNdx ] != kAirPlayStreamType_AltAudio &&
-									!CFEqual( audioTypes[ audioTypeNdx ], CFSTR( kAirPlayAudioType_Media ) ) &&
-									!CFEqual( audioTypes[ audioTypeNdx ], CFSTR( kAirPlayAudioType_Alert ) ) )
-							{
-								CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioInputFormats ), formats );
-							}
-//							CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioInputFormats ), formats );
-							CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioOutputFormats ), formats );
-
-							CFRelease( dict );
-						}
-					}
-				}
-			}
-		}
-	}	
-	// AudioLatencies
-	
-	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_AudioLatencies ) ) )
-	{
-		value = APSAudioSessionCopyLatencies( &err );
-		require_noerr( err, exit );
-		atrp_ulog( kLogLevelVerbose, "AudioLatencies = %@\n", value );
-	}
 	
 	// SystemFlags
 	
@@ -510,8 +337,6 @@ OSStatus	AirPlayReceiverSessionPlatformInitialize( AirPlayReceiverSessionRef inS
 	inSession->platformPtr = spd;
 	err = kNoErr;
 
-	APSAudioSessionSetEventHandler( _HandleAudioSessionEvent, inSession );
-
 exit:
 	return( err );
 }
@@ -526,7 +351,9 @@ void	AirPlayReceiverSessionPlatformFinalize( AirPlayReceiverSessionRef inSession
 	
 	if( !spd ) return;
 	
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	_HIDStop( inSession );
+#endif
 	spd->sessionStarted = false;
 	_TearDownStreams( inSession, NULL );
 	
@@ -568,14 +395,7 @@ OSStatus
 		finalVolume = !err ? DBtoLinear( (float) finalVolume ) : 0.2;
 		finalVolume = Clamp( finalVolume, 0.0, 1.0 );
 		
-		// Duck main audio if started
-		if( spd->mainAudioCtx.stream && spd->mainAudioCtx.started )
-		{
-			atrp_ulog( kLogLevelNotice, "Ducking audio to %f within %f seconds\n", finalVolume, duration );
-			AudioStreamRampVolume( spd->mainAudioCtx.stream, finalVolume, duration, session->server->queue );
-		}
-
-		// Notify client of duck command as well
+		// Notify client of duck command
 		if( session->delegate.duckAudio_f )
 		{
 			atrp_ulog( kLogLevelNotice, "Delegating ducking of audio to %f within %f seconds\n", finalVolume, duration );
@@ -591,14 +411,7 @@ OSStatus
 		if( err || ( duration < 0 ) ) duration = 500;
 		duration /= 1000;
 		
-		// Unduck main audio if started
-		if( spd->mainAudioCtx.stream && spd->mainAudioCtx.started )
-		{
-			atrp_ulog( kLogLevelNotice, "Unducking audio within %f seconds\n", duration );
-			AudioStreamRampVolume( spd->mainAudioCtx.stream, 1.0, duration, session->server->queue );
-		}
-		
-		// Notify client of unduck command as well
+		// Notify client of unduck command
 		if( session->delegate.unduckAudio_f )
 		{
 			atrp_ulog( kLogLevelNotice, "Delegating unducking of audio within %f seconds\n", duration );
@@ -668,39 +481,38 @@ CFTypeRef
 	(void) inFlags;
 	(void) spd;
 	
-	if( 0 ) {}
-	
-	// Displays
-	
-	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_Displays ) ) )
-	{
-		value = _CopyDisplayDescriptions( session, &err );
-		require_noerr_quiet( err, exit );
-	}
-	
-	// HIDDevices
-	
-	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_HIDDevices ) ) )
-	{
-		value = _HIDCopyDevices( session, &err );
-		require_noerr( err, exit );
-	}
-	
-	// Other
-	
-	else if( session->delegate.copyProperty_f )
+	if( session->delegate.copyProperty_f )
 	{
 		value = session->delegate.copyProperty_f( session, inProperty, inQualifier, &err, session->delegate.context );
-		goto exit;
 	}
 	else
 	{
 		err = kNotHandledErr;
-		goto exit;
 	}
-	err = kNoErr;
 	
-exit:
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
+	if( err != kNoErr ) {
+		
+		// Displays
+		
+		if( CFEqual( inProperty, CFSTR( kAirPlayProperty_Displays ) ) )
+		{
+			value = _CopyDisplayDescriptions( session, &err );
+		}
+	
+		// HIDDevices
+	
+		else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_HIDDevices ) ) )
+		{
+			value = _HIDCopyDevices( session, &err );
+		}
+		else
+		{
+			err = kNotHandledErr;
+		}
+	}
+#endif
+	
 	if( outErr ) *outErr = err;
 	return( value );
 }
@@ -798,12 +610,14 @@ static OSStatus	_SetUpStreams( AirPlayReceiverSessionRef inSession, CFDictionary
 	
 	err = _UpdateStreams( inSession );
 	require_noerr( err, exit );
-	
-	if( IsValidSocket( inSession->eventSock ) && !spd->hidBrowser ) // $$$ TO DO: Need flag to enable HID.
+
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
+	if( IsValidSocket( inSession->eventSock ) )
 	{
 		err = _HIDStart( inSession );
 		require_noerr( err, exit );
 	}
+#endif
 	
 exit:
 	if( err ) _TearDownStreams( inSession, inParams );
@@ -823,10 +637,7 @@ static void	_TearDownStreams( AirPlayReceiverSessionRef inSession, CFDictionaryR
 	CFDictionaryRef									streamDesc;
 	AirPlayStreamType								streamType;
 	AirPlayAudioStreamPlatformContext *				streamCtx;
-	if( spd == 	NULL)
-	{
-		return;
-	}
+	
 	streams = inParams ? CFDictionaryGetCFArray( inParams, CFSTR( kAirPlayKey_Streams ), NULL ) : NULL;
 	n = streams ? CFArrayGetCount( streams ) : 0;
 	for( i = 0; i < n; ++i )
@@ -849,7 +660,9 @@ static void	_TearDownStreams( AirPlayReceiverSessionRef inSession, CFDictionaryR
 	{
 		spd->mainAudioCtx.type = kAirPlayStreamType_Invalid;
 		spd->altAudioCtx.type  = kAirPlayStreamType_Invalid;
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 		_HIDStop( inSession );
+#endif
 	}
 	_UpdateStreams( inSession );
 		
@@ -864,26 +677,9 @@ exit:
 static OSStatus	_UpdateStreams( AirPlayReceiverSessionRef inSession )
 {
 	AirPlayReceiverSessionPlatformData * const		spd		= (AirPlayReceiverSessionPlatformData *) inSession->platformPtr;
-	Boolean const									useMain	= ( spd->mainAudioCtx.type != kAirPlayStreamType_Invalid );
-	Boolean const									useAlt	= ( spd->altAudioCtx.type  != kAirPlayStreamType_Invalid );
 	OSStatus										err;
 	AirPlayAudioStreamPlatformContext *				streamCtx;
 	AudioStreamBasicDescription						asbd;
-	
-	if( useMain || useAlt )
-	{
-		AirPlayReceiverServerPlatformData * const platform = (AirPlayReceiverServerPlatformData *) inSession->server->platformPtr;
-		uint32_t systemBufferSizeMicros = platform->systemBufferSizeMicros;
-
-		if( ( systemBufferSizeMicros == 0 ) &&
-		    ( ( spd->mainAudioCtx.type == kAirPlayStreamType_MainAudio || spd->mainAudioCtx.type == kAirPlayStreamType_MainHighAudio ) || useAlt ) )
-		{
-			// Reduce HAL buffer size to 5 ms. Below that may cause HAL overloads.
-			systemBufferSizeMicros = 5000;
-		}
-		
-		APSAudioSessionEnsureSetup( spd->mainAudioCtx.input, platform->systemSampleRate, systemBufferSizeMicros );
-	}
 	
 	// Update main audio stream.
 	
@@ -901,6 +697,7 @@ static OSStatus	_UpdateStreams( AirPlayReceiverSessionRef inSession )
 		err = AudioStreamCreate( &streamCtx->stream );
 		//TODO check what to do with inSession->server->audioStreamOptions; they are not used in AudioStreamCreate
 		require_noerr( err, exit );
+		AudioStreamSetDelegateContext( streamCtx->stream, inSession->delegate.context );
 		
 		if( streamCtx->input ) AudioStreamSetInputCallback( streamCtx->stream, _AudioInputCallBack, streamCtx );
 		AudioStreamSetOutputCallback( streamCtx->stream, _AudioOutputCallBack, streamCtx );
@@ -912,15 +709,13 @@ static OSStatus	_UpdateStreams( AirPlayReceiverSessionRef inSession )
 		require_noerr( err, exit );
 		err = _AudioStreamSetProperty( streamCtx->stream, kAudioStreamProperty_AudioType, streamCtx->audioType );
 		require_noerr( err, exit );
-		AudioStreamPropertySetBoolean( streamCtx->stream, kAudioStreamProperty_VarispeedEnabled, (streamCtx->type == kAirPlayStreamType_GeneralAudio) );
 		
 		err = AirPlayAudioFormatToPCM( streamCtx->format, &asbd );
 		require_noerr( err, exit );
-		err = AudioStreamPropertySetBytes( streamCtx->stream, kAudioStreamProperty_Format, &asbd, sizeof( asbd ) );
-		require_noerr( err, exit );
+		AudioStreamSetFormat(streamCtx->stream, &asbd);
 		
 		if( streamCtx->vocoderSampleRate > 0 )
-			AudioStreamPropertySetDouble( streamCtx->stream, CFSTR( "vocoderSampleRate" ), streamCtx->vocoderSampleRate );
+			AudioStreamPropertySetDouble( streamCtx->stream, kAudioStreamProperty_VocoderSampleRate, streamCtx->vocoderSampleRate );
 		
 		err = AudioStreamPrepare( streamCtx->stream );
 		require_noerr( err, exit );
@@ -955,8 +750,7 @@ static OSStatus	_UpdateStreams( AirPlayReceiverSessionRef inSession )
 		
 		err = AirPlayAudioFormatToPCM( streamCtx->format, &asbd );
 		require_noerr( err, exit );
-		err = AudioStreamPropertySetBytes( streamCtx->stream, kAudioStreamProperty_Format, &asbd, sizeof( asbd ) );
-		require_noerr( err, exit );
+		AudioStreamSetFormat(streamCtx->stream, &asbd);
 		
 		err = AudioStreamPrepare( streamCtx->stream );
 		require_noerr( err, exit );
@@ -971,8 +765,6 @@ static OSStatus	_UpdateStreams( AirPlayReceiverSessionRef inSession )
 		streamCtx->activeType = kAirPlayStreamType_Invalid;
 		atrp_ulog( kLogLevelNotice, "Alt audio torn down\n" );
 	}
-	
-	if( !useMain && !useAlt )	APSAudioSessionEnsureTornDown();
 	
 	// If audio has started, make sure all the streams are started.
 	
@@ -1055,58 +847,18 @@ exit:
 	return;
 }
 
-//===========================================================================================================================
-//	_HandleAudioSessionEvent
-//===========================================================================================================================
-
-static void _HandleAudioSessionEvent( APSAudioSessionEventType inType, CFTypeRef inParam, void *inContext )
-{
-	AirPlayReceiverSessionRef const					session	= (AirPlayReceiverSessionRef) inContext;
-	AirPlayReceiverSessionPlatformData * const		spd		= (AirPlayReceiverSessionPlatformData *) session->platformPtr;
-
-	(void) inParam;
-
-	switch( inType )
-	{
-		case kAPSAudioSessionEventAudioInterrupted:
-			// Restart if we've been interrupted.
-			spd->mainAudioCtx.started = false;
-			spd->altAudioCtx.started  = false;
-			_UpdateStreams( session );
-			break;
-		
-		case kAPSAudioSessionEventAudioServicesWereReset:
-			// Rebuild streams.
-		
-			AudioStreamForget( &spd->mainAudioCtx.stream );
-			ForgetCF( &spd->mainAudioCtx.audioType );
-			spd->mainAudioCtx.started = false;
-			
-			AudioStreamForget( &spd->altAudioCtx.stream );
-			ForgetCF( &spd->altAudioCtx.audioType );
-			spd->altAudioCtx.started = false;
-
-			_UpdateStreams( session );
-			break;
-
-		default:
-			dlogassert( "Bad event type: %u", inType );
-			break;
-	}
-}
-
 #if 0
 #pragma mark -
 #pragma mark == HID ==
 #endif
 
+#if defined( LEGACY_REGISTER_SCREEN_HID)
 //===========================================================================================================================
 //	_HIDCopyDevices
 //===========================================================================================================================
 
 static CFArrayRef	_HIDCopyDevices( AirPlayReceiverSessionRef inSession, OSStatus *outErr )
 {
-	AirPlayReceiverSessionPlatformData * const		spd			= (AirPlayReceiverSessionPlatformData *) inSession->platformPtr;
 	CFArrayRef										result		= NULL;
 	CFMutableArrayRef								descriptions;
 	CFArrayRef										devices		= NULL;
@@ -1114,17 +866,17 @@ static CFArrayRef	_HIDCopyDevices( AirPlayReceiverSessionRef inSession, OSStatus
 	CFIndex											i, n;
 	OSStatus										err;
 	CFTypeRef										obj;
-	
+
+	(void)inSession;
 	descriptions = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
 	require_action( descriptions, exit, err = kNoMemoryErr );
 	
-	mainScreen = ScreenCopyMain( NULL );
+	mainScreen = ScreenCopyMain( &err );
+	require_noerr( err, exit );
 	
-	if( spd->hidBrowser )
-	{
-		devices = (CFArrayRef) HIDBrowserCopyProperty( spd->hidBrowser, kHIDBrowserProperty_Devices, NULL, &err );
-		require_noerr( err, exit );
-	}
+	devices = HIDCopyDevices( &err );
+	require_noerr( err, exit );
+
 	n = devices ? CFArrayGetCount( devices ) : 0;
 	for( i = 0; i < n; ++i )
 	{
@@ -1135,8 +887,8 @@ static CFArrayRef	_HIDCopyDevices( AirPlayReceiverSessionRef inSession, OSStatus
 		description = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( description, skip, err = kNoMemoryErr );
 		
-		obj = HIDDeviceCopyProperty( device, kHIDDeviceProperty_UUID, NULL, &err );
-		require_noerr( err, skip );
+		obj = HIDDeviceCopyID( device );
+		require_action( obj, skip, err = kNoMemoryErr );
 		CFDictionarySetValue( description, CFSTR( kAirPlayKey_UUID ), obj );
 		CFRelease( obj );
 		
@@ -1216,34 +968,11 @@ exit:
 
 static OSStatus	_HIDStart( AirPlayReceiverSessionRef inSession )
 {
-	AirPlayReceiverSessionPlatformData * const		spd = (AirPlayReceiverSessionPlatformData *) inSession->platformPtr;
-	OSStatus										err;
-	
-	dispatch_forget( &spd->hidBrowserStartedSignal );
-	spd->hidBrowserStartedSignal = dispatch_semaphore_create( 0 );
-	require_action( spd->hidBrowserStartedSignal, exit, err = kNoMemoryErr );
+	HIDSetSession( inSession );
 
-	HIDBrowserForget( &spd->hidBrowser );
-	err = HIDBrowserCreate( &spd->hidBrowser );
-	require_noerr( err, exit );
-	
-	HIDBrowserSetProperty( spd->hidBrowser, kHIDBrowserProperty_HIDRaw, NULL, kCFBooleanFalse );
-	HIDBrowserSetEventHandler( spd->hidBrowser, _HIDBrowserEventHandler, inSession );
-	err = HIDBrowserStart( spd->hidBrowser );
-	require_noerr( err, exit );
-	CFRetain( inSession );
-	
-	dispatch_semaphore_wait( spd->hidBrowserStartedSignal, DISPATCH_TIME_FOREVER );
-	
 	atrp_ulog( kLogLevelTrace, "HID started\n" );
 	
-exit:
-	if( err )
-	{
-		atrp_ulog( kLogLevelWarning, "### HID start failed: %#m\n", err );
-		_HIDStop( inSession );
-	}
-	return( err );
+	return( kNoErr );
 }
 
 //===========================================================================================================================
@@ -1252,105 +981,10 @@ exit:
 
 static void	_HIDStop( AirPlayReceiverSessionRef inSession )
 {
-	AirPlayReceiverSessionPlatformData * const		spd = (AirPlayReceiverSessionPlatformData *) inSession->platformPtr;
-	
-	if( spd->hidBrowser )
-	{
-		atrp_ulog( kLogLevelTrace, "HID stopping\n" );
-		HIDBrowserStopDevices( spd->hidBrowser );
-		HIDBrowserForget( &spd->hidBrowser );
-	}
+	(void)inSession;
 
-	dispatch_forget( &spd->hidBrowserStartedSignal );
-}
-
-//===========================================================================================================================
-//	_HIDBrowserEventHandler
-//===========================================================================================================================
-
-static void	_HIDBrowserEventHandler( HIDBrowserEventType inType, CFTypeRef inParam, void *inContext )
-{
-	AirPlayReceiverSessionRef const					session = (AirPlayReceiverSessionRef) inContext;
-	AirPlayReceiverSessionPlatformData *			spd;
-	OSStatus										err;
-	HIDDeviceRef									device;
-	
-	(void) inContext;
-	DEBUG_USE_ONLY( err );
-	
-	if( inType == kHIDBrowserEventStarted )
-	{
-		spd = (AirPlayReceiverSessionPlatformData *) session->platformPtr;
-		dispatch_semaphore_signal( spd->hidBrowserStartedSignal );
-	}
-	else if( inType == kHIDBrowserEventAttached )
-	{
-		device = (HIDDeviceRef) inParam;
-		HIDDeviceSetEventHandler( device, _HIDDeviceEventHandler, session );
-		err = HIDDeviceStart( device );
-		check_noerr( err );
-		if( !err ) CFRetain( session );
-	}
-	else if( inType == kHIDBrowserEventStopped )
-	{
-		atrp_ulog( kLogLevelTrace, "HID stopped\n" );
-		CFRelease( session );
-	}
-}
-
-//===========================================================================================================================
-//	_HIDDeviceEventHandler
-//===========================================================================================================================
-
-static void
-	_HIDDeviceEventHandler( 
-		HIDDeviceRef		inDevice, 
-		HIDDeviceEventType	inType, 
-		OSStatus			inStatus, 
-		const uint8_t *		inPtr, 
-		size_t				inLen, 
-		void *				inContext )
-{
-	AirPlayReceiverSessionRef const		session	= (AirPlayReceiverSessionRef) inContext;
-	CFTypeRef							uuid	= NULL;
-	OSStatus							err;
-	
-	if( inType == kHIDDeviceEventReport )
-	{
-		CFMutableDictionaryRef		request;
-		
-		if( inStatus )
-		{
-			err = ( inStatus == kEndingErr ) ? kNoErr : inStatus;
-			HIDDeviceStop( inDevice );
-			goto exit;
-		}
-		
-		uuid = HIDDeviceCopyProperty( inDevice, kHIDDeviceProperty_UUID, NULL, &err );
-		require_noerr( err, exit );
-		
-		atrp_ulog( kLogLevelChatty, "HID report from %@: %.3H\n", uuid, inPtr, (int) inLen, (int) inLen );
-		
-		request = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-		require_action( request, exit, err = kNoMemoryErr );
-		CFDictionarySetValue( request, CFSTR( kAirPlayKey_Type ), CFSTR( kAirPlayCommand_HIDSendReport ) );
-		CFDictionarySetValue( request, CFSTR( kAirPlayKey_UUID ), uuid );
-		CFDictionarySetData( request, CFSTR( kAirPlayKey_HIDReport ), inPtr, inLen );
-		
-		err = AirPlayReceiverSessionSendCommand( session, request, NULL, NULL );
-		CFRelease( request );
-		require_noerr( err, exit );
-	}
-	else if( inType == kHIDDeviceEventStopped )
-	{
-		atrp_ulog( kLogLevelTrace, "HID device stopped\n" );
-		CFRelease( session );
-	}
-	err = kNoErr;
-	
-exit:
-	CFReleaseNullSafe( uuid );
-	if( err ) atrp_ulog( kLogLevelNotice, "### HID device event failed: %#m\n", err );
+	atrp_ulog( kLogLevelTrace, "HID stopping\n" );
+	HIDSetSession( NULL );
 }
 
 #if 0
@@ -1386,3 +1020,5 @@ exit:
 	if( outErr ) *outErr = err;
 	return( result );
 }
+
+#endif

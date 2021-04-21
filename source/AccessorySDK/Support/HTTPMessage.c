@@ -2,7 +2,7 @@
 	File:    	HTTPMessage.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "HTTPMessage.h"
@@ -56,15 +56,10 @@
 #include "CommonServices.h"
 #include "HTTPUtils.h"
 #include "NetUtils.h"
-#include "StringUtils.h"
-#include "URLUtils.h"
 
 #include CF_RUNTIME_HEADER
 #include LIBDISPATCH_HEADER
 
-#if( COMPILER_HAS_BLOCKS )
-	#include <Block.h>
-#endif
 #if( TARGET_OS_POSIX )
 	#include <sys/stat.h>
 	#include <unistd.h>
@@ -78,7 +73,6 @@
 
 static void		_HTTPMessageGetTypeID( void *inContext );
 static void		_HTTPMessageFinalize( CFTypeRef inCF );
-static OSStatus	_HTTPMessageReadChunked( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx );
 
 //===========================================================================================================================
 //	Globals
@@ -134,8 +128,6 @@ OSStatus	HTTPMessageCreate( HTTPMessageRef *outMessage )
 	require_action( me, exit, err = kNoMemoryErr );
 	memset( ( (uint8_t *) me ) + sizeof( me->base ), 0, extraLen );
 	
-	me->fileFD = kInvalidFD;
-	
 	me->maxBodyLen = kHTTPDefaultMaxBodyLen;
 	HTTPMessageReset( me );
 	
@@ -158,9 +150,6 @@ static void	_HTTPMessageFinalize( CFTypeRef inCF )
 	HTTPMessageReset( me );
 	ForgetMem( &me->requestHeader );
 	ForgetPtrLen( &me->requestBodyPtr, &me->requestBodyLen );
-#if( COMPILER_HAS_BLOCKS )
-	ForgetBlock( &me->completionBlock );
-#endif
 }
 
 //===========================================================================================================================
@@ -171,78 +160,18 @@ void	HTTPMessageReset( HTTPMessageRef inMsg )
 {
 	inMsg->header.len	= 0;
 	inMsg->headerRead	= false;
-	inMsg->chunkState	= kHTTPChunkState_Invalid;
 	inMsg->bodyPtr		= inMsg->smallBodyBuf;
 	inMsg->bodyLen		= 0;
 	inMsg->bodyOffset	= 0;
 	ForgetMem( &inMsg->bigBodyBuf );
 	inMsg->timeoutNanos	= kHTTPNoTimeout;
-	if( inMsg->closeFD ) ForgetFD( &inMsg->fileFD );
-	inMsg->fileFD		= kInvalidFD;
-	inMsg->closeFD		= false;
 }
 
 //===========================================================================================================================
-//	HTTPMessageInitRequest
+//	HTTPMessageReadMessage
 //===========================================================================================================================
 
-OSStatus	HTTPMessageInitRequest( HTTPMessageRef inMsg, const char *inProtocol, const char *inMethod, const char *inFormat, ... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = HTTPHeader_InitRequestV( &inMsg->header, inProtocol, inMethod, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	HTTPMessageInitResponse
-//===========================================================================================================================
-
-OSStatus	HTTPMessageInitResponse( HTTPMessageRef inMsg, const char *inProtocol, int inStatusCode, OSStatus inError )
-{
-	return( HTTPHeader_InitResponseEx( &inMsg->header, inProtocol, inStatusCode, NULL, inError ) );
-}
-
-//===========================================================================================================================
-//	HTTPMessageGetHeaderField
-//===========================================================================================================================
-
-OSStatus
-	HTTPMessageGetHeaderField( 
-		HTTPMessageRef	inMsg, 
-		const char *	inName, 
-		const char **	outNamePtr, 
-		size_t *		outNameLen, 
-		const char **	outValuePtr, 
-		size_t *		outValueLen )
-{
-	return( HTTPGetHeaderField( inMsg->header.buf, inMsg->header.len, inName, outNamePtr, outNameLen, 
-		outValuePtr, outValueLen, NULL ) );
-}
-
-//===========================================================================================================================
-//	HTTPMessageSetHeaderField
-//===========================================================================================================================
-
-OSStatus	HTTPMessageSetHeaderField( HTTPMessageRef inMsg, const char *inName, const char *inFormat, ... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = HTTPHeader_SetFieldV( &inMsg->header, inName, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	HTTPMessageReadMessageEx
-//===========================================================================================================================
-
-OSStatus	HTTPMessageReadMessageEx( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx )
+OSStatus	HTTPMessageReadMessage( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx )
 {
 	HTTPHeader * const		hdr = &inMsg->header;
 	OSStatus				err;
@@ -254,167 +183,28 @@ OSStatus	HTTPMessageReadMessageEx( HTTPMessageRef inMsg, NetTransportRead_f inRe
 		require_noerr_quiet( err, exit );
 		inMsg->headerRead = true;
 		
-		inMsg->chunkState = HTTPIsChunked( hdr->buf, hdr->len ) ? kHTTPChunkState_ReadingHeader : kHTTPChunkState_Invalid;
-		if( inMsg->chunkState == kHTTPChunkState_Invalid )
-		{
-			require_action( hdr->contentLength <= inMsg->maxBodyLen, exit, err = kSizeErr );
-			err = HTTPMessageSetBodyLength( inMsg, (size_t) hdr->contentLength );
-			require_noerr( err, exit );
-		}
+		require_action( hdr->contentLength <= inMsg->maxBodyLen, exit, err = kSizeErr );
+		err = HTTPMessageSetBodyLength( inMsg, (size_t) hdr->contentLength );
+		require_noerr( err, exit );
 	}
-	if( inMsg->chunkState != kHTTPChunkState_Invalid )
+	len = hdr->extraDataLen;
+	if( len > 0 )
 	{
-		err = _HTTPMessageReadChunked( inMsg, inRead_f, inRead_ctx );
+		len = Min( len, inMsg->bodyLen );
+		memmove( inMsg->bodyPtr, hdr->extraDataPtr, len );
+		hdr->extraDataPtr += len;
+		hdr->extraDataLen -= len;
+		inMsg->bodyOffset += len;
+	}
+
+	len = inMsg->bodyOffset;
+	if( len < inMsg->bodyLen )
+	{
+		err = inRead_f( inMsg->bodyPtr + len, inMsg->bodyLen - len, &len, inRead_ctx );
 		require_noerr_quiet( err, exit );
+		inMsg->bodyOffset += len;
 	}
-	else
-	{
-		len = hdr->extraDataLen;
-		if( len > 0 )
-		{
-			len = Min( len, inMsg->bodyLen );
-			memmove( inMsg->bodyPtr, hdr->extraDataPtr, len );
-			hdr->extraDataPtr += len;
-			hdr->extraDataLen -= len;
-			inMsg->bodyOffset += len;
-		}
-	
-		len = inMsg->bodyOffset;
-		if( len < inMsg->bodyLen )
-		{
-			err = inRead_f( inMsg->bodyPtr + len, inMsg->bodyLen - len, &len, inRead_ctx );
-			require_noerr_quiet( err, exit );
-			inMsg->bodyOffset += len;
-		}
-		err = ( inMsg->bodyOffset == inMsg->bodyLen ) ? kNoErr : EWOULDBLOCK;
-	}
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_HTTPMessageReadChunked
-//===========================================================================================================================
-
-static OSStatus	_HTTPMessageReadChunked( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx )
-{
-	HTTPHeader * const		hdr = &inMsg->header;
-	OSStatus				err;
-	const char *			linePtr;
-	size_t					lineLen;
-	int						n;
-	uint64_t				chunkLen;
-	size_t					len;
-	uint8_t *				tmp;
-	
-	for( ;; )
-	{
-		// ReadingHeader
-		
-		if( inMsg->chunkState == kHTTPChunkState_ReadingHeader )
-		{
-			err = HTTPReadLine( hdr, inRead_f, inRead_ctx, &linePtr, &lineLen );
-			require_noerr_quiet( err, exit );
-			
-			n = SNScanF( linePtr, lineLen, "%llx", &chunkLen );
-			require_action_quiet( n == 1, exit, err = kMalformedErr );
-			require_action( chunkLen <= SIZE_MAX, exit, err = kSizeErr );
-			if( chunkLen > 0 )
-			{
-				len = inMsg->bodyLen + ( (size_t) chunkLen );
-				require_action( len > inMsg->bodyLen, exit, err = kSizeErr ); // Detect wrap.
-				if( len <= sizeof( inMsg->smallBodyBuf ) )
-				{
-					inMsg->bodyPtr = inMsg->smallBodyBuf;
-				}
-				else
-				{
-					tmp = (uint8_t *) realloc( inMsg->bigBodyBuf, len );
-					require_action( tmp, exit, err = kNoMemoryErr );
-					if( !inMsg->bigBodyBuf && ( inMsg->bodyOffset > 0 ) )
-					{
-						memmove( tmp, inMsg->bodyPtr, inMsg->bodyOffset );
-					}
-					inMsg->bigBodyBuf = tmp;
-					inMsg->bodyPtr    = tmp;
-				}
-				inMsg->bodyLen = len;
-				inMsg->chunkState = kHTTPChunkState_ReadingBody;
-			}
-			else
-			{
-				inMsg->chunkState = kHTTPChunkState_ReadingTrailer;
-			}
-		}
-		
-		// ReadingBody
-		
-		else if( inMsg->chunkState == kHTTPChunkState_ReadingBody )
-		{
-			if( hdr->extraDataLen > 0 )
-			{
-				len = inMsg->bodyLen - inMsg->bodyOffset;
-				if( len > hdr->extraDataLen ) len = hdr->extraDataLen;
-				memmove( &inMsg->bodyPtr[ inMsg->bodyOffset ], hdr->extraDataPtr, len );
-				hdr->extraDataPtr += len;
-				hdr->extraDataLen -= len;
-				inMsg->bodyOffset += len;
-			}
-			
-			len = inMsg->bodyOffset;
-			if( len < inMsg->bodyLen )
-			{
-				err = inRead_f( inMsg->bodyPtr + len, inMsg->bodyLen - len, &len, inRead_ctx );
-				require_noerr_quiet( err, exit );
-				inMsg->bodyOffset += len;
-			}
-			if( inMsg->bodyOffset == inMsg->bodyLen )
-			{
-				inMsg->chunkState = kHTTPChunkState_ReadingBodyEnd;
-			}
-		}
-		
-		// ReadingBodyEnd
-		
-		else if( inMsg->chunkState == kHTTPChunkState_ReadingBodyEnd )
-		{
-			err = HTTPReadLine( hdr, inRead_f, inRead_ctx, &linePtr, &lineLen );
-			require_noerr_quiet( err, exit );
-			require_action_quiet( lineLen == 0, exit, err = kMalformedErr );
-			
-			inMsg->chunkState = kHTTPChunkState_ReadingHeader;
-		}
-		
-		// ReadingTrailer
-		
-		else if( inMsg->chunkState == kHTTPChunkState_ReadingTrailer )
-		{
-			err = HTTPReadLine( hdr, inRead_f, inRead_ctx, &linePtr, &lineLen );
-			require_noerr_quiet( err, exit );
-			if( lineLen == 0 )
-			{
-				inMsg->chunkState = kHTTPChunkState_Done;
-				break;
-			}
-			
-			// $$$ TO DO: Consider appending trailer headers to normal headers.
-		}
-		
-		// Done
-		
-		else if( inMsg->chunkState == kHTTPChunkState_Done )
-		{
-			break;	
-		}
-		else
-		{
-			dlogassert( "Bad HTTP chunk state: %d", inMsg->chunkState );
-			err = kStateErr;
-			goto exit;
-		}
-	}
-	err = kNoErr;
+	err = ( inMsg->bodyOffset == inMsg->bodyLen ) ? kNoErr : EWOULDBLOCK;
 	
 exit:
 	return( err );
@@ -431,162 +221,32 @@ OSStatus	HTTPMessageWriteMessage( HTTPMessageRef inMsg, NetTransportWriteV_f inW
 	err = inWriteV_f( &inMsg->iop, &inMsg->ion, inWriteV_ctx );
 	require_noerr_quiet( err, exit );
 	
-#if( TARGET_OS_POSIX )
-	if( IsValidFD( inMsg->fileFD ) && ( inMsg->fileRemain > 0 ) )
-	{
-		size_t		len;
-		ssize_t		n;
-		
-		check( inMsg->bodyPtr );
-		len = ( inMsg->fileRemain <= ( (int64_t) inMsg->maxBodyLen ) ) ? ( (size_t) inMsg->fileRemain ) : inMsg->maxBodyLen;
-		n = read( inMsg->fileFD, inMsg->bodyPtr, len );
-		err = map_global_value_errno( n > 0, n );
-		require_noerr_quiet( err, exit );
-		inMsg->fileRemain -= n;
-		check( inMsg->fileRemain >= 0 );
-		
-		inMsg->iov[ 0 ].iov_base = inMsg->bodyPtr;
-		inMsg->iov[ 0 ].iov_len  = (size_t) n;
-		inMsg->ion = 1;
-		inMsg->iop = inMsg->iov;
-		err = inWriteV_f( &inMsg->iop, &inMsg->ion, inWriteV_ctx );
-		require_noerr_quiet( err, exit );
-	}
-#endif
-	
 exit:
 	return( err );
 }
 
 //===========================================================================================================================
-//	HTTPMessageSetBody
+//	HTTPMessageSetBodyPtr
 //===========================================================================================================================
 
-OSStatus	HTTPMessageSetBody( HTTPMessageRef inMsg, const char *inContentType, const void *inData, size_t inLen )
+OSStatus	HTTPMessageSetBodyPtr( HTTPMessageRef inMsg, const char *inContentType, const void *inData, size_t inLen )
 {
 	OSStatus		err;
 	
 	err = inMsg->header.firstErr;
 	require_noerr( err, exit );
 	
-	err = HTTPMessageSetBodyLength( inMsg, inLen );
-	require_noerr( err, exit );
-	if( inData && ( inData != inMsg->bodyPtr ) )  // Handle inData pointing to the buffer.
-	{
-		memmove( inMsg->bodyPtr, inData, inLen ); // memmove in case inData is in the middle of the buffer.
-	}
+	ForgetMem( &inMsg->bigBodyBuf );
+	inMsg->bigBodyBuf = (uint8_t*)inData;
+	inMsg->bodyPtr = inMsg->bigBodyBuf;
+	inMsg->bodyLen = inLen;
 	
-	HTTPHeader_SetField( &inMsg->header, kHTTPHeader_ContentLength, "%zu", inLen );
-	if( inContentType ) HTTPHeader_SetField( &inMsg->header, kHTTPHeader_ContentType, inContentType );
-	
-exit:
-	if( err && !inMsg->header.firstErr ) inMsg->header.firstErr = err;
-	return( err );
-}
-
-#if( TARGET_OS_POSIX )
-//===========================================================================================================================
-//	HTTPMessageSetBodyFileDescriptor
-//===========================================================================================================================
-
-OSStatus
-	HTTPMessageSetBodyFileDescriptor( 
-		HTTPMessageRef	inMsg, 
-		FDRef			inFD, 
-		int64_t			inByteOffset, 
-		int64_t			inByteCount, 
-		Boolean			inCloseWhenDone )
-{
-	OSStatus		err;
-	size_t			len;
-	uint8_t *		tmp;
-	int64_t			startOffset;
-	ssize_t			n;
-	
-	// Set up the start of the read and length.
-	
-	startOffset = lseek64( inFD, inByteOffset, ( inByteOffset < 0 ) ? SEEK_END : SEEK_SET );
-	err = map_global_value_errno( startOffset != -1, startOffset );
-	require_noerr_quiet( err, exit );
-	
-	if( inByteCount < 0 )
-	{
-		struct stat		sb;
-		
-		err = fstat( inFD, &sb );
-		err = map_global_noerr_errno( err );
-		require_noerr_quiet( err, exit );
-		inByteCount = sb.st_size - startOffset;
-	}
-	HTTPHeader_SetField( &inMsg->header, kHTTPHeader_ContentLength, "%lld", inByteCount );
-	
-	// Set up read buffer.
-	
-	len = ( inByteCount <= kFileWriteBufferLen ) ? ( (size_t) inByteCount ) : kFileWriteBufferLen;
-	if( len <= sizeof( inMsg->smallBodyBuf ) )
-	{
-		inMsg->bodyPtr = inMsg->smallBodyBuf;
-	}
-	else
-	{
-		tmp = (uint8_t *) realloc( inMsg->bigBodyBuf, len );
-		require_action( tmp, exit, err = kNoMemoryErr );
-		inMsg->bigBodyBuf = tmp;
-		inMsg->bodyPtr    = tmp;
-	}
-	inMsg->maxBodyLen = len;
-	
-	// Read a buffer-full up-front to utilize any space after the HTTP header in the first TCP packet.
-	
-	if( len > 0 )
-	{
-		n = read( inFD, inMsg->bodyPtr, len );
-		err = map_global_value_errno( n > 0, n );
-		require_noerr_quiet( err, exit );
-		inMsg->bodyLen = (size_t) n;
-		inByteCount -= n;
-	}
-	else
-	{
-		inMsg->bodyLen = 0;
-	}
-	
-	if( inMsg->closeFD ) ForgetFD( &inMsg->fileFD );
-	inMsg->fileFD		= inFD;
-	inMsg->closeFD		= inCloseWhenDone;
-	inMsg->fileRemain	= inByteCount;
+	HTTPHeader_AddFieldF( &inMsg->header, kHTTPHeader_ContentLength, "%zu", inLen );
+	if( inContentType ) HTTPHeader_AddField( &inMsg->header, kHTTPHeader_ContentType, inContentType );
 	
 exit:
 	return( err );
 }
-
-//===========================================================================================================================
-//	HTTPMessageSetBodyFilePath
-//===========================================================================================================================
-
-OSStatus
-	HTTPMessageSetBodyFilePath( 
-		HTTPMessageRef	inMsg, 
-		const char *	inPath, 
-		int64_t			inByteOffset, 
-		int64_t			inByteCount )
-{
-	OSStatus		err;
-	FDRef			fd;
-	
-	fd = open( inPath, O_RDONLY );
-	err = map_fd_creation_errno( fd );
-	require_noerr_quiet( err, exit );
-	
-	err = HTTPMessageSetBodyFileDescriptor( inMsg, fd, inByteOffset, inByteCount, true );
-	require_noerr( err, exit );
-	fd = kInvalidFD;
-	
-exit:
-	ForgetFD( &fd );
-	return( err );
-}
-#endif // TARGET_OS_POSIX
 
 //===========================================================================================================================
 //	HTTPMessageSetBodyLength
@@ -614,29 +274,6 @@ exit:
 	return( err );
 }
 
-#if( COMPILER_HAS_BLOCKS )
-//===========================================================================================================================
-//	HTTPMessageSetCompletionBlock
-//===========================================================================================================================
-
-static void	_HTTPMessageCompletionHandler( HTTPMessageRef inMsg );
-
-void	HTTPMessageSetCompletionBlock( HTTPMessageRef inMsg, HTTPMessageCompletionBlock inBlock )
-{
-	ReplaceBlock( &inMsg->completionBlock, inBlock );
-	inMsg->completion = inBlock ? _HTTPMessageCompletionHandler : NULL;
-}
-
-static void	_HTTPMessageCompletionHandler( HTTPMessageRef inMsg )
-{
-	HTTPMessageCompletionBlock const		block = inMsg->completionBlock;
-	
-	inMsg->completionBlock = NULL;
-	block( inMsg );
-	Block_release( block );
-}
-#endif
-
 //===========================================================================================================================
 //	HTTPMessageGetOrCopyFormVariable
 //===========================================================================================================================
@@ -662,35 +299,5 @@ OSStatus
 		end = ptr + inMsg->bodyLen;
 		err = URLGetOrCopyVariable( ptr, end, inName, outValuePtr, outValueLen, outValueStorage, NULL );
 	}
-	return( err );
-}
-
-//===========================================================================================================================
-//	HTTPMessageScanFFormVariable
-//===========================================================================================================================
-
-OSStatus
-	HTTPMessageScanFFormVariable( 
-		HTTPMessageRef	inMsg, 
-		const char *	inName, 
-		int *			outMatchCount, 
-		const char *	inFormat, 
-		... )
-{
-	OSStatus			err;
-	const char *		valuePtr;
-	size_t				valueLen;
-	char *				valueBuf;
-	va_list				args;
-	
-	err = HTTPMessageGetOrCopyFormVariable( inMsg, inName, &valuePtr, &valueLen, &valueBuf );
-	require_noerr_quiet( err, exit );
-	
-	va_start( args, inFormat );
-	*outMatchCount = VSNScanF( valuePtr, valueLen, inFormat, args );
-	va_end( args );
-	FreeNullSafe( valueBuf );
-	
-exit:
 	return( err );
 }

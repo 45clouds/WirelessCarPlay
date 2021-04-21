@@ -2,7 +2,7 @@
 	File:    	URLUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2014 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "URLUtils.h"
@@ -65,255 +65,6 @@
 #if 0
 #pragma mark == Encoding/Decoding ==
 #endif
-
-//===========================================================================================================================
-//	URL Encoding
-//===========================================================================================================================
-
-#define URL_UNRESERVED				( 1 << 0 ) // ALPHA / DIGIT / "-" / "." / "_" / "~"
-#define URL_GEN_DELIMS				( 1 << 1 ) // ":" / "/" / "?" / "#" / "[" / "]" / "@"
-#define URL_SUB_DELIMS				( 1 << 2 ) // "!" / "$" / "&" / "'" / "(" / ")" / "*" / "+" / "," / ";" / "="
-#define URL_PCHAR					( 1 << 3 ) // unreserved / pct-encoded / sub-delims / ":" / "@"
-#define URL_QUERY_OR_FRAGMENT		( 1 << 4 ) // *( pchar / "/" / "?" )
-#define URL_PATH					( 1 << 5 ) // "/" / *pchar / sub-delims
-
-#define URL_QUERY_MASK				( URL_UNRESERVED | URL_SUB_DELIMS | URL_QUERY_OR_FRAGMENT )
-#define URL_PATH_MASK				( URL_PCHAR | URL_SUB_DELIMS | URL_PATH )
-
-static const uint8_t		kURLEscapeTable[ 256 ] =
-{
-	// 0-31 (0x00-0x1F) are invalid and must always be escaped.
-	
-	0,  0,  0,  0,  0,  0,  0,  0, // 0-7		NUL SOH STX ETX  EOT ENQ ACK BEL
-	0,  0,  0,  0,  0,  0,  0,  0, // 8-15		BS  HT  LF  VT   FF  CR  SO  SI 
-	0,  0,  0,  0,  0,  0,  0,  0, // 16-23		DLE DC1 DC2 DC3  DC4 NAK SYN ETB
-	0,  0,  0,  0,  0,  0,  0,  0, // 24-31		CAN EM  SUB ESC  FS  GS  RS  US 
-	
-	//				URL_UNRESERVED	URL_GEN_DELIMS	URL_SUB_DELIMS	URL_PCHAR	URL_QUERY_OR_FRAGMENT		URL_PATH
-	/* ' '  32 */	0, 
-	/* '!'  33 */									URL_SUB_DELIMS,	
-	/* '"'  34 */	0,
-	/* '#'  35 */					URL_GEN_DELIMS,
-	/* '$'  36 */									URL_SUB_DELIMS,
-	/* '%'  37 */	0,
-	/* '&'  38 */									URL_SUB_DELIMS,
-	/* '''  39 */									URL_SUB_DELIMS,
-	/* '('  40 */									URL_SUB_DELIMS,
-	/* ')'  41 */									URL_SUB_DELIMS,
-	/* '*'  42 */									URL_SUB_DELIMS,
-	/* '+'  43 */									URL_SUB_DELIMS,
-	/* ','  44 */									URL_SUB_DELIMS,
-	/* '-'  45 */	URL_UNRESERVED,
-	/* '.'  46 */	URL_UNRESERVED,
-	/* '/'  47 */					URL_GEN_DELIMS								| URL_QUERY_OR_FRAGMENT		| URL_PATH,
-	/* '0'  48 */	URL_UNRESERVED,
-	/* '1'  49 */	URL_UNRESERVED,
-	/* '2'  50 */	URL_UNRESERVED,
-	/* '3'  51 */	URL_UNRESERVED,
-	/* '4'  52 */	URL_UNRESERVED,
-	/* '5'  53 */	URL_UNRESERVED,
-	/* '6'  54 */	URL_UNRESERVED,
-	/* '7'  55 */	URL_UNRESERVED,
-	/* '8'  56 */	URL_UNRESERVED,
-	/* '9'  57 */	URL_UNRESERVED,
-	/* ':'  58 */					URL_GEN_DELIMS					| URL_PCHAR,
-	/* ';'  59 */									URL_SUB_DELIMS,
-	/* '<'  60 */	0,
-	/* '='  61 */									URL_SUB_DELIMS,
-	/* '>'  62 */	0,
-	/* '?'  63 */					URL_GEN_DELIMS								| URL_QUERY_OR_FRAGMENT,
-	/* '@'  64 */					URL_GEN_DELIMS					| URL_PCHAR,
-	/* 'A'  65 */	URL_UNRESERVED,
-	/* 'B'  66 */	URL_UNRESERVED,
-	/* 'C'  67 */	URL_UNRESERVED,
-	/* 'D'  68 */	URL_UNRESERVED,
-	/* 'E'  69 */	URL_UNRESERVED,
-	/* 'F'  70 */	URL_UNRESERVED,
-	/* 'G'  71 */	URL_UNRESERVED,
-	/* 'H'  72 */	URL_UNRESERVED,
-	/* 'I'  73 */	URL_UNRESERVED,
-	/* 'J'  74 */	URL_UNRESERVED,
-	/* 'K'  75 */	URL_UNRESERVED,
-	/* 'L'  76 */	URL_UNRESERVED,
-	/* 'M'  77 */	URL_UNRESERVED,
-	/* 'N'  78 */	URL_UNRESERVED,
-	/* 'O'  79 */	URL_UNRESERVED,
-	/* 'P'  80 */	URL_UNRESERVED,
-	/* 'Q'  81 */	URL_UNRESERVED,
-	/* 'R'  82 */	URL_UNRESERVED,
-	/* 'S'  83 */	URL_UNRESERVED,
-	/* 'T'  84 */	URL_UNRESERVED,
-	/* 'U'  85 */	URL_UNRESERVED,
-	/* 'V'  86 */	URL_UNRESERVED,
-	/* 'W'  87 */	URL_UNRESERVED,
-	/* 'X'  88 */	URL_UNRESERVED,
-	/* 'Y'  89 */	URL_UNRESERVED,
-	/* 'Z'  90 */	URL_UNRESERVED,
-	/* '['  91 */					URL_GEN_DELIMS,
-	/* '\'  92 */	0,
-	/* ']'  93 */					URL_GEN_DELIMS,
-	/* '^'  94 */	0,
-	/* '_'  95 */	URL_UNRESERVED,
-	/* '`'  96 */	0,
-	/* 'a'  97 */	URL_UNRESERVED,
-	/* 'b'  98 */	URL_UNRESERVED,
-	/* 'c'  99 */	URL_UNRESERVED,
-	/* 'd' 100 */	URL_UNRESERVED,
-	/* 'e' 101 */	URL_UNRESERVED,
-	/* 'f' 102 */	URL_UNRESERVED,
-	/* 'g' 103 */	URL_UNRESERVED,
-	/* 'h' 104 */	URL_UNRESERVED,
-	/* 'i' 105 */	URL_UNRESERVED,
-	/* 'j' 106 */	URL_UNRESERVED,
-	/* 'k' 107 */	URL_UNRESERVED,
-	/* 'l' 108 */	URL_UNRESERVED,
-	/* 'm' 109 */	URL_UNRESERVED,
-	/* 'n' 110 */	URL_UNRESERVED,
-	/* 'o' 111 */	URL_UNRESERVED,
-	/* 'p' 112 */	URL_UNRESERVED,
-	/* 'q' 113 */	URL_UNRESERVED,
-	/* 'r' 114 */	URL_UNRESERVED,
-	/* 's' 115 */	URL_UNRESERVED,
-	/* 't' 116 */	URL_UNRESERVED,
-	/* 'u' 117 */	URL_UNRESERVED,
-	/* 'v' 118 */	URL_UNRESERVED,
-	/* 'w' 119 */	URL_UNRESERVED,
-	/* 'x' 120 */	URL_UNRESERVED,
-	/* 'y' 121 */	URL_UNRESERVED,
-	/* 'z' 122 */	URL_UNRESERVED,
-	/* '{' 123 */	0,
-	/* '|' 124 */	0,
-	/* '}' 125 */	0,
-	/* '~' 126 */	URL_UNRESERVED,
-	/* DEL 127 */	0, 
-
-	// 128-255 (0x80-0xFF) are invalid and must always be escaped.
-	
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
-	0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0
-};
-
-//===========================================================================================================================
-//	URLEncode
-//===========================================================================================================================
-
-OSStatus
-	URLEncode( 
-		URLEncodeType	inType, 
-		const void *	inSourceData, 
-		size_t			inSourceSize, 
-		void *			inEncodedDataBuffer, 
-		size_t			inEncodedDataBufferSize, 
-		size_t *		outEncodedSize )
-{
-	OSStatus			err;
-	const uint8_t *		src;
-	const uint8_t *		end;
-	uint8_t *			dst;
-	uint8_t *			lim;
-	uint8_t				c;
-	uint8_t				mask;
-	uint8_t				badC;
-	
-	if( inSourceSize == kSizeCString ) inSourceSize = strlen( (const char *) inSourceData );
-	
-	src = (const uint8_t *) inSourceData;
-	end = src + inSourceSize;
-	dst = (uint8_t *) inEncodedDataBuffer;
-	lim = dst + inEncodedDataBufferSize;
-	
-	if( inType == kURLEncodeType_Generic )
-	{
-		mask = URL_UNRESERVED;
-		badC = '\0';
-	}
-	else if( inType == kURLEncodeType_Query )
-	{
-		mask = URL_QUERY_MASK;
-		badC = '&';
-	}
-	else
-	{
-		dlogassert( "unknown type: %d", inType );
-		err = kParamErr;
-		goto exit;
-	}
-	
-	while( src < end )
-	{
-		c = *src++;
-		if( ( kURLEscapeTable[ c ] & mask ) && ( c != badC ) )
-		{
-			if( inEncodedDataBuffer )
-			{
-				require_action_quiet( dst < lim, exit, err = kOverrunErr );
-				*dst = c;
-			}
-			++dst;
-		}
-		else
-		{
-			if( inEncodedDataBuffer )
-			{
-				require_action_quiet( ( lim - dst ) >= 3, exit, err = kOverrunErr );
-				dst[ 0 ] = '%';
-				dst[ 1 ] = (uint8_t)( kHexDigitsUppercase[ c >> 4 ] );
-				dst[ 2 ] = (uint8_t)( kHexDigitsUppercase[ c & 0x0F ] );
-			}
-			dst += 3;
-		}
-	}
-	err = kNoErr;
-	
-exit:
-	*outEncodedSize = (size_t)( dst - ( (uint8_t *) inEncodedDataBuffer ) );
-	return( err );
-}
-
-//===========================================================================================================================
-//	URLEncodeCopy
-//===========================================================================================================================
-
-OSStatus
-	URLEncodeCopy( 
-		URLEncodeType	inType, 
-		const void *	inSourceData, 
-		size_t			inSourceSize, 
-		void *			outEncodedStr, 
-		size_t *		outEncodedLen )
-{
-	OSStatus		err;
-	size_t			encodedLen;
-	char *			encodedStr;
-	
-	encodedStr = NULL;
-	
-	if( inSourceSize == kSizeCString ) inSourceSize = strlen( (const char *) inSourceData );
-	
-	err = URLEncode( inType, inSourceData, inSourceSize, NULL, 0, &encodedLen );
-	require_noerr( err, exit );
-	
-	encodedStr = (char *) malloc( encodedLen + 1 );
-	require_action( encodedStr, exit, err = kNoMemoryErr );
-	
-	err = URLEncode( inType, inSourceData, inSourceSize, encodedStr, encodedLen, &encodedLen );
-	require_noerr( err, exit );
-	encodedStr[ encodedLen ] = '\0';
-	
-	*( (void **) outEncodedStr ) 		= encodedStr;
-	if( outEncodedLen ) *outEncodedLen	= encodedLen;
-	encodedStr = NULL;
-	
-exit:
-	if( encodedStr ) free( encodedStr );
-	return( err );
-}
 
 //===========================================================================================================================
 //	URLDecodeEx
@@ -582,29 +333,6 @@ OSStatus	URLParseComponents( const char *inSrc, const char *inEnd, URLComponents
 }
 
 //===========================================================================================================================
-//	URLGetNextPathSegment
-//===========================================================================================================================
-
-OSStatus	URLGetNextPathSegment( URLComponents *inComps, const char **outSegmentPtr, size_t *outSegmentLen )
-{
-	const char *		src;
-	const char *		ptr;
-	const char *		end;
-	
-	src = inComps->segmentPtr;
-	end = inComps->segmentEnd;
-	for( ptr = src; ( ptr < end ) && ( *ptr != '/' ); ++ptr ) {}
-	if( ptr != src )
-	{
-		*outSegmentPtr = src;
-		*outSegmentLen = (size_t)( ptr - src );
-		inComps->segmentPtr = ( ptr < end ) ? ( ptr + 1 ) : ptr;
-		return( kNoErr );
-	}
-	return( kNotFoundErr );
-}
-
-//===========================================================================================================================
 //	URLGetOrCopyNextVariable
 //===========================================================================================================================
 
@@ -851,13 +579,7 @@ OSStatus	URLUtils_Test( void )
 	int					i;
 	char *				str;
 	
-	// Encoding/Decoding
-	
-	src = "This That";
-	len = strlen( src );
-	err = URLEncode( kURLEncodeType_Query, src, len, buf, sizeof( buf ), &len );
-	require_noerr( err, exit );
-	require_action( strncmpx( buf, len, "This%20That" ) == 0, exit, err = kResponseErr );
+	// Decoding
 	
 	src = "This%20That";
 	len = strlen( src );
@@ -865,30 +587,11 @@ OSStatus	URLUtils_Test( void )
 	require_noerr( err, exit );
 	require_action( strncmpx( buf, len, "This That" ) == 0, exit, err = kResponseErr );
 	
-	src = "name=this&that";
-	len = strlen( src );
-	err = URLEncode( kURLEncodeType_Query, src, len, buf, sizeof( buf ), &len );
-	require_noerr( err, exit );
-	require_action( strncmpx( buf, len, "name=this%26that" ) == 0, exit, err = kResponseErr );
-	
-	src = "0017F2F790F0@abc's \xEF\xA3\xBFtv";
-	len = strlen( src );
-	err = URLEncode( kURLEncodeType_Query, src, len, buf, sizeof( buf ), &len );
-	require_noerr( err, exit );
-	require_action( strncmpx( buf, len, "0017F2F790F0%40abc's%20%EF%A3%BFtv" ) == 0, exit, err = kResponseErr );
-	
 	src = "0017F2F790F0%40abc's%20%EF%A3%BFtv";
 	len = strlen( src );
 	err = URLDecode( src, len, buf, sizeof( buf ), &len );
 	require_noerr( err, exit );
 	require_action( strncmpx( buf, len, "0017F2F790F0@abc's \xEF\xA3\xBFtv" ) == 0, exit, err = kResponseErr );
-	
-	str = NULL;
-	err = URLEncodeCopy( kURLEncodeType_Query, "0017F2F790F0@abc's \xEF\xA3\xBFtv", kSizeCString, &str, &len );
-	require_noerr( err, exit );
-	require_action( strcmp( str, "0017F2F790F0%40abc's%20%EF%A3%BFtv" ) == 0, exit, err = kResponseErr );
-	require_action( len == strlen( str ), exit, err = kResponseErr );
-	free( str );
 	
 	str = NULL;
 	err = URLDecodeCopy( "0017F2F790F0%40abc's%20%EF%A3%BFtv", kSizeCString, &str, &len );
@@ -989,30 +692,6 @@ OSStatus	URLUtils_Test( void )
 	require_action( ( urlComps.queryPtr == NULL ) && ( urlComps.queryLen == 0 ), exit, err = kResponseErr );
 	require_action( ( urlComps.fragmentPtr == NULL ) && ( urlComps.fragmentLen == 0 ), exit, err = kResponseErr );
 	require_action( ptr == end, exit, err = kResponseErr );
-	
-	// URL Segments.
-	
-	err = URLParseComponents( "http://www.example.com/path/to/my/resource/", NULL, &urlComps, NULL );
-	require_noerr( err, exit );
-	
-	err = URLGetNextPathSegment( &urlComps, &ptr, &len );
-	require_noerr( err, exit );
-	require_action( ( len == 4 ) && ( memcmp( ptr, "path", len ) == 0 ), exit, err = -1 );
-	
-	err = URLGetNextPathSegment( &urlComps, &ptr, &len );
-	require_noerr( err, exit );
-	require_action( ( len == 2 ) && ( memcmp( ptr, "to", len ) == 0 ), exit, err = -1 );
-	
-	err = URLGetNextPathSegment( &urlComps, &ptr, &len );
-	require_noerr( err, exit );
-	require_action( ( len == 2 ) && ( memcmp( ptr, "my", len ) == 0 ), exit, err = -1 );
-	
-	err = URLGetNextPathSegment( &urlComps, &ptr, &len );
-	require_noerr( err, exit );
-	require_action( ( len == 8 ) && ( memcmp( ptr, "resource", len ) == 0 ), exit, err = -1 );
-	
-	err = URLGetNextPathSegment( &urlComps, &ptr, &len );
-	require_action( err != kNoErr, exit, err = -1 );
 	
 	// Query variables.
 	

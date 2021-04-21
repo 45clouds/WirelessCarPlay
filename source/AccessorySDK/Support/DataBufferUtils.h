@@ -2,7 +2,7 @@
 	File:    	DataBufferUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2008-2013 Apple Inc. All Rights Reserved.
+	Copyright (C) 2008-2013 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__DataBufferUtils_h__
@@ -108,9 +108,7 @@ OSStatus	DataBuffer_Resize( DataBuffer *inDB, size_t inNewLen, void *outPtr );
 OSStatus	DataBuffer_Shrink( DataBuffer *inDB, size_t inAmount );
 
 OSStatus	DataBuffer_Append( DataBuffer *inDB, const void *inData, size_t inLen );
-OSStatus	DataBuffer_AppendF( DataBuffer *inDB, const char *inFormat, ... );
-OSStatus	DataBuffer_AppendFNested( DataBuffer *inDB, const char *inTemplate, const char *inFormat, ... );
-OSStatus	DataBuffer_AppendFVAList( DataBuffer *inDB, const char *inFormat, va_list inArgs );
+OSStatus	DataBuffer_AppendF( DataBuffer *inDB, const char *inFormat, ... ) PRINTF_STYLE_FUNCTION( 2, 3 );
 
 #if( TARGET_OS_POSIX )
 	OSStatus	DataBuffer_RunProcessAndAppendOutput( DataBuffer *inBuffer, const char *inCmdLine );

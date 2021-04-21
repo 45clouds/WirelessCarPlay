@@ -2,7 +2,7 @@
 	File:    	DebugServices.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__DebugServices_h__
@@ -66,10 +66,6 @@
 	#include <stdio.h>
 	#include <stdlib.h>
 	#include <string.h>
-#endif
-
-#if( COMPILER_OBJC )
-	#import <Foundation/Foundation.h>
 #endif
 
 #if( GCD_ENABLED )
@@ -142,19 +138,6 @@
 */
 #if( !defined( DEBUG_KPRINTF_ENABLED ) )
 	#define	DEBUG_KPRINTF_ENABLED				TARGET_OS_DARWIN_KERNEL
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@defined	DEBUG_IDEBUG_ENABLED
-	@abstract	Enables iDebug (Mac OS X user and Kernel) output.
-	@discussion
-	
-	For Mac OS X kernel development, iDebug is enabled by default because we can dynamically check for the presence 
-	of iDebug via some exported IOKit symbols. Mac OS X app usage doesn't allow dynamic detection because it relies
-	on statically linking to the iDebugServices.cp file so for Mac OS X app usage, you have to manually enable iDebug.
-*/
-#if( !defined( DEBUG_IDEBUG_ENABLED ) )
-	#define	DEBUG_IDEBUG_ENABLED				TARGET_OS_DARWIN_KERNEL
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
@@ -1387,7 +1370,7 @@ void
 /*!	@function	DebugGetErrorString
 	@abstract	Gets an error string from an error code.
 
-	@param		inStatus		Error code to get the string for.
+	@param		inErrorCode		Error code to get the string for.
 	@param		inBuffer		Optional buffer to copy the string to for non-static strings. May be null.
 	@param		inBufferSize	Size of optional buffer (including space for the null terminator).
 	
@@ -1483,39 +1466,11 @@ Boolean	DebugIsCurrentDispatchQueue( dispatch_queue_t inQueue );
 */
 const char *	HTTPGetReasonPhrase( int inStatusCode );
 
-#if( COMPILER_OBJC )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NSErrorToOSStatus
-	@abstract	Maps NSError objects to an OSStatus value. A nil NSError maps to kNoErr.
-*/
-OSStatus	NSErrorToOSStatus( NSError *inError );
-#endif
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	ReportCriticalError
 	@abstract	Reports a critical error, optionally triggering a crash log.
 */
 void	ReportCriticalError( const char *inReason, uint32_t inExceptionCode, Boolean inCrashLog );
-
-#if( COMPILER_OBJC )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ObjectTrackerRegister
-	@abstract	Registers a tracker for an object with option to print a stack trace or call a function when it's released.
-	@discussion	Object must be a backed by an Objective-C object, such as CFDictionary, xpc_object_t, Objective-C object, etc.
-*/
-#define kObjectTrackerFlags_None			0
-#define kObjectTrackerFlag_PrintStack		( 1 << 0 ) // Print stack trace on release.
-
-typedef void ( *ObjectTrackerRelease_f )( const void *inObj, void *inContext );
-
-OSStatus
-	ObjectTrackerRegister( 
-		const void *			inObj, 
-		uint32_t				inFlags, 
-		ObjectTrackerRelease_f	inCallback, 
-		void *					inContext );
-void	ObjectTrackerDeregister( CFTypeRef inObj );
-#endif
 
 #if 0
 #pragma mark ==    Routines - Unit Tests ==

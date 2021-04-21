@@ -2,7 +2,7 @@
 	File:    	HTTPServer.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	To Do:
 	
@@ -71,19 +71,12 @@
 #include "HTTPUtils.h"
 #include "NetUtils.h"
 #include "RandomNumberUtils.h"
-#include <glib.h>
+
 #include CF_RUNTIME_HEADER
 #include LIBDISPATCH_HEADER
 
 #if( TARGET_OS_POSIX )
 	#include <netinet/tcp.h>
-#endif
-
-#if( !defined( HTTP_SERVER_TEST_GCM ) )
-	#define HTTP_SERVER_TEST_GCM		0
-#endif
-#if( HTTP_SERVER_TEST_GCM )
-	#include "NetTransportGCM.h"
 #endif
 
 //===========================================================================================================================
@@ -105,9 +98,6 @@ static void		_HTTPConnectionWriteHandler( void *inContext );
 static void		_HTTPConnectionCancelHandler( void *inContext );
 static void		_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx );
 static OSStatus	_HTTPConnectionHandleIOError( HTTPConnectionRef inCnx, OSStatus inError, Boolean inRead );
-
-static void		_HTTPConnectionSendBinaryCompletion( HTTPMessageRef inMsg );
-static void		_HTTPConnectionSendEvent( void *inContext );
 
 //===========================================================================================================================
 //	Globals
@@ -768,8 +758,7 @@ OSStatus	HTTPConnectionStart( HTTPConnectionRef inCnx )
 	check_noerr( err );
 	
 #if( TARGET_OS_POSIX )
-	SocketGetInterfaceInfo( inCnx->sock, NULL, inCnx->ifName, &inCnx->ifIndex, inCnx->ifMACAddress, &inCnx->ifMedia, 
-		&inCnx->ifFlags, &inCnx->ifExtendedFlags, NULL, &inCnx->transportType );
+	SocketGetInterfaceInfo( inCnx->sock, NULL, inCnx->ifName, NULL, NULL, NULL, NULL, NULL, NULL, &inCnx->transportType );
 #endif
 	if( !NetTransportTypeIsP2P( inCnx->transportType ) ) SocketSetP2P( inCnx->sock, false ); // Clear if P2P was inherited.
 	
@@ -926,33 +915,22 @@ static void	_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx )
 		if( inCnx->state == kHTTPConnectionStateReadingRequest )
 		{
 			msg = inCnx->requestMsg;
-			err = HTTPMessageReadMessageEx( msg, inCnx->transportDelegate.read_f, inCnx->transportDelegate.context );
+			err = HTTPMessageReadMessage( msg, inCnx->transportDelegate.read_f, inCnx->transportDelegate.context );
 			err = _HTTPConnectionHandleIOError( inCnx, err, true );
 			if( err == EWOULDBLOCK ) break;
 			require_noerr_quiet( err, exit );
 			LogHTTP( inCnx->ucat, inCnx->ucat, msg->header.buf, msg->header.len, msg->bodyPtr, msg->bodyLen );
 			
-			if( HTTPMessageIsInterleavedBinary( msg ) )
+			err = inCnx->delegate.handleMessage_f( inCnx, msg, inCnx->delegate.context );
+			require_noerr_quiet( err, exit );
+			if( inCnx->state == kHTTPConnectionStateReadingRequest )
 			{
-				err = inCnx->delegate.handleBinary_f( inCnx, msg->header.channelID, msg->bodyPtr, msg->bodyLen, 
-					inCnx->delegate.context );
-				require_noerr_quiet( err, exit );
-				HTTPMessageReset( inCnx->requestMsg );
-			}
-			else
-			{
-				err = inCnx->delegate.handleMessage_f( inCnx, msg, inCnx->delegate.context );
-				require_noerr_quiet( err, exit );
-				if( inCnx->state == kHTTPConnectionStateReadingRequest )
-				{
-					inCnx->state = kHTTPConnectionStateProcessingRequest;
-					break;
-				}
+				inCnx->state = kHTTPConnectionStateProcessingRequest;
+				break;
 			}
 		}
 		else if( inCnx->state == kHTTPConnectionStateProcessingRequest )
 		{
-
 			break;
 		}
 		else if( inCnx->state == kHTTPConnectionStateWritingResponse )
@@ -975,7 +953,6 @@ static void	_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx )
 		}
 		else if( inCnx->state == kHTTPConnectionStatePreparingEvent )
 		{
-
 			msg = inCnx->eventList;
 			if( !msg )
 			{
@@ -988,7 +965,6 @@ static void	_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx )
 		}
 		else if( inCnx->state == kHTTPConnectionStateWritingEvent )
 		{
-
 			msg = inCnx->eventList;
 			err = HTTPMessageWriteMessage( msg, inCnx->transportDelegate.writev_f, inCnx->transportDelegate.context );
 			err = _HTTPConnectionHandleIOError( inCnx, err, false );
@@ -997,10 +973,6 @@ static void	_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx )
 			
 			if( ( inCnx->eventList = msg->next ) == NULL )
 				  inCnx->eventNext = &inCnx->eventList;
-			#if( COMPILER_HAS_BLOCKS )
-			if( msg->completionBlock ) msg->completionBlock( msg );
-			else
-			#endif
 			if( msg->completion ) msg->completion( msg );
 			HTTPMessageReset( msg );
 			CFRelease( msg );
@@ -1008,7 +980,6 @@ static void	_HTTPConnectionRunStateMachine( HTTPConnectionRef inCnx )
 		}
 		else
 		{
-
 			dlogassert( "Bad state %d", inCnx->state );
 			err = kInternalErr;
 			goto exit;
@@ -1064,198 +1035,6 @@ static OSStatus	_HTTPConnectionHandleIOError( HTTPConnectionRef inCnx, OSStatus 
 #endif
 
 //===========================================================================================================================
-//	HTTPConnectionGetNextURLSegmentEx
-//===========================================================================================================================
-
-Boolean
-	HTTPConnectionGetNextURLSegmentEx( 
-		HTTPConnectionRef	inCnx, 
-		HTTPMessageRef		inMsg, 
-		Boolean				inDontSendResponse, 
-		const char **		outPtr, 
-		size_t *			outLen, 
-		OSStatus *			outErr )
-{
-	HTTPHeader * const		hdr = &inMsg->header;
-	Boolean					good;
-	OSStatus				err;
-	const char *			src;
-	const char *			ptr;
-	const char *			end;
-	
-	src = hdr->url.segmentPtr;
-	end = hdr->url.segmentEnd;
-	for( ptr = src; ( ptr < end ) && ( *ptr != '/' ); ++ptr ) {}
-	good = (Boolean)( ptr != src );
-	if( good )
-	{
-		*outPtr = src;
-		*outLen = (size_t)( ptr - src );
-		hdr->url.segmentPtr = ( ptr < end ) ? ( ptr + 1 ) : ptr;
-	}
-	else if( !inDontSendResponse )
-	{
-		ulog( inCnx->ucat, kLogLevelWarning, "### Bad URL segment: '%.*s'\n", (int) hdr->urlLen, hdr->urlPtr );
-		err = HTTPConnectionSendStatusResponse( inCnx, kHTTPStatus_BadRequest, kPathErr );
-		require_noerr( err, exit );
-	}
-	err = kNoErr;
-	
-exit:
-	*outErr = err;
-	return( good );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionInitResponse
-//===========================================================================================================================
-
-OSStatus	HTTPConnectionInitResponse( HTTPConnectionRef inCnx, HTTPStatus inStatusCode, OSStatus inError )
-{
-	return( HTTPConnectionInitResponseEx( inCnx, NULL, inStatusCode, inError ) );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionInitResponseEx
-//===========================================================================================================================
-
-OSStatus	HTTPConnectionInitResponseEx( HTTPConnectionRef inCnx, const char *inProtocol, HTTPStatus inStatusCode, OSStatus inError )
-{
-	OSStatus			err;
-	char				str[ 64 ];
-	const char *		ptr;
-	
-	HTTPHeader_InitResponseEx( &inCnx->responseMsg->header, inProtocol ? inProtocol : inCnx->delegate.httpProtocol, 
-		inStatusCode, NULL, inError );
-	ptr = HTTPMakeDateString( time( NULL ), str, sizeof( str ) );
-	if( *ptr != '\0' ) HTTPHeader_SetField( &inCnx->responseMsg->header, kHTTPHeader_Date, "%s", ptr );
-	if( inCnx->delegate.initResponse_f )
-	{
-		err = inCnx->delegate.initResponse_f( inCnx, inCnx->responseMsg, inCnx->delegate.context );
-		require_noerr( err, exit );
-	}
-	inCnx->responseMsg->bodyLen = 0;
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionSendBinaryBytes
-//===========================================================================================================================
-
-OSStatus
-	HTTPConnectionSendBinaryBytes( 
-		HTTPConnectionRef				inCnx, 
-		HTTPMessageFlags				inFlags, 
-		uint8_t							inChannelID, 
-		const void *					inPtr, 
-		size_t							inLen,  
-		HTTPMessageBinaryCompletion_f	inCompletion, 
-		void *							inContext )
-{
-	OSStatus			err;
-	HTTPMessageRef		msg = NULL;
-	uint8_t *			dst;
-	
-	require_action( inLen <= 0xFFFF, exit, err = kSizeErr );
-	
-	err = HTTPMessageCreate( &msg );
-	require_noerr( err, exit );
-	
-	if( inFlags & kHTTPMessageFlag_NoCopy )
-	{
-		msg->bodyPtr = (uint8_t *) inPtr;
-		msg->bodyLen = inLen;
-	}
-	else
-	{
-		err = HTTPMessageSetBodyLength( msg, inLen );
-		require_noerr( err, exit );
-		if( inLen > 0 ) memmove( msg->bodyPtr, inPtr, inLen ); // memmove in case inPtr is in the middle of the buffer.
-	}
-	
-	dst = (uint8_t *) msg->header.buf;
-	dst[ 0 ] = '$';
-	dst[ 1 ] = inChannelID;
-	dst[ 2 ] = (uint8_t)( inLen >> 8 );
-	dst[ 3 ] = (uint8_t)( inLen & 0xFF );
-	msg->header.len	= 4;
-	
-	if( inCompletion )
-	{
-		msg->binaryCompletion_f	= inCompletion;
-		msg->userContext1		= inContext;
-		msg->completion			= _HTTPConnectionSendBinaryCompletion;
-	}
-	
-	err = HTTPConnectionSendEvent( inCnx, msg );
-	require_noerr( err, exit );
-	
-exit:
-	CFReleaseNullSafe( msg );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_HTTPConnectionSendBinaryCompletion
-//===========================================================================================================================
-
-static void	_HTTPConnectionSendBinaryCompletion( HTTPMessageRef inMsg )
-{
-	inMsg->binaryCompletion_f( inMsg->status, inMsg->userContext1 );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionSendEvent
-//===========================================================================================================================
-
-OSStatus	HTTPConnectionSendEvent( HTTPConnectionRef inCnx, HTTPMessageRef inMsg )
-{
-	OSStatus		err;
-	
-	err = HTTPHeader_Commit( &inMsg->header );
-	require_noerr( err, exit );
-	
-	inMsg->httpContext1 = inCnx;
-	CFRetain( inCnx );
-	CFRetain( inMsg );
-	dispatch_async_f( inCnx->queue, inMsg, _HTTPConnectionSendEvent );
-	
-exit:
-	return( err );
-}
-
-static void	_HTTPConnectionSendEvent( void *inContext )
-{
-	HTTPMessageRef const		msg = (HTTPMessageRef) inContext;
-	HTTPConnectionRef const		cnx = (HTTPConnectionRef) msg->httpContext1;
-	
-	msg->next = NULL;
-	msg->iov[ 0 ].iov_base = msg->header.buf;
-	msg->iov[ 0 ].iov_len  = msg->header.len;
-	msg->ion = 1;
-	if( msg->bodyLen > 0 )
-	{
-		msg->iov[ 1 ].iov_base = msg->bodyPtr;
-		msg->iov[ 1 ].iov_len  = msg->bodyLen;
-		msg->ion = 2;
-	}
-	msg->iop = msg->iov;
-	
-	*cnx->eventNext = msg;
-	 cnx->eventNext = &msg->next;
-	
-	if( cnx->state == kHTTPConnectionStateReadingRequest )
-	{
-		cnx->state = kHTTPConnectionStatePreparingEvent;
-		_HTTPConnectionRunStateMachine( cnx );
-	}
-	CFRelease( cnx );
-}
-
-//===========================================================================================================================
 //	HTTPConnectionSendResponse
 //
 //	Must be called from the connection queue.
@@ -1292,144 +1071,6 @@ exit:
 	return( err );
 }
 
-//===========================================================================================================================
-//	HTTPConnectionSendSimpleResponseEx
-//
-//	Must be called from the connection queue.
-//===========================================================================================================================
-
-OSStatus
-	HTTPConnectionSendSimpleResponseEx( 
-		HTTPConnectionRef	inCnx, 
-		HTTPStatus			inStatus, 
-		OSStatus			inError, 
-		const char *		inContentType, 
-		const void *		inBodyPtr, 
-		size_t				inBodyLen )
-{
-	return( HTTPConnectionSendSimpleResponseEx2( inCnx, NULL, inStatus, inError, inContentType, inBodyPtr, inBodyLen ) );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionSendSimpleResponseEx2
-//
-//	Must be called from the connection queue.
-//===========================================================================================================================
-
-OSStatus
-	HTTPConnectionSendSimpleResponseEx2( 
-		HTTPConnectionRef	inCnx, 
-		const char *		inProtocol, 
-		HTTPStatus			inStatus, 
-		OSStatus			inError, 
-		const char *		inContentType, 
-		const void *		inBodyPtr, 
-		size_t				inBodyLen )
-{
-	OSStatus		err;
-	
-	err = HTTPConnectionInitResponseEx( inCnx, inProtocol, inStatus, inError );
-	require_noerr( err, exit );
-	
-	err = HTTPMessageSetBody( inCnx->responseMsg, inContentType, inBodyPtr, inBodyLen );
-	require_noerr( err, exit );
-	
-	err = HTTPConnectionSendResponse( inCnx );
-	require_noerr( err, exit );
-	
-exit:
-	if( err ) ulog( inCnx->ucat, kLogLevelWarning, "### Response failed: %#m\n", err );
-	return( err );
-}
-
-//===========================================================================================================================
-//	HTTPConnectionVerifyAuth
-//===========================================================================================================================
-
-OSStatus	HTTPConnectionVerifyAuth( HTTPConnectionRef inCnx, HTTPMessageRef inMsg, Boolean *outAllow )
-{
-	HTTPServerRef const			server = inCnx->server;
-	OSStatus					err;
-	Boolean						allow = false;
-	HTTPAuthorizationInfo		authInfo;
-	HTTPStatus					status;
-	char						nonceStr[ 64 ];
-	
-	if( inCnx->authorized || !server->password )
-	{
-		inCnx->authorized = true;
-		allow = true;
-		err = kNoErr;
-		goto exit;
-	}
-	if( inCnx->delegate.requiresAuth_f && !inCnx->delegate.requiresAuth_f( inCnx, inMsg, inCnx->delegate.context ) )
-	{
-		allow = true;
-		err = kNoErr;
-		goto exit;
-	}
-	if( !server->timedNonceInitialized )
-	{
-		err = RandomBytes( server->timedNonceKey, sizeof( server->timedNonceKey ) );
-		require_noerr( err, exit );
-		server->timedNonceInitialized = true;
-	}
-	
-	memset( &authInfo, 0, sizeof( authInfo ) );
-	authInfo.serverScheme			= kHTTPAuthorizationScheme_Digest;
-	authInfo.serverPassword			= server->password;
-	authInfo.serverTimedNonceKeyPtr	= server->timedNonceKey;
-	authInfo.serverTimedNonceKeyLen	= sizeof( server->timedNonceKey );
-	authInfo.headerPtr				= inMsg->header.buf;
-	authInfo.headerLen				= inMsg->header.len;
-	authInfo.requestMethodPtr		= inMsg->header.methodPtr;
-	authInfo.requestMethodLen		= inMsg->header.methodLen;
-	authInfo.requestURLPtr			= inMsg->header.urlPtr;
-	authInfo.requestURLLen			= inMsg->header.urlLen;
-	status = HTTPVerifyAuthorization( &authInfo );
-	if( status == kHTTPStatus_OK )
-	{
-		inCnx->authorized = true;
-		allow = true;
-		err = kNoErr;
-		goto exit;
-	}
-	else if( status == kHTTPStatus_Unauthorized )
-	{
-		// Some HTTP clients use separate connections for each auth attempt so we have to use a timed nonce instead 
-		// of a stronger per-connection nonce.
-		
-		err = HTTPMakeTimedNonce( kHTTPTimedNonceETagPtr, kHTTPTimedNonceETagLen, 
-			server->timedNonceKey, sizeof( server->timedNonceKey ), 
-			nonceStr, sizeof( nonceStr ), NULL );
-		require_noerr_action( err, statusExit, status = kHTTPStatus_InternalServerError );
-		require_action( server->realm, statusExit, status = kHTTPStatus_InternalServerError );
-		
-		err = HTTPConnectionInitResponse( inCnx, kHTTPStatus_Unauthorized, kNoErr );
-		require_noerr( err, exit );
-		
-		HTTPHeader_SetField( &inCnx->responseMsg->header, kHTTPHeader_ContentLength, "0" );
-		HTTPHeader_SetField( &inCnx->responseMsg->header, kHTTPHeader_WWWAuthenticate, "Digest realm=\"%s\", nonce=\"%s\"", 
-			server->realm, nonceStr );
-		
-		err = HTTPConnectionSendResponse( inCnx );
-		require_noerr( err, exit );
-		goto exit;
-	}
-	else
-	{
-		err = kNoErr;
-	}
-	
-statusExit:
-	err = HTTPConnectionSendStatusResponse( inCnx, status, err );
-	require_noerr( err, exit );
-
-exit:
-	*outAllow = allow;
-	return( err );
-}
-
 #if 0
 #pragma mark -
 #endif
@@ -1453,22 +1094,11 @@ OSStatus	HTTPServerTest( void )
 	tempObj = NULL;
 	
 	HTTPServerDelegateInit( &delegate );
-#if( HTTP_SERVER_TEST_GCM )
-	delegate.initializeConnection_f	= HTTPServerTestInitConnection;
-#endif
 	delegate.handleMessage_f		= HTTPServerTestHandleMessage;
 	
 	err = HTTPServerCreate( &server, &delegate );
 	require_noerr( err, exit );
 	server->listenPort = 8000;
-	
-#if( !HTTP_SERVER_TEST_GCM )
-	err = HTTPServerSetPropertyF( server, kCFObjectFlagDirect, kHTTPServerProperty_Password, NULL, "%s", "password" );
-	require_noerr( err, exit );
-	
-	err = HTTPServerSetPropertyF( server, kCFObjectFlagDirect, kHTTPServerProperty_Realm, NULL, "%s", "realm" );
-	require_noerr( err, exit );
-#endif
 	
 	HTTPServerStart( server );
 	while( CFRunLoopRunInMode( kCFRunLoopDefaultMode, 30.0, true ) != kCFRunLoopRunTimedOut ) {}
@@ -1481,24 +1111,101 @@ exit:
 	return( err );
 }
 
-#if( HTTP_SERVER_TEST_GCM )
-OSStatus	HTTPServerTestInitConnection( HTTPConnectionRef inCnx, void *inContext )
+OSStatus	HTTPConnectionInitResponse( HTTPConnectionRef inCnx, HTTPStatus inStatusCode );
+OSStatus	HTTPConnectionInitResponse( HTTPConnectionRef inCnx, HTTPStatus inStatusCode )
 {
-	OSStatus					err;
-	NetTransportDelegate		delegate;
+	OSStatus			err;
+	char				str[ 64 ];
+	const char *		ptr;
 	
-	(void) inContext;
-	
-	err = NetTransportGCMConfigure( &delegate, NULL, 
-		(const uint8_t *) "0123456789ABCDEF", (const uint8_t *) "0123456789ABCDEF", 
-		(const uint8_t *) "0123456789abcdef", (const uint8_t *) "0123456789abcdef" );
-	require_noerr( err, exit );
-	HTTPConnectionSetTransportDelegate( inCnx, &delegate );
+	HTTPHeader_InitResponse( &inCnx->responseMsg->header, inCnx->delegate.httpProtocol, inStatusCode, NULL );
+	ptr = HTTPMakeDateString( time( NULL ), str, sizeof( str ) );
+	if( *ptr != '\0' ) HTTPHeader_AddField( &inCnx->responseMsg->header, kHTTPHeader_Date, ptr );
+	if( inCnx->delegate.initResponse_f )
+	{
+		err = inCnx->delegate.initResponse_f( inCnx, inCnx->responseMsg, inCnx->delegate.context );
+		require_noerr( err, exit );
+	}
+	inCnx->responseMsg->bodyLen = 0;
+	err = kNoErr;
 	
 exit:
 	return( err );
 }
-#endif
+
+OSStatus
+HTTPConnectionSendSimpleResponse(
+									HTTPConnectionRef	inCnx,
+									HTTPStatus			inStatus,
+									const char *		inContentType,
+									const void *		inBodyPtr,
+									size_t				inBodyLen );
+OSStatus
+HTTPConnectionSendSimpleResponse(
+									HTTPConnectionRef	inCnx,
+									HTTPStatus			inStatus,
+									const char *		inContentType,
+									const void *		inBodyPtr,
+									size_t				inBodyLen )
+{
+	OSStatus		err;
+	
+	err = HTTPConnectionInitResponse( inCnx, inStatus );
+	require_noerr( err, exit );
+	
+	void* ptr = malloc( inBodyLen );
+	memcpy( ptr, inBodyPtr, inBodyLen );
+	err = HTTPMessageSetBodyPtr( inCnx->responseMsg, inContentType, ptr, inBodyLen );
+	require_noerr( err, exit );
+	
+	err = HTTPConnectionSendResponse( inCnx );
+	require_noerr( err, exit );
+	
+exit:
+	if( err ) ulog( inCnx->ucat, kLogLevelWarning, "### Response failed: %#m\n", err );
+	return( err );
+}
+
+//===========================================================================================================================
+//	HTTPConnectionGetNextURLSegment
+//===========================================================================================================================
+
+Boolean
+HTTPConnectionGetNextURLSegment(
+								HTTPConnectionRef	inCnx,
+								HTTPMessageRef		inMsg,
+								const char **		outPtr,
+								size_t *			outLen,
+								OSStatus *			outErr );
+Boolean
+HTTPConnectionGetNextURLSegment(
+								HTTPConnectionRef	inCnx,
+								HTTPMessageRef		inMsg,
+								const char **		outPtr,
+								size_t *			outLen,
+								OSStatus *			outErr )
+{
+	HTTPHeader * const		hdr = &inMsg->header;
+	Boolean					good;
+	const char *			src;
+	const char *			ptr;
+	const char *			end;
+	
+	(void)inCnx;
+	src = hdr->url.segmentPtr;
+	end = hdr->url.segmentEnd;
+	for( ptr = src; ( ptr < end ) && ( *ptr != '/' ); ++ptr ) {}
+	good = (Boolean)( ptr != src );
+	if( good )
+	{
+		*outPtr = src;
+		*outLen = (size_t)( ptr - src );
+		hdr->url.segmentPtr = ( ptr < end ) ? ( ptr + 1 ) : ptr;
+	}
+	
+	*outErr = kNoErr;
+	return( good );
+}
 
 OSStatus	HTTPServerTestHandleMessage( HTTPConnectionRef inCnx, HTTPMessageRef inMsg, void *inContext )
 {
@@ -1509,15 +1216,7 @@ OSStatus	HTTPServerTestHandleMessage( HTTPConnectionRef inCnx, HTTPMessageRef in
 	
 	(void) inContext;
 	
-	good = inCnx->authorized;
-	if( !good )
-	{
-		err = HTTPConnectionVerifyAuth( inCnx, inMsg, &good );
-		require_noerr( err, exit );
-		if( !good ) goto exit;
-	}
-	
-	good = HTTPConnectionGetNextURLSegmentEx( inCnx, inMsg, true, &ptr, &len, &err );
+	good = HTTPConnectionGetNextURLSegment( inCnx, inMsg, &ptr, &len, &err );
 	if( good && ( len == 4 ) && ( memcmp( ptr, "stop", 4 ) == 0 ) )
 	{
 		err = HTTPConnectionSendSimpleResponse( inCnx, kHTTPStatus_OK, kMIMEType_TextPlain, "quit", 4 );
@@ -1528,8 +1227,7 @@ OSStatus	HTTPServerTestHandleMessage( HTTPConnectionRef inCnx, HTTPMessageRef in
 	}
 	else
 	{
-		err = HTTPConnectionSendSimpleResponse( inCnx, kHTTPStatus_OK, kMIMEType_TextPlain, 
-			inCnx->requestMsg->header.urlPtr, inCnx->requestMsg->header.urlLen );
+		err = HTTPConnectionSendSimpleResponse( inCnx, kHTTPStatus_OK, kMIMEType_TextPlain, inCnx->requestMsg->header.urlPtr, inCnx->requestMsg->header.urlLen );
 		require_noerr( err, exit );
 	}
 	

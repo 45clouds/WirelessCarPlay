@@ -2,7 +2,7 @@
 	File:    	TickUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "TickUtils.h"
@@ -370,36 +370,6 @@ uint64_t	UpTicksToNTP( uint64_t inTicks )
 	return( ( ( inTicks / ticksPerSec ) << 32 ) | ( ( ( inTicks % ticksPerSec ) << 32 ) / ticksPerSec ) );
 }
 
-#if( !TARGET_OS_THREADX )
-//===========================================================================================================================
-//	UpTicksToTimeValTimeout
-//===========================================================================================================================
-
-struct timeval *	UpTicksToTimeValTimeout( uint64_t inDeadlineTicks, struct timeval *inTimeVal )
-{
-	uint64_t		ticks;
-	uint64_t		mics;
-	
-	if( inDeadlineTicks != kUpTicksForever )
-	{
-		ticks = UpTicks();
-		if( inDeadlineTicks > ticks )
-		{
-			mics = UpTicksToMicroseconds( inDeadlineTicks - ticks );
-			inTimeVal->tv_sec  = (int)( mics / 1000000 );
-			inTimeVal->tv_usec = (int)( mics % 1000000 );
-		}
-		else
-		{
-			inTimeVal->tv_sec  = 0;
-			inTimeVal->tv_usec = 0;
-		}
-		return( inTimeVal );
-	}
-	return( NULL );
-}
-#endif
-
 #if 0
 #pragma mark -
 #endif
@@ -465,141 +435,133 @@ uint64_t	NTPtoUpTicks( uint64_t inNTP )
 
 #if( !EXCLUDE_UNIT_TESTS )
 
-#include "TestUtils.h"
-
 //===========================================================================================================================
 //	TickUtilsTest
 //===========================================================================================================================
 
-static void	_TickUtilsTest( TUTestContext *inTestCtx );
-
-void	TickUtilsTest( void )
+OSStatus TickUtilsTest( void )
 {
-	_TUPerformTest( "TickUtilsTest", _TickUtilsTest );
-}
-
-static void	_TickUtilsTest( TUTestContext *inTestCtx )
-{
+	OSStatus err = kNoErr;
 	uint64_t		ticks, u64;
 	
 	// UpTicksPerSecond
 	
 	#if( TARGET_OS_DARWIN && ( TARGET_CPU_X86 || TARGET_CPU_X86_64 ) )
-		tu_require( UpTicksPerSecond() == 1000000000, exit );
+		require_action( UpTicksPerSecond() == 1000000000, exit, err = kMismatchErr );
 	#elif( TARGET_OS_DARWIN && ( TARGET_CPU_ARM || TARGET_CPU_ARM64 ) )
-		tu_require( UpTicksPerSecond() == 24000000, exit );
+		require_action( UpTicksPerSecond() == 24000000, exit, err = kMismatchErr );
 	#else
-		tu_require( UpTicksPerSecond() >= 1000, exit );
+		require_action( UpTicksPerSecond() >= 1000, exit, err = kMismatchErr );
 	#endif
 	
 	// UpTicks
 	
-	tu_require( UpTicks() > 0, exit );
-	tu_require( UpSeconds() > 0, exit );
-	tu_require( UpMilliseconds() > 0, exit );
-	tu_require( UpMicroseconds() > 0, exit );
-	tu_require( UpNanoseconds() > 0, exit );
-	tu_require( UpNTP() > 0, exit );
+	require_action( UpTicks() > 0, exit, err = kValueErr );
+	require_action( UpSeconds() > 0, exit, err = kValueErr );
+	require_action( UpMilliseconds() > 0, exit, err = kValueErr );
+	require_action( UpMicroseconds() > 0, exit, err = kValueErr );
+	require_action( UpNanoseconds() > 0, exit, err = kValueErr );
+	require_action( UpNTP() > 0, exit, err = kValueErr );
 			
 	// UpTicksToSeconds
 	
-	tu_require( UpTicksToSeconds( 0 ) == 0, exit );
-	tu_require( UpTicksToSecondsF( 0 ) == 0.0, exit );
-	tu_require( UpTicksToSeconds( UpTicksPerSecond() / 2 ) == 0, exit );
-	tu_require( UpTicksToSecondsF( UpTicksPerSecond() / 2 ) == 0.5, exit );
-	tu_require( UpTicksToSeconds( UpTicksPerSecond() ) == 1, exit );
-	tu_require( UpTicksToSecondsF( UpTicksPerSecond() ) == 1.0, exit );
-	tu_require( UpTicksToSecondsF( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1.5, exit );
-	tu_require( UpTicksToSeconds( UpTicksPerSecond() * 2 ) == 2, exit );
+	require_action( UpTicksToSeconds( 0 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToSecondsF( 0 ) == 0.0, exit, err = kValueErr );
+	require_action( UpTicksToSeconds( UpTicksPerSecond() / 2 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToSecondsF( UpTicksPerSecond() / 2 ) == 0.5, exit, err = kValueErr );
+	require_action( UpTicksToSeconds( UpTicksPerSecond() ) == 1, exit, err = kValueErr );
+	require_action( UpTicksToSecondsF( UpTicksPerSecond() ) == 1.0, exit, err = kValueErr );
+	require_action( UpTicksToSecondsF( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1.5, exit, err = kValueErr );
+	require_action( UpTicksToSeconds( UpTicksPerSecond() * 2 ) == 2, exit, err = kValueErr );
 	
 	// UpTicksToMilliseconds
 	
-	tu_require( UpTicksToMilliseconds( 0 ) == 0, exit );
-	tu_require( UpTicksToMilliseconds( UpTicksPerSecond() / 2 ) == 500, exit );
-	tu_require( UpTicksToMilliseconds( UpTicksPerSecond() ) == 1000, exit );
-	tu_require( UpTicksToMilliseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500, exit );
-	tu_require( UpTicksToMilliseconds( UpTicksPerSecond() * 2 ) == 2000, exit );
+	require_action( UpTicksToMilliseconds( 0 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToMilliseconds( UpTicksPerSecond() / 2 ) == 500, exit, err = kValueErr );
+	require_action( UpTicksToMilliseconds( UpTicksPerSecond() ) == 1000, exit, err = kValueErr );
+	require_action( UpTicksToMilliseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500, exit, err = kValueErr );
+	require_action( UpTicksToMilliseconds( UpTicksPerSecond() * 2 ) == 2000, exit, err = kValueErr );
 	
 	// UpTicksToMicroseconds
 	
-	tu_require( UpTicksToMicroseconds( 0 ) == 0, exit );
-	tu_require( UpTicksToMicroseconds( UpTicksPerSecond() / 2 ) == 500000, exit );
-	tu_require( UpTicksToMicroseconds( UpTicksPerSecond() ) == 1000000, exit );
-	tu_require( UpTicksToMicroseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500000, exit );
-	tu_require( UpTicksToMicroseconds( UpTicksPerSecond() * 2 ) == 2000000, exit );
+	require_action( UpTicksToMicroseconds( 0 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToMicroseconds( UpTicksPerSecond() / 2 ) == 500000, exit, err = kValueErr );
+	require_action( UpTicksToMicroseconds( UpTicksPerSecond() ) == 1000000, exit, err = kValueErr );
+	require_action( UpTicksToMicroseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500000, exit, err = kValueErr );
+	require_action( UpTicksToMicroseconds( UpTicksPerSecond() * 2 ) == 2000000, exit, err = kValueErr );
 	
 	// UpTicksToNanoseconds
 	
-	tu_require( UpTicksToNanoseconds( 0 ) == 0, exit );
-	tu_require( UpTicksToNanoseconds( UpTicksPerSecond() / 2 ) == 500000000, exit );
-	tu_require( UpTicksToNanoseconds( UpTicksPerSecond() ) == 1000000000, exit );
-	tu_require( UpTicksToNanoseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500000000, exit );
-	tu_require( UpTicksToNanoseconds( UpTicksPerSecond() * 2 ) == 2000000000, exit );
+	require_action( UpTicksToNanoseconds( 0 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToNanoseconds( UpTicksPerSecond() / 2 ) == 500000000, exit, err = kValueErr );
+	require_action( UpTicksToNanoseconds( UpTicksPerSecond() ) == 1000000000, exit, err = kValueErr );
+	require_action( UpTicksToNanoseconds( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 1500000000, exit, err = kValueErr );
+	require_action( UpTicksToNanoseconds( UpTicksPerSecond() * 2 ) == 2000000000, exit, err = kValueErr );
 	
 	// UpTicksToNTP
 	
-	tu_require( UpTicksToNTP( 0 ) == 0, exit );
-	tu_require( UpTicksToNTP( UpTicksPerSecond() / 2 ) == 0x80000000, exit );
-	tu_require( UpTicksToNTP( UpTicksPerSecond() ) == 0x0000000100000000, exit );
-	tu_require( UpTicksToNTP( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 0x0000000180000000, exit );
+	require_action( UpTicksToNTP( 0 ) == 0, exit, err = kValueErr );
+	require_action( UpTicksToNTP( UpTicksPerSecond() / 2 ) == 0x80000000, exit, err = kValueErr );
+	require_action( UpTicksToNTP( UpTicksPerSecond() ) == 0x0000000100000000, exit, err = kValueErr );
+	require_action( UpTicksToNTP( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ) == 0x0000000180000000, exit, err = kValueErr );
 	
 	// SecondsToUpTicks
 	
-	tu_require( SecondsToUpTicks( 0 ) == 0, exit );
-	tu_require( SecondsToUpTicksF( 0.0 ) == 0, exit );
-	tu_require( SecondsToUpTicks( 1 ) == UpTicksPerSecond(), exit );
-	tu_require( SecondsToUpTicksF( 1.0 ) == UpTicksPerSecond(), exit );
-	tu_require( SecondsToUpTicksF( 1.5 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit );
-	tu_require( SecondsToUpTicks( 2 ) == ( UpTicksPerSecond() * 2 ), exit );
-	tu_require( SecondsToUpTicksF( 2.0 ) == ( UpTicksPerSecond() * 2 ), exit );
+	require_action( SecondsToUpTicks( 0 ) == 0, exit, err = kValueErr );
+	require_action( SecondsToUpTicksF( 0.0 ) == 0, exit, err = kValueErr );
+	require_action( SecondsToUpTicks( 1 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( SecondsToUpTicksF( 1.0 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( SecondsToUpTicksF( 1.5 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit, err = kValueErr );
+	require_action( SecondsToUpTicks( 2 ) == ( UpTicksPerSecond() * 2 ), exit, err = kValueErr );
+	require_action( SecondsToUpTicksF( 2.0 ) == ( UpTicksPerSecond() * 2 ), exit, err = kValueErr );
 	
 	// MillisecondsToUpTicks
 	
-	tu_require( MillisecondsToUpTicks( 0 ) == 0, exit );
-	tu_require( MillisecondsToUpTicks( 500 ) == ( UpTicksPerSecond() / 2 ), exit );
-	tu_require( MillisecondsToUpTicks( 1000 ) == UpTicksPerSecond(), exit );
-	tu_require( MillisecondsToUpTicks( 1500 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit );
-	tu_require( MillisecondsToUpTicks( 2000 ) == ( UpTicksPerSecond() * 2 ), exit );
+	require_action( MillisecondsToUpTicks( 0 ) == 0, exit, err = kValueErr );
+	require_action( MillisecondsToUpTicks( 500 ) == ( UpTicksPerSecond() / 2 ), exit, err = kValueErr );
+	require_action( MillisecondsToUpTicks( 1000 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( MillisecondsToUpTicks( 1500 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit, err = kValueErr );
+	require_action( MillisecondsToUpTicks( 2000 ) == ( UpTicksPerSecond() * 2 ), exit, err = kValueErr );
 	
 	// MicrosecondsToUpTicks
 	
-	tu_require( MicrosecondsToUpTicks( 0 ) == 0, exit );
-	tu_require( MicrosecondsToUpTicks( 500000 ) == ( UpTicksPerSecond() / 2 ), exit );
-	tu_require( MicrosecondsToUpTicks( 1000000 ) == UpTicksPerSecond(), exit );
-	tu_require( MicrosecondsToUpTicks( 1500000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit );
-	tu_require( MicrosecondsToUpTicks( 2000000 ) == ( UpTicksPerSecond() * 2 ), exit );
+	require_action( MicrosecondsToUpTicks( 0 ) == 0, exit, err = kValueErr );
+	require_action( MicrosecondsToUpTicks( 500000 ) == ( UpTicksPerSecond() / 2 ), exit, err = kValueErr );
+	require_action( MicrosecondsToUpTicks( 1000000 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( MicrosecondsToUpTicks( 1500000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit, err = kValueErr );
+	require_action( MicrosecondsToUpTicks( 2000000 ) == ( UpTicksPerSecond() * 2 ), exit, err = kValueErr );
 	
 	// NanosecondsToUpTicks
 	
-	tu_require( NanosecondsToUpTicks( 0 ) == 0, exit );
-	tu_require( NanosecondsToUpTicks( 500000000 ) == ( UpTicksPerSecond() / 2 ), exit );
-	tu_require( NanosecondsToUpTicks( 1000000000 ) == UpTicksPerSecond(), exit );
-	tu_require( NanosecondsToUpTicks( 1500000000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit );
-	tu_require( NanosecondsToUpTicks( 2000000000 ) == ( UpTicksPerSecond() * 2 ), exit );
+	require_action( NanosecondsToUpTicks( 0 ) == 0, exit, err = kValueErr );
+	require_action( NanosecondsToUpTicks( 500000000 ) == ( UpTicksPerSecond() / 2 ), exit, err = kValueErr );
+	require_action( NanosecondsToUpTicks( 1000000000 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( NanosecondsToUpTicks( 1500000000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit, err = kValueErr );
+	require_action( NanosecondsToUpTicks( 2000000000 ) == ( UpTicksPerSecond() * 2 ), exit, err = kValueErr );
 	
 	// NTPtoUpTicks
 	
-	tu_require( NTPtoUpTicks( 0 ) == 0, exit );
-	tu_require( NTPtoUpTicks( 0x80000000 ) == ( UpTicksPerSecond() / 2 ), exit );
-	tu_require( NTPtoUpTicks( 0x0000000100000000 ) == UpTicksPerSecond(), exit );
-	tu_require( NTPtoUpTicks( 0x0000000180000000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit );
+	require_action( NTPtoUpTicks( 0 ) == 0, exit, err = kValueErr );
+	require_action( NTPtoUpTicks( 0x80000000 ) == ( UpTicksPerSecond() / 2 ), exit, err = kValueErr );
+	require_action( NTPtoUpTicks( 0x0000000100000000 ) == UpTicksPerSecond(), exit, err = kValueErr );
+	require_action( NTPtoUpTicks( 0x0000000180000000 ) == ( UpTicksPerSecond() + ( UpTicksPerSecond() / 2 ) ), exit, err = kValueErr );
 	
 	// SleepForUpTicks
 			
 	ticks = UpTicks();
 	SleepForUpTicks( MillisecondsToUpTicks( 100 ) );
 	u64 = UpTicksToMilliseconds( UpTicks() - ticks );
-	tu_require( ( u64 >= 99 ) && ( u64 <= 200 ), exit );
+	require_action( ( u64 >= 99 ) && ( u64 <= 200 ), exit, err = kValueErr );
 	
 	// SleepUntilUpTicks
 	
 	ticks = UpTicks();
 	SleepUntilUpTicks( UpTicks() + MillisecondsToUpTicks( 100 ) );
 	u64 = UpTicksToMilliseconds( UpTicks() - ticks );
-	tu_require( ( u64 >= 99 ) && ( u64 <= 200 ), exit );
+	require_action( ( u64 >= 99 ) && ( u64 <= 200 ), exit, err = kValueErr );
 	
 exit:
-	return;
+	return err;
 }
 
 #endif // !EXCLUDE_UNIT_TESTS

@@ -2,7 +2,7 @@
 	File:    	AsyncConnection.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -62,10 +62,9 @@
 #include "CFUtils.h"
 #include "DebugServices.h"
 #include "NetUtils.h"
-#include "StringUtils.h"
 #include "URLUtils.h"
 
-#include<glib.h>
+
 #if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
 	#include <SystemConfiguration/SystemConfiguration.h>
 	
@@ -393,13 +392,8 @@ static void	_AsyncConnection_Connect( void *inArg )
 			#if( TARGET_HAS_REACHABILITY )
 			if( connection->flags & kAsyncConnectionFlag_Reachability )
 			{
-
 				err = _AsyncConnection_ReachabilityStart( connection, NULL, &sip, 0, connection->defaultPort );
-				if( err )
-				{
-					err = _AsyncConnection_StartConnect( connection, NULL, &sip, 0, connection->defaultPort );
-				}
-
+				if( err ) err = _AsyncConnection_StartConnect( connection, NULL, &sip, 0, connection->defaultPort );
 				require_noerr_quiet( err, exit );
 			}
 			else
@@ -410,7 +404,7 @@ static void	_AsyncConnection_Connect( void *inArg )
 			}
 		}
 		#if( ASYNC_CONNECTION_BONJOUR )
-		else if( stristr( ptr, "._tcp." ) )
+		else if( strcasestr( ptr, "._tcp." ) )
 		{
 			err = _AsyncConnection_StartSRVQuery( connection, ptr, connection->defaultPort );
 			require_noerr( err, exit );
@@ -740,7 +734,6 @@ static void DNSSD_API
 	}
 #endif
 	
-
 	err = _AsyncConnection_StartConnect( connection, operation, inAddr, inIfIndex, operation->defaultPort );
 	require_noerr_quiet( err, exit );
 	

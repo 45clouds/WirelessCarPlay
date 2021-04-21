@@ -2,7 +2,7 @@
 	File:    	SHAUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 	 
 #ifndef __SHAUtils_h__
@@ -113,29 +113,6 @@ unsigned char *	SHA512_compat( const void *inData, size_t inLen, unsigned char *
 OSStatus	SHA512_Test( void );
 
 //===========================================================================================================================
-//	SHA-3 (Keccak)
-//===========================================================================================================================
-
-#define SHA3_BLOCK_SIZE			72
-#define SHA3_DIGEST_LENGTH		64
-
-typedef struct
-{
-	uint64_t		state[ 25 ];
-	size_t			buffered;
-	uint8_t			buffer[ SHA3_BLOCK_SIZE ];
-	
-}	SHA3_CTX_compat;
-
-int	SHA3_Init_compat( SHA3_CTX_compat *ctx );
-int	SHA3_Update_compat( SHA3_CTX_compat *ctx, const void *inData, size_t inLen );
-int	SHA3_Final_compat( unsigned char *outDigest, SHA3_CTX_compat *ctx );
-uint8_t *	SHA3_compat( const void *inData, size_t inLen, uint8_t outDigest[ 64 ] );
-
-OSStatus	SHA3_Test( void );
-OSStatus	SHA3_TestFile( const char *inPath );
-
-//===========================================================================================================================
 //	HMAC_SHA1
 //===========================================================================================================================
 
@@ -183,22 +160,6 @@ void
 		size_t			inOutputKeyLen, uint8_t *outKey );
 
 OSStatus	HKDF_SHA512_Test( void );
-
-//===========================================================================================================================
-//	PBKDF2_HMAC_SHA1
-//===========================================================================================================================
-
-void
-	PBKDF2_HMAC_SHA1( 
-		const void *	inPasswordPtr,	
-		size_t			inPasswordLen, 
-		const void *	inSaltPtr, 
-		size_t			inSaltLen, 
-		int				inIterations,
-		size_t			inKeyLen, 
-		uint8_t *		outKey );
-
-OSStatus	PBKDF2_HMAC_SHA1_Test( void );
 
 #ifdef __cplusplus
 }

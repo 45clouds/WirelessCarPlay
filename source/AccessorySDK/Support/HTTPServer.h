@@ -2,7 +2,7 @@
 	File:    	HTTPServer.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__HTTPServer_h__
@@ -192,18 +192,6 @@ typedef void ( *HTTPConnectionClose_f )( HTTPConnectionRef inCnx, void *inContex
 typedef Boolean ( *HTTPConnectionRequiresAuth_f )( HTTPConnectionRef inCnx, HTTPMessageRef inMsg, void *inContext );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPConnectionHandleBinary_f
-	@abstract	Called when binary data has been received.
-*/
-typedef OSStatus
-	( *HTTPConnectionHandleBinary_f )( 
-		HTTPConnectionRef	inCnx, 
-		uint8_t				inChannelID, 
-		const uint8_t *		inPtr, 
-		size_t				inLen, 
-		void *				inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPConnectionHandleMessage_f
 	@abstract	Called when a complete request message header and body has been received so the delegate can process it.
 	@discussion	This is the main message handling function. Most of the work of the server happens here.
@@ -258,7 +246,6 @@ typedef struct
 	HTTPConnectionRequiresAuth_f		requiresAuth_f;
 	HTTPConnectionHandleMessage_f		handleMessage_f;
 	HTTPConnectionInitResponse_f		initResponse_f;
-	HTTPConnectionHandleBinary_f		handleBinary_f;
 	
 }	HTTPConnectionDelegate;
 
@@ -389,71 +376,10 @@ OSStatus
 void	HTTPConnectionSetTransportDelegate( HTTPConnectionRef inCnx, const NetTransportDelegate *inDelegate );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPConnectionGetNextURLSegment
-	@abstract	Gets the next URL segment from the request message being currently handled or sends a response on errors.
-*/
-#define HTTPConnectionGetNextURLSegment( CNX, MSG, OUT_PTR, OUT_LEN, OUT_ERR ) \
-	HTTPConnectionGetNextURLSegmentEx( (CNX), (MSG), false, (OUT_PTR), (OUT_LEN), (OUT_ERR) )
-Boolean
-	HTTPConnectionGetNextURLSegmentEx( 
-		HTTPConnectionRef	inCnx, 
-		HTTPMessageRef		inMsg, 
-		Boolean				inDontSendResponse, 
-		const char **		outPtr, 
-		size_t *			outLen, 
-		OSStatus *			outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPConnectionSendBinaryBytes
-	@abstract	Sends a one-way message containing raw binary data and calls back when it has been written.
-*/
-OSStatus
-	HTTPConnectionSendBinaryBytes( 
-		HTTPConnectionRef				inCnx, 
-		HTTPMessageFlags				inFlags, 
-		uint8_t							inChannelID, 
-		const void *					inPtr, 
-		size_t							inLen,  
-		HTTPMessageBinaryCompletion_f	inCompletion, 
-		void *							inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPConnectionSendResponse
 	@abstract	Starts sending a response message.
 */
-OSStatus	HTTPConnectionInitResponse( HTTPConnectionRef inCnx, HTTPStatus inStatusCode, OSStatus inError );
-OSStatus	HTTPConnectionInitResponseEx( HTTPConnectionRef inCnx, const char *inProtocol, HTTPStatus inStatusCode, OSStatus inError );
-OSStatus	HTTPConnectionSendEvent( HTTPConnectionRef inCnx, HTTPMessageRef inMsg );
 OSStatus	HTTPConnectionSendResponse( HTTPConnectionRef inCnx );
-#define HTTPConnectionSendSimpleResponse( CNX, STATUS, CONTENT_TYPE, BODY_PTR, BODY_LEN ) \
-	HTTPConnectionSendSimpleResponseEx( (CNX), (STATUS), kNoErr, (CONTENT_TYPE), (BODY_PTR), (BODY_LEN) )
-OSStatus
-	HTTPConnectionSendSimpleResponseEx( 
-		HTTPConnectionRef	inCnx, 
-		HTTPStatus			inStatus, 
-		OSStatus			inError, 
-		const char *		inContentType, 
-		const void *		inBodyPtr, 
-		size_t				inBodyLen );
-OSStatus
-	HTTPConnectionSendSimpleResponseEx2( 
-		HTTPConnectionRef	inCnx, 
-		const char *		inProtocol, 
-		HTTPStatus			inStatus, 
-		OSStatus			inError, 
-		const char *		inContentType, 
-		const void *		inBodyPtr, 
-		size_t				inBodyLen );
-#define HTTPConnectionSendStatusResponse( CNX, STATUS, ERROR ) \
-	HTTPConnectionSendSimpleResponseEx( (CNX), (STATUS), (ERROR), NULL, NULL, 0 )
-#define HTTPConnectionSendStatusResponseEx( CNX, PROTOCOL, STATUS, ERROR ) \
-	HTTPConnectionSendSimpleResponseEx2( (CNX), (PROTOCOL), (STATUS), (ERROR), NULL, NULL, 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPConnectionVerifyAuth
-	@abstract	Verify HTTP authentication.
-*/
-OSStatus	HTTPConnectionVerifyAuth( HTTPConnectionRef inCnx, HTTPMessageRef inMsg, Boolean *outAllow );
 
 #if 0
 #pragma mark -
@@ -471,6 +397,10 @@ OSStatus	HTTPConnectionVerifyAuth( HTTPConnectionRef inCnx, HTTPMessageRef inMsg
 #define HTTPServerStart( X )				HTTPServerControl( (X), 0, kHTTPServerCommand_StartServer, NULL )
 #define HTTPServerStop( X )					HTTPServerControl( (X), 0, kHTTPServerCommand_StopServer, NULL )
 
+// Sync extension for HTTPServer.
+#define HTTPServerStartSync( X )			HTTPServerControlSync( (X), 0, kHTTPServerCommand_StartServer, NULL )
+#define HTTPServerStopSync( X )				HTTPServerControlSync( (X), 0, kHTTPServerCommand_StopServer, NULL )
+	
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPServerControl
 	@abstract	Controls the server.
@@ -480,14 +410,10 @@ OSStatus	HTTPConnectionVerifyAuth( HTTPConnectionRef inCnx, HTTPMessageRef inMsg
 	CFObjectSetProperty( (SERVER), (SERVER)->queue, _HTTPServerControl, (FLAGS) | kCFObjectFlagAsync, \
 		(COMMAND), NULL, (PARAMS) )
 
-#define HTTPServerControlF( SERVER, FLAGS, COMMAND, ... ) \
-	CFObjectSetPropertyF( (SERVER), (SERVER)->queue, _HTTPServerControl, (FLAGS) | kCFObjectFlagAsync, \
-		(COMMAND), NULL, __VA_ARGS__ )
-
-#define HTTPServerControlV( SERVER, FLAGS, COMMAND, FORMAT, ARGS ) \
-	CFObjectSetPropertyV( (SERVER), (SERVER)->queue, _HTTPServerControl, (FLAGS) | kCFObjectFlagAsync, \
-		(COMMAND), NULL, (FORMAT), (ARGS) )
-
+#define HTTPServerControlSync( SERVER, FLAGS, COMMAND, PARAMS ) \
+	CFObjectSetProperty( (SERVER), (SERVER)->queue, _HTTPServerControl, (FLAGS), \
+		(COMMAND), NULL, (PARAMS) )
+	
 OSStatus
 	_HTTPServerControl( 
 		CFTypeRef		inObject, 
@@ -578,7 +504,6 @@ OSStatus
 
 typedef struct
 {
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_source_t		source;
 	SocketRef				sock;
 	HTTPServerRef			server;
@@ -588,7 +513,6 @@ typedef struct
 struct HTTPServerPrivate
 {
 	CFRuntimeBase			base;					// CF type info. Must be first.
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_queue_t		queue;					// Queue to perform all operations on.
 	LogCategory *			ucat;					// Log category to use for logging.
 	
@@ -640,26 +564,17 @@ struct HTTPConnectionPrivate
 	HTTPServerRef					server;						// Server this connection is a part of.
 	HTTPConnectionDelegate			delegate;					// Customizes the connection.
 	HTTPConnectionClose_f			close_f;					// Internal close handler.
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_queue_t				queue;						// Queue to perform all operations on.
 	LogCategory *					ucat;						// Log category to use for logging.
 	SocketRef						sock;						// Socket for this connection.
 	char							ifName[ IF_NAMESIZE + 1 ];	// Name of the interface the connection was accepted on.
-	uint32_t						ifIndex;					// Index of the interface the connection was accepted on.
-	uint8_t							ifMACAddress[ 6 ];			// MAC address of the interface the connection was accepted on.
-	uint32_t						ifMedia;					// Media options of the interface the connection was accepted on.
-	uint32_t						ifFlags;					// Flags of the interface the connection was accepted on.
-	uint64_t						ifExtendedFlags;			// Flags of the interface the connection was accepted on.
 	NetTransportType				transportType;				// Transport type of the interface the connection was accepted on.
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_source_t				readSource;					// GCD source for readability notification.
 	Boolean							readSuspended;				// True if GCD read source has been suspended.
-	DISPATCH_UNSAFE_UNRETAINED
 	dispatch_source_t				writeSource;				// GCD source for writability notification.
 	Boolean							writeSuspended;				// True if GCD write source has been suspended.
 	sockaddr_ip						selfAddr;					// Address of our side of the connection.
 	sockaddr_ip						peerAddr;					// Address of the peer side of the connection.
-	Boolean							authorized;					// True=HTTP auth performed successfully.
 	HTTPConnectionState				state;						// State of the HTTP message reading/writing.
 	HTTPMessageRef					requestMsg;					// Pre-allocated message for reading requests.
 	HTTPMessageRef					responseMsg;				// Pre-allocated message for writing responses.

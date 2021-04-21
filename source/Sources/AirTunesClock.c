@@ -1,8 +1,8 @@
 /*
 	File:    	AirTunesClock.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,15 +48,14 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "AirTunesClock.h"
 
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/ThreadUtils.h>
-#include <CoreUtils/TickUtils.h>
+#include "DebugServices.h"
+#include "ThreadUtils.h"
+#include "TickUtils.h"
 
 //===========================================================================================================================
 //	Private
@@ -79,7 +78,7 @@ typedef int64_t		Fixed64;
 #define Fixed64_Multiply( X, Y )		( ( X ) *= ( Y ) )
 #define Fixed64_Clear( X )				( ( X ) = 0 )
 #define Fixed64_GetInteger( X )			( ( ( X ) < 0 ) ? ( -( -( X ) >> 32 ) ) : ( ( X ) >> 32 ) )
-#define Fixed64_SetInteger( X, Y )		( ( X ) = ( (int64_t)( Y ) ) << 32 )
+#define Fixed64_SetInteger( X, Y )		( ( X ) = ( (uint64_t)( Y ) ) << 32 )
 
 // Phase Lock Loop (PLL) constants.
 
@@ -370,7 +369,6 @@ DEBUG_STATIC void	_AirTunesClock_Tick( AirTunesClockRef inClock )
 	uint32_t			count;
 	uint32_t			delta;
 	AirTunesTime		at;
-	int					recalc;
 	
 	pthread_mutex_lock( inClock->lockPtr );
 	
@@ -385,7 +383,6 @@ DEBUG_STATIC void	_AirTunesClock_Tick( AirTunesClockRef inClock )
 	
 	at = inClock->upTime;
 	AirTunesTime_Add( &at, &inClock->epochTime );
-	recalc = 0;
 	if( at.secs > inClock->lastTime.secs )
 	{
 		Fixed64		ftemp;
@@ -397,23 +394,19 @@ DEBUG_STATIC void	_AirTunesClock_Tick( AirTunesClockRef inClock )
 		Fixed64_Add( inClock->tickAdjust, inClock->frequencyOffset );
 		
 		inClock->adjustment = inClock->tickAdjust;
-		recalc = 1;
-	}
 	
-	// Recalculate the scaling factor. We want the number of 1/2^64 fractions of a second per period of 
-	// the hardware counter, taking into account the adjustment factor which the NTP PLL processing 
-	// provides us with. The adjustment is nanoseconds per second with 32 bit binary fraction and we want 
-	// 64 bit binary fraction of second:
-	//
-	//		x = a * 2^32 / 10^9 = a * 4.294967296
-	//
-	// The range of adjustment is +/- 5000PPM so inside a 64 bit integer we can only multiply by about 
-	// 850 without overflowing, that leaves no suitably precise fractions for multiply before divide.
-	// Divide before multiply with a fraction of 2199/512 results in a systematic undercompensation of 
-	// 10PPM. On a 5000 PPM adjustment this is a 0.05PPM error. This is acceptable.
+		// Recalculate the scaling factor. We want the number of 1/2^64 fractions of a second per period of
+		// the hardware counter, taking into account the adjustment factor which the NTP PLL processing 
+		// provides us with. The adjustment is nanoseconds per second with 32 bit binary fraction and we want 
+		// 64 bit binary fraction of second:
+		//
+		//		x = a * 2^32 / 10^9 = a * 4.294967296
+		//
+		// The range of adjustment is +/- 5000PPM so inside a 64 bit integer we can only multiply by about 
+		// 850 without overflowing, that leaves no suitably precise fractions for multiply before divide.
+		// Divide before multiply with a fraction of 2199/512 results in a systematic undercompensation of 
+		// 10PPM. On a 5000 PPM adjustment this is a 0.05PPM error. This is acceptable.
 	
-	if( recalc )
-	{
 		uint64_t		scale;
 		
 		scale  = UINT64_C( 1 ) << 63;

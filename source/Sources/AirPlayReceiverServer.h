@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverServer.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,16 +48,16 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayReceiverServer_h__
 #define	__AirPlayReceiverServer_h__
 
+#include "CommonServices.h"
 #include "AirPlayCommon.h"
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/CFUtils.h>
+#include "DebugServices.h"
+#include "CFUtils.h"
 
 #include CF_HEADER
 #include LIBDISPATCH_HEADER
@@ -171,29 +171,9 @@ OSStatus
 #define AirPlayReceiverServerStop( SERVER )	\
 	AirPlayReceiverServerControl( (SERVER), kCFObjectFlagDirect, CFSTR( kAirPlayCommand_StopServer ), NULL, NULL, NULL )
 
-#define AirPlayReceiverServerControlF( SERVER, COMMAND, QUALIFIER, OUT_RESPONSE, FORMAT, ... ) \
-	CFObjectControlSyncF( (SERVER), NULL, AirPlayReceiverServerControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_RESPONSE), (FORMAT), __VA_ARGS__ )
-
-#define AirPlayReceiverServerControlV( SERVER, COMMAND, QUALIFIER, OUT_RESPONSE, FORMAT, ARGS ) \
-	CFObjectControlSyncV( (SERVER), NULL, AirPlayReceiverServerControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_RESPONSE), (FORMAT), (ARGS) )
-
 #define AirPlayReceiverServerControlAsync( SERVER, COMMAND, QUALIFIER, PARAMS, RESPONSE_QUEUE, RESPONSE_FUNC, RESPONSE_CONTEXT ) \
 	CFObjectControlAsync( (SERVER), AirPlayReceiverServerGetDispatchQueue( SERVER ), AirPlayReceiverServerControl, \
 		kCFObjectFlagAsync, (COMMAND), (QUALIFIER), (PARAMS), (RESPONSE_QUEUE), (RESPONSE_FUNC), (RESPONSE_CONTEXT) )
-
-#define AirPlayReceiverServerControlAsyncF( SERVER, COMMAND, QUALIFIER, RESPONSE_QUEUE, RESPONSE_FUNC, RESPONSE_CONTEXT, FORMAT, ... ) \
-	CFObjectControlAsyncF( (SERVER), AirPlayReceiverServerGetDispatchQueue( SERVER ), AirPlayReceiverServerControl, \
-		kCFObjectFlagAsync, (COMMAND), (QUALIFIER), (RESPONSE_QUEUE), (RESPONSE_FUNC), (RESPONSE_CONTEXT), (FORMAT), __VA_ARGS__ )
-
-#define AirPlayReceiverServerControlAsyncV( SERVER, COMMAND, QUALIFIER, RESPONSE_QUEUE, RESPONSE_FUNC, RESPONSE_CONTEXT, FORMAT, ARGS ) \
-	CFObjectControlAsyncV( (SERVER), AirPlayReceiverServerGetDispatchQueue( SERVER ), AirPlayReceiverServerControl, \
-		kCFObjectFlagAsync, (COMMAND), (QUALIFIER), (RESPONSE_QUEUE), (RESPONSE_FUNC), (RESPONSE_CONTEXT) (FORMAT), (ARGS) )
-
-#define AirPlayReceiverServerPostEvent( SERVER, EVENT, QUALIFIER, PARAMS ) \
-	CFObjectControlAsync( (SERVER), AirPlayReceiverServerGetDispatchQueue( SERVER ), AirPlayReceiverServerControl, \
-		kCFObjectFlagAsync, (EVENT), (QUALIFIER), (PARAMS), NULL, NULL, NULL )
 
 #if 0
 #pragma mark -
@@ -306,16 +286,6 @@ OSStatus
 		CFTypeRef			inQualifier, 
 		CFDictionaryRef		inParams, 
 		CFDictionaryRef *	outParams );
-
-// Convenience accessors.
-
-#define AirPlayReceiverServerPlatformControlF( SERVER, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ... ) \
-	CFObjectControlSyncF( (SERVER), NULL, AirPlayReceiverServerPlatformControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), __VA_ARGS__ )
-
-#define AirPlayReceiverServerPlatformControlV( SERVER, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ARGS ) \
-	CFObjectControlSyncF( (SERVER), NULL, AirPlayReceiverServerPlatformControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), (ARGS) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	AirPlayReceiverServerPlatformCopyProperty

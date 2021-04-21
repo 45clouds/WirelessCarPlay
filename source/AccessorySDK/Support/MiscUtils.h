@@ -2,7 +2,7 @@
 	File:    	MiscUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__MiscUtils_h__
@@ -75,36 +75,6 @@ extern "C" {
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		FramesPerSecond Statistics
-	@abstract	Tracks an exponential moving average frames per second.
-*/
-typedef struct
-{
-	double			smoothingFactor;
-	double			ticksPerSecF;
-	uint64_t		periodTicks;
-	uint64_t		lastTicks;
-	uint32_t		totalFrameCount;
-	uint32_t		lastFrameCount;
-	double			lastFPS;
-	double			averageFPS;
-	
-}	FPSData;
-
-void	FPSInit( FPSData *inData, int inPeriods );
-void	FPSUpdate( FPSData *inData, uint32_t inFrameCount );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	QSortPtrs
-	@abstract	Sorts an array of pointers according to a comparison function.
-*/
-typedef int ( *ComparePtrsFunctionPtr )( const void *inLeft, const void *inRight, void *inContext );
-
-void	QSortPtrs( void *inPtrArray, size_t inPtrCount, ComparePtrsFunctionPtr inCmp, void *inContext );
-int		CompareIntPtrs( const void *inLeft, const void *inRight, void *inContext );
-int		CompareStringPtrs( const void *inLeft, const void *inRight, void *inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	MemReverse
 	@abstract	Copies data from one block to another and reverses the order of bytes in the process.
 	@discussion	"inSrc" may be the same as "inDst", but may not point to an arbitrary location inside it.
@@ -119,86 +89,10 @@ void	MemReverse( const void *inSrc, size_t inLen, void *inDst );
 void	Swap16Mem( const void *inSrc, size_t inLen, void *inDst );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SwapUUID
-	@abstract	Endian swaps a UUID to convert it between big and little endian.
-	@discussion	"inSrc" may be the same as "inDst", but may not point to an arbitrary location inside it.
-*/
-void	SwapUUID( const void *inSrc, void *inDst );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CopySmallFile
-	@abstract	Copies a file from one path to another. Only intended for copying small files.
-*/
-#if( TARGET_HAS_STD_C_LIB )
-	OSStatus	CopySmallFile( const char *inSrcPath, const char *inDstPath );
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CopyFileDataByFile
-	@abstract	Reads all the data in the file into a malloc'd pointer and null terminates it.
-*/
-OSStatus	CopyFileDataByFile( FILE *inFile, char **outPtr, size_t *outLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CopyFileDataByPath
-	@abstract	Reads all the data in the file at the path into a malloc'd pointer and null terminates it.
-*/
-OSStatus	CopyFileDataByPath( const char *inPath, char **outPtr, size_t *outLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ReadANSIFile / WriteANSIFile
-	@abstract	Reads/writes all the specified data (or up to the end of file for reads).
-*/
-OSStatus	ReadANSIFile( FILE *inFile, void *inBuf, size_t inSize, size_t *outSize );
-OSStatus	WriteANSIFile( FILE *inFile, const void *inBuf, size_t inSize );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CreateTXTRecordWithCString
-	@abstract	Creates a malloc'd TXT record from a string. See ParseQuotedEscapedString for escaping/quoting details.
-*/
-OSStatus	CreateTXTRecordWithCString( const char *inString, uint8_t **outTXTRec, size_t *outTXTLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	TXTRecordGetNextItem
-	@abstract	Iterates the items in a TXT record.
-*/
-Boolean
-	TXTRecordGetNextItem( 
-		const uint8_t *		inSrc, 
-		const uint8_t *		inEnd, 
-		const char **		outKeyPtr, 
-		size_t *			outKeyLen, 
-		const uint8_t **	outValuePtr, 
-		size_t *			outValueLen, 
-		const uint8_t **	outSrc );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	fcopyline
-	@abstract	Copies the next line from the file.
-	@discussion	This returns a malloc'd and NUL-terminated buffer on success, which the caller must free.
-				The returned line buffer does not contain a newline, if one was present.
-				The returned line may contain embedded NUL's if the file contained them.
-				Both outLine and/or outLen may be NULL if you're not interested in that output parameter.
-				Returns kNoErr if a line was successfully read.
-				Returns kEnding when at the end of the file.
-				Returns any other error if an error occurred.
-*/
-OSStatus	fcopyline( FILE *inFile, char **outLine, size_t *outLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	GetHomePath
 	@abstract	Gets a path to the home directory for the current process.
 */
 char *	GetHomePath( char *inBuffer, size_t inMaxLen );
-
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IOKitCopyParentOfClass
-	@abstract	Walks up the IOKIt registry hierarchy for a parent of the specific class.
-	@discussion	For example, this is useful to find the IOUSBDevice parent of an IOUSBInterface object.
-*/
-io_object_t	IOKitCopyParentOfClass( io_object_t inService, const char *inClassName, OSStatus *outErr );
-#endif
 
 #if( TARGET_OS_POSIX )
 //---------------------------------------------------------------------------------------------------------------------------
@@ -206,14 +100,6 @@ io_object_t	IOKitCopyParentOfClass( io_object_t inService, const char *inClassNa
 	@abstract	Creates a directory and all intermediate directories if they do not exist.
 */
 int	mkpath( const char *path, mode_t mode, mode_t dir_mode );
-#endif
-
-#if( TARGET_OS_POSIX )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	mkparent
-	@abstract	Creates all intermediate directories leading up to a final path segment.
-*/
-OSStatus	mkparent( const char *inPath, mode_t inMode );
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
@@ -241,22 +127,6 @@ OSStatus	mkparent( const char *inPath, mode_t inMode );
 char *	NormalizePath( const char *inSrc, size_t inLen, char *inDst, size_t inMaxLen, uint32_t inFlags );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NumberListStringCreateFromUInt8Array
-	@abstract	Creates a number list string (e.g. "1,2-3,7-9") from an array of numbers. Caller must free string on success.
-*/
-OSStatus	NumberListStringCreateFromUInt8Array( const uint8_t *inArray, size_t inCount, char **outStr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		Packing/Unpacking
-	@abstract	Functions for packing and unpacking data.
-*/
-OSStatus	PackData( void *inBuffer, size_t inMaxSize, size_t *outSize, const char *inFormat, ... );
-OSStatus	PackDataVAList( void *inBuffer, size_t inMaxSize, size_t *outSize, const char *inFormat, va_list inArgs );
-
-OSStatus	UnpackData( const void *inData, size_t inSize, const char *inFormat, ... );
-OSStatus	UnpackDataVAList( const void *inData, size_t inSize, const char *inFormat, va_list inArgs );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	GetProcessNameByPID
 	@abstract	Gets a process name from a PID.
 */
@@ -279,38 +149,11 @@ OSStatus	RemovePath( const char *inPath );
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	RunningWindowsVistaOrLater
-	@abstract	Returns true if we're running Windows Vista or later.
-*/
-#if( TARGET_OS_WINDOWS )
-	Boolean	RunningWindowsVistaOrLater( void );
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	RunProcessAndCaptureOutput
 	@abstract	Runs a process specified via a command line and captures everything it writes to stdout.
 */
 OSStatus	RunProcessAndCaptureOutput( const char *inCmdLine, char **outResponse );
 OSStatus	RunProcessAndCaptureOutputEx( const char *inCmdLine, char **outResponse, size_t *outLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SCDynamicStoreCopyComputerName
-	@abstract	Returns a copy of the computer name string.
-	
-	@param		inStore			Must be NULL.
-	@param		outEncoding		Receives the encoding of the string. May be NULL.
-*/
-#if( !TARGET_OS_DARWIN || COMMON_SERVICES_NO_SYSTEM_CONFIGURATION )
-	typedef struct SCDynamicStore *		SCDynamicStoreRef;
-#endif
-
-#if( !TARGET_OS_DARWIN || COMMON_SERVICES_NO_SYSTEM_CONFIGURATION )
-	CFStringRef	SCDynamicStoreCopyComputerName( SCDynamicStoreRef inStore, CFStringEncoding *outEncoding );
-#endif
-
-#if( ( !TARGET_OS_DARWIN && TARGET_OS_POSIX ) || COMMON_SERVICES_NO_SYSTEM_CONFIGURATION )
-	CFStringRef	SCDynamicStoreCopyLocalHostName( SCDynamicStoreRef inStore );
-#endif
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	systemf
@@ -321,43 +164,7 @@ OSStatus	RunProcessAndCaptureOutputEx( const char *inCmdLine, char **outResponse
 	
 	@result		If the command line was executed, the exit status of it is returned. Otherwise, errno is returned.
 */
-int	systemf( const char *inLogPrefix, const char *inFormat, ... );
-
-#if 0
-#pragma mark -
-#pragma mark == EDID ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		EDID
-	@abstract	Parsing of EDID's.
-*/
-#if( TARGET_OS_DARWIN )
-	CF_RETURNS_RETAINED
-	CFDataRef	CopyEDIDbyUUID( CFStringRef inUUID, OSStatus *outErr );
-#endif
-
-#define kEDIDKey_CEABlock				CFSTR( "ceaBlock" )
-	#define kCEAKey_Revision				CFSTR( "revision" )
-#define kEDIDKey_EDIDRevision			CFSTR( "edidRevision" )
-#define kEDIDKey_EDIDVersion			CFSTR( "edidVersion" )
-#define kEDIDKey_HDMI					CFSTR( "hdmi" )
-	#define kHDMIKey_AudioLatencyMs					CFSTR( "audioLatencyMs" )
-	#define kHDMIKey_AudioLatencyInterlacedMs		CFSTR( "audioLatencyInterlacedMs" )
-	#define kHDMIKey_VideoLatencyMs					CFSTR( "videoLatencyMs" )
-	#define kHDMIKey_VideoLatencyInterlacedMs		CFSTR( "videoLatencyInterlacedMs" )
-	#define kHDMIKey_SourcePhysicalAddress			CFSTR( "sourcePhysicalAddress" )
-#define kEDIDKey_Manufacturer			CFSTR( "manufacturer" )
-#define kEDIDKey_MonitorName			CFSTR( "monitorName" )
-#define kEDIDKey_MonitorSerialNumber	CFSTR( "monitorSerialNumber" )
-#define kEDIDKey_ProductID				CFSTR( "productID" )
-#define kEDIDKey_RawBytes				CFSTR( "rawBytes" )
-#define kEDIDKey_SerialNumber			CFSTR( "serialNumber" )
-#define kEDIDKey_WeekOfManufacture		CFSTR( "weekOfManufacture" )
-#define kEDIDKey_YearOfManufacture		CFSTR( "yearOfManufacture" )
-
-CF_RETURNS_RETAINED
-CFDictionaryRef	CreateEDIDDictionaryWithBytes( const uint8_t *inData, size_t inSize, OSStatus *outErr );
+int	systemf( const char *inLogPrefix, const char *inFormat, ... ) PRINTF_STYLE_FUNCTION( 2, 3 );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	H264ConvertAVCCtoAnnexBHeader
@@ -378,56 +185,6 @@ OSStatus
 		size_t *			outHeaderLen,
 		size_t *			outNALSize,
 		const uint8_t **	outNext );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	H264EscapeEmulationPrevention
-	@abstract	Parses the content of an H.264 NAL unit and performs emulation prevention.
-	
-	@param	inSrc			Ptr to start of a single NAL unit. This must not have a start prefix or NAL size.
-	@param	inEnd			Ptr to end of NAL unit data.
-	@param	outDataPtr		Ptr to data to write to the stream.
-	@param	outDataLen		Number of bytes of data to write. May be 0.
-	@param	outSuffixPtr	Ptr to suffix data to write after writing the data from outDataPtr.
-	@param	outSuffixLen	Number of suffix bytes to write. May be 0.
-	@param	outSrc			Receives ptr to pass as inSrc for the next call.
-	
-	@result	True if this function needs to be called again. False if all the data has been processed.
-	
-	@example
-	
-	while( H264EscapeEmulationPrevention( nalDataPtr, nalDataEnd, &dataPtr, &dataLen, &suffixPtr, &suffixLen, &nalDataPtr ) )
-	{
-		if( dataLen   > 0 ) fwrite( dataPtr,   1, dataLen,   file );
-		if( suffixLen > 0 ) fwrite( suffixPtr, 1, suffixLen, file );
-	}
-*/
-Boolean
-	H264EscapeEmulationPrevention( 
-		const uint8_t *		inSrc, 
-		const uint8_t *		inEnd, 
-		const uint8_t **	outDataPtr, 
-		size_t *			outDataLen, 
-		const uint8_t **	outSuffixPtr, 
-		size_t *			outSuffixLen, 
-		const uint8_t **	outSrc );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	H264RemoveEmulationPrevention
-	@abstract	Parses the content of an H.264 NAL unit and removes emulation prevention bytes.
-	
-	@param	inSrc			Ptr to start of a single NAL unit. This must not have a start prefix or NAL size.
-	@param	inEnd			Ptr to end of NAL unit data.
-	@param	inBuf			Buffer to write data with emulation prevention bytes removed. May be the same as inSrc.
-	@param	inMaxLen		Max number of bytes allowed to write to inBuf.
-	@param	outLen			Number of bytes written to inBuf.
-*/
-OSStatus
-	H264RemoveEmulationPrevention( 
-		const uint8_t *	inSrc, 
-		size_t			inLen, 
-		uint8_t *		inBuf, 
-		size_t			inMaxLen, 
-		size_t *		outLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	H264GetNextNALUnit
@@ -501,88 +258,6 @@ void		MirroredRingBufferFree( MirroredRingBuffer *inRing );
 														  ( ( (const uint8_t *)(PTR) ) <  (RING)->end ) )
 #define MirroredRingBufferGetBytesUsed( RING )			( (uint32_t)( (RING)->writeOffset - (RING)->readOffset ) )
 #define MirroredRingBufferGetBytesFree( RING )			( (RING)->size - MirroredRingBufferGetBytesUsed( RING ) )
-
-#if 0
-#pragma mark -
-#pragma mark == Morse Code ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		MorseCode
-	@abstract	Generic library for morse code.
-*/
-
-// MorseCodeAction
-
-typedef unsigned char		MorseCodeAction;
-#define kMorseCodeAction_Off			0
-#define kMorseCodeAction_On				1
-#define kMorseCodeAction_Dit			2
-#define kMorseCodeAction_Dah			3
-#define kMorseCodeAction_MarkDelay		4 // Delay between dots and dashes within a character. 1 unit.
-#define kMorseCodeAction_CharDelay		5 // Delay between characters. 3 units.
-#define kMorseCodeAction_WordDelay		6 // Delay between words. 7 units.
-
-// MorseCodeFlags
-
-typedef unsigned int		MorseCodeFlags;
-#define kMorseCodeFlags_None			0
-#define kMorseCodeFlags_RawActions		( 1 << 0 ) //! Don't do on/delay/off...pass dits and dahs directly.
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	MorseCode
-	@abstract	Performs morse code using a callback for the underlying primitive (e.g. drive LED, play tone, etc.).
-*/
-typedef void ( *MorseCodeActionFunc )( MorseCodeAction inAction, void *inArg );
-
-void
-	MorseCode( 
-		const char *		inMessage, 
-		int					inSpeed, 
-		MorseCodeFlags		inFlags, 
-		MorseCodeActionFunc inActionFunc, 
-		void *				inActionArg );
-
-#if 0
-#pragma mark -
-#pragma mark == PID Controller ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		Proportional-Integral-Derivative (PID) Controller
-	@abstract	Structure and API for a generic PID controller.
-*/
-
-typedef struct
-{
-	double		pGain;		// Proportional Gain.
-	double		iState;		// Integrator state.
-	double		iMin, iMax;	// Integrator limits.
-	double		iGain;		// Integrator gain (always less than 1).
-	double		dState;		// Differentiator state.
-	double		dpGain;		// Differentiator filter gain = 1 - pole.
-	double		dGain;		// Derivative gain.
-	
-}	PIDContext;
-
-void	PIDInit( PIDContext *inPID, double pGain, double iGain, double dGain, double dPole, double iMin, double iMax );
-#define PIDReset( CONTEXT )		do { (CONTEXT)->iState = 0; (CONTEXT)->dState = 0; } while( 0 )
-double	PIDUpdate( PIDContext *inPID, double input );
-
-#if( TARGET_OS_DARWIN )
-#if 0
-#pragma mark -
-#pragma mark == Security ==
-#endif
-
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		HasCodeSigningRequirementByPath / HasCodeSigningRequirementByPID
-	@abstract	Checks if the path or PID is signed and has the specified requirement. 
-*/
-Boolean	HasCodeSigningRequirementByPath( const char *inPath, CFStringRef inRequirementString, OSStatus *outErr );
-Boolean	HasCodeSigningRequirementByPID( pid_t inPID, CFStringRef inRequirementString, OSStatus *outErr );
-#endif
 
 #if 0
 #pragma mark -

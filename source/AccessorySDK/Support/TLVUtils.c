@@ -2,7 +2,7 @@
 	File:    	TLVUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2008-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "TLVUtils.h"
@@ -666,27 +666,26 @@ exit:
 
 #if( !EXCLUDE_UNIT_TESTS )
 
-#include "PrintFUtils.h"
-#include "TestUtils.h"
-
-static void	TLV8Test( TUTestContext *inTestCtx );
-static void	TLV16Test( TUTestContext *inTestCtx );
+static OSStatus TLV8Test( void );
+static OSStatus	TLV16Test( void );
 
 //===========================================================================================================================
 //	TLVUtilsTest
 //===========================================================================================================================
 
-void	TLVUtilsTest( void )
+OSStatus TLVUtilsTest( void )
 {
-	TUPerformTest( TLV8Test );
-	TUPerformTest( TLV16Test );
+	OSStatus err = TLV8Test();
+	if (err)
+		return err;
+	return TLV16Test();
 }
 
 //===========================================================================================================================
 //	TLV8Test
 //===========================================================================================================================
 
-static void	TLV8Test( TUTestContext *inTestCtx )
+static OSStatus	TLV8Test( void )
 {
 	OSStatus			err;
 	const uint8_t *		src;
@@ -710,123 +709,123 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	src = (const uint8_t *) kTLV8Test1;
 	end = src + sizeof_string( kTLV8Test1 );
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	
 	#define kTLV8Test2		"\x00"
 	src = (const uint8_t *) kTLV8Test2;
 	end = src + sizeof_string( kTLV8Test2 );
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	
 	#define kTLV8Test3		"\x00\x01"
 	src = (const uint8_t *) kTLV8Test3;
 	end = src + sizeof_string( kTLV8Test3 );
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src );
-	tu_require( err == kUnderrunErr, exit );
+	require( err == kUnderrunErr, exit );
 	
 	#define kTLV8Test4		"\x11\x00"
 	src = (const uint8_t *) kTLV8Test4;
 	end = src + sizeof_string( kTLV8Test4 );
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0x11, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( type == 0x11, exit, err = kMismatchErr );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	
 	#define kTLV8Test5		"\x11\x01\xAA"
 	src  = (const uint8_t *) kTLV8Test5;
 	end  = src + sizeof_string( kTLV8Test5 );
 	src2 = src;
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0x11, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\xAA", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( type == 0x11, exit, err = kMismatchErr );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	err = TLV8GetNext( src2, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kUnexpectedErr );
 	
 	#define kTLV8Test6		"\x55\x01\x15\x22\x04\xBB\xCC\xDD\xEE"
 	src = (const uint8_t *) kTLV8Test6;
 	end = src + sizeof_string( kTLV8Test6 );
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0x55, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\x15", len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( type == 0x55, exit, err = kMismatchErr );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\x15", len ) == 0, exit, err = kMismatchErr );
 	src = src2;
 	err = TLV8GetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0x22, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 4, exit );
-	tu_require( memcmp( ptr, "\xBB\xCC\xDD\xEE", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( type == 0x22, exit, err = kMismatchErr );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xBB\xCC\xDD\xEE", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	
 	// TLV8Get
 	
 	src = (const uint8_t *) kTLV8Test5;
 	end = src + sizeof_string( kTLV8Test5 );
 	err = TLV8Get( src, end, 0x99, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	err = TLV8Get( src, end, 0x11, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\xAA", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	err = TLV8Get( src2, end, 0x11, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	
 	src = (const uint8_t *) kTLV8Test6;
 	end = src + sizeof_string( kTLV8Test6 );
 	err = TLV8Get( src, end, 0x99, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	err = TLV8Get( src, end, 0x55, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\x15", len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\x15", len ) == 0, exit, err = kMismatchErr );
 	src = src2;
 	err = TLV8Get( src, end, 0x22, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr == src + 2, exit );
-	tu_require( len == 4, exit );
-	tu_require( memcmp( ptr, "\xBB\xCC\xDD\xEE", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr == src + 2, exit, err = kMismatchErr );
+	require_action( len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xBB\xCC\xDD\xEE", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	
 	// TLV8GetBytes
 	
 	src = (const uint8_t *) kTLV8Test5;
 	end = src + sizeof_string( kTLV8Test5 );
 	err = TLV8GetBytes( src, end, 0x99, 0, sizeof( buf ), buf, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kUnexpectedErr );
 	err = TLV8GetBytes( src, end, 0x11, 0, 1, buf, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( buf, "\xAA", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( buf, "\xAA", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	err = TLV8GetBytes( src2, end, 0x11, 0, 1, buf, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	
 	src = (const uint8_t *) kTLV8Test6;
 	end = src + sizeof_string( kTLV8Test6 );
 	err = TLV8GetBytes( src, end, 0x99, 0, sizeof( buf ), buf, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	err = TLV8GetBytes( src, end, 0x55, 1, sizeof( buf ), buf, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( buf, "\x15", len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( buf, "\x15", len ) == 0, exit, err = kMismatchErr );
 	src = src2;
 	err = TLV8GetBytes( src, end, 0x22, 5, sizeof( buf ), buf, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	err = TLV8GetBytes( src, end, 0x22, 2, sizeof( buf ), buf, &len, &src2 );
-	tu_require( len == 4, exit );
-	tu_require( memcmp( buf, "\xBB\xCC\xDD\xEE", len ) == 0, exit );
-	tu_require( src2 == end, exit );
+	require_action( len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( buf, "\xBB\xCC\xDD\xEE", len ) == 0, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	
 	// TLV8GetOrCopyCoalesced
 	
@@ -840,11 +839,11 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 0, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 0, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test8 \
@@ -857,12 +856,12 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\xAA", len ) == 0, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA", len ) == 0, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test9 \
@@ -875,12 +874,12 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\xAA", len ) == 0, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA", len ) == 0, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test10 \
@@ -894,12 +893,12 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 2, exit );
-	tu_require( memcmp( ptr, "\xAA\xBB", len ) == 0, exit );
-	tu_require( storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 2, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA\xBB", len ) == 0, exit, err = kMismatchErr );
+	require_action( storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test11 \
@@ -912,12 +911,12 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 6, exit );
-	tu_require( memcmp( ptr, "\xAA\xBB\xCC\xDD\xEE\xFF", len ) == 0, exit );
-	tu_require( storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 6, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA\xBB\xCC\xDD\xEE\xFF", len ) == 0, exit, err = kMismatchErr );
+	require_action( storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test12 \
@@ -930,10 +929,10 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require( err == kNotFoundErr, exit );
-	tu_require( !ptr, exit );
-	tu_require( len == 99, exit );
-	tu_require( !storage, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
+	require_action( !ptr, exit, err = kMismatchErr );
+	require_action( len == 99, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	
 	#define kTLV8Test13 \
@@ -947,141 +946,141 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	len = 99;
 	storage = NULL;
 	err = TLV8GetOrCopyCoalesced( src, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr, exit );
-	tu_require( len == 3, exit );
-	tu_require( memcmp( ptr, "\xAA\xBB\xCC", len ) == 0, exit );
-	tu_require( storage, exit );
-	tu_require( src2 == ( src + 7 ), exit );
+	require_noerr( err, exit );
+	require_action( ptr, exit, err = kMismatchErr );
+	require_action( len == 3, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xAA\xBB\xCC", len ) == 0, exit, err = kMismatchErr );
+	require_action( storage, exit, err = kMismatchErr );
+	require_action( src2 == ( src + 7 ), exit, err = kMismatchErr );
 	ForgetMem( &storage );
 	err = TLV8GetOrCopyCoalesced( src2, end, 0x04, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr == src + 9, exit );
-	tu_require( len == 3, exit );
-	tu_require( memcmp( ptr, "\xDD\xEE\xFF", len ) == 0, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == ( src + 12 ), exit );
+	require_noerr( err, exit );
+	require_action( ptr == src + 9, exit, err = kMismatchErr );
+	require_action( len == 3, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\xDD\xEE\xFF", len ) == 0, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == ( src + 12 ), exit, err = kMismatchErr );
 	err = TLV8GetOrCopyCoalesced( src2, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( ptr == src + 14, exit );
-	tu_require( len == 1, exit );
-	tu_require( memcmp( ptr, "\x11", len ) == 0, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == end, exit );
+	require_noerr( err, exit );
+	require_action( ptr == src + 14, exit, err = kMismatchErr );
+	require_action( len == 1, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\x11", len ) == 0, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	err = TLV8GetOrCopyCoalesced( src2, end, 0x01, &ptr, &len, &storage, &src2 );
-	tu_require( err != kNoErr, exit );
-	tu_require( !storage, exit );
-	tu_require( src2 == end, exit );
+	require_action( err != kNoErr, exit, err = kMismatchErr );
+	require_action( !storage, exit, err = kMismatchErr );
+	require_action( src2 == end, exit, err = kMismatchErr );
 	
 	// TLV8Buffer
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppend( &tlv8, 0x01, "\xAA", 1 );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	err = TLV8BufferAppend( &tlv8, 0x02, "value2", kSizeCString );
-	tu_require_noerr( err, exit );
-	tu_require( TLV8BufferGetLen( &tlv8 ) == 11, exit );
+	require_noerr( err, exit );
+	require_action( TLV8BufferGetLen( &tlv8 ) == 11, exit, err = kMismatchErr );
 	ptr = TLV8BufferGetPtr( &tlv8 );
-	tu_require( ptr == tlv8.inlineBuffer, exit );
-	tu_require( !tlv8.mallocedPtr, exit );
-	tu_require( memcmp( ptr, "\x01\x01\xAA\x02\x06value2", 11 ) == 0, exit );
+	require_action( ptr == tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( !tlv8.mallocedPtr, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\x01\x01\xAA\x02\x06value2", 11 ) == 0, exit, err = kMismatchErr );
 	TLV8BufferFree( &tlv8 );
 	
 	TLV8BufferInit( &tlv8, 2000 );
 	err = TLV8BufferAppend( &tlv8, 0x01, "value1", kSizeCString );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	err = TLV8BufferAppend( &tlv8, 0x02, "val2", kSizeCString );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	len = 1093;
 	storage = (uint8_t *) malloc( len );
 	require_action( storage, exit, err = kNoMemoryErr );
 	for( i = 0; i < len; ++i ) storage[ i ] = (uint8_t)( i & 0xFF );
 	err = TLV8BufferAppend( &tlv8, 0x03, storage, len );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	ForgetMem( &storage );
-	tu_require( tlv8.mallocedPtr, exit );
+	require_action( tlv8.mallocedPtr, exit, err = kMismatchErr );
 	ptr = TLV8BufferGetPtr( &tlv8 );
-	tu_require( ptr == tlv8.mallocedPtr, exit );
-	tu_require( ptr != tlv8.inlineBuffer, exit );
-	tu_require( TLV8BufferGetLen( &tlv8 ) == 1117, exit );
-	tu_require( memcmp( ptr, "\x01\x06value1\x02\x04val2", 14 ) == 0, exit );
+	require_action( ptr == tlv8.mallocedPtr, exit, err = kMismatchErr );
+	require_action( ptr != tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( TLV8BufferGetLen( &tlv8 ) == 1117, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "\x01\x06value1\x02\x04val2", 14 ) == 0, exit, err = kMismatchErr );
 	ptr = &ptr[ 14 ];
 	// 0-255
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( i = 0; i < 255; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( i = 0; i < 255; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 255-510
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 510; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 510; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 510-766
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 765; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 765; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 765-1020
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 1020; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 1020; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 1020-1093
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 73, exit );
-	for( ; i < 1093; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
-	tu_require( (size_t)( ptr - TLV8BufferGetPtr( &tlv8 ) ) == 1117, exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 73, exit, err = kMismatchErr );
+	for( ; i < 1093; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
+	require_action( (size_t)( ptr - TLV8BufferGetPtr( &tlv8 ) ) == 1117, exit, err = kMismatchErr );
 	
 	// TLV8BufferDetach
 	
 	ptr2 = NULL;
 	len = 0;
 	err = TLV8BufferDetach( &tlv8, &ptr2, &len );
-	tu_require_noerr( err, exit );
-	tu_require( ptr2, exit );
-	tu_require( ptr2 != tlv8.inlineBuffer, exit );
-	tu_require( len == 1117, exit );
-	tu_require( tlv8.ptr == tlv8.inlineBuffer, exit );
-	tu_require( tlv8.len == 0, exit );
-	tu_require( tlv8.maxLen == 2000, exit );
-	tu_require( !tlv8.mallocedPtr, exit );
-	tu_require( memcmp( ptr2, "\x01\x06value1\x02\x04val2", 14 ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( ptr2, exit, err = kMismatchErr );
+	require_action( ptr2 != tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( len == 1117, exit, err = kMismatchErr );
+	require_action( tlv8.ptr == tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( tlv8.len == 0, exit, err = kMismatchErr );
+	require_action( tlv8.maxLen == 2000, exit, err = kMismatchErr );
+	require_action( !tlv8.mallocedPtr, exit, err = kMismatchErr );
+	require_action( memcmp( ptr2, "\x01\x06value1\x02\x04val2", 14 ) == 0, exit, err = kMismatchErr );
 	ptr = &ptr2[ 14 ];
 	// 0-255
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( i = 0; i < 255; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( i = 0; i < 255; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 255-510
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 510; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 510; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 510-766
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 765; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 765; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 765-1020
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 255, exit );
-	for( ; i < 1020; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 255, exit, err = kMismatchErr );
+	for( ; i < 1020; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
 	// 1020-1093
-	tu_require( *ptr++ == 0x03, exit );
-	tu_require( *ptr++ == 73, exit );
-	for( ; i < 1093; ++i ) tu_require( *ptr++ == ( i & 0xFF ), exit );
-	tu_require( (size_t)( ptr - ptr2 ) == 1117, exit );
+	require_action( *ptr++ == 0x03, exit, err = kMismatchErr );
+	require_action( *ptr++ == 73, exit, err = kMismatchErr );
+	for( ; i < 1093; ++i ) require_action( *ptr++ == ( i & 0xFF ), exit, err = kMismatchErr );
+	require_action( (size_t)( ptr - ptr2 ) == 1117, exit, err = kMismatchErr );
 	ForgetMem( &ptr2 );
 	TLV8BufferFree( &tlv8 );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppend( &tlv8, 0x01, "\xAA", 1 );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	err = TLV8BufferAppend( &tlv8, 0x02, "value2", kSizeCString );
-	tu_require_noerr( err, exit );
+	require_noerr( err, exit );
 	err = TLV8BufferDetach( &tlv8, &ptr2, &len );
-	tu_require_noerr( err, exit );
-	tu_require( ptr2, exit );
-	tu_require( ptr2 != tlv8.inlineBuffer, exit );
-	tu_require( len == 11, exit );
-	tu_require( tlv8.ptr == tlv8.inlineBuffer, exit );
-	tu_require( tlv8.len == 0, exit );
-	tu_require( tlv8.maxLen == 256, exit );
-	tu_require( !tlv8.mallocedPtr, exit );
-	tu_require( memcmp( ptr2, "\x01\x01\xAA\x02\x06value2", 11 ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( ptr2, exit, err = kMismatchErr );
+	require_action( ptr2 != tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( len == 11, exit, err = kMismatchErr );
+	require_action( tlv8.ptr == tlv8.inlineBuffer, exit, err = kMismatchErr );
+	require_action( tlv8.len == 0, exit, err = kMismatchErr );
+	require_action( tlv8.maxLen == 256, exit, err = kMismatchErr );
+	require_action( !tlv8.mallocedPtr, exit, err = kMismatchErr );
+	require_action( memcmp( ptr2, "\x01\x01\xAA\x02\x06value2", 11 ) == 0, exit, err = kMismatchErr );
 	ForgetMem( &ptr2 );
 	TLV8BufferFree( &tlv8 );
 	
@@ -1089,133 +1088,84 @@ static void	TLV8Test( TUTestContext *inTestCtx )
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendUInt64( &tlv8, 0x01, 0 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 3, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x01\x00", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 3, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x01\x00", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = TLV8GetSInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == 0, exit );
+	require_noerr( err, exit );
+	require_action( s64 == 0, exit, err = kMismatchErr );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendSInt64( &tlv8, 0x01, -100 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 3, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x01\x9C", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 3, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x01\x9C", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = TLV8GetSInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == -100, exit );
+	require_noerr( err, exit );
+	require_action( s64 == -100, exit, err = kMismatchErr );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendUInt64( &tlv8, 0x01, 250 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 3, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x01\xFA", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 3, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x01\xFA", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = (int64_t) TLV8GetUInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == 250, exit );
+	require_noerr( err, exit );
+	require_action( s64 == 250, exit, err = kMismatchErr );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendSInt64( &tlv8, 0x01, -1000 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 4, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x02\x18\xFC", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x02\x18\xFC", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = TLV8GetSInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == -1000, exit );
+	require_noerr( err, exit );
+	require_action( s64 == -1000, exit, err = kMismatchErr );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendUInt64( &tlv8, 0x01, 60000 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 4, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x02\x60\xEA", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x02\x60\xEA", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = (int64_t) TLV8GetUInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == 60000, exit );
+	require_noerr( err, exit );
+	require_action( s64 == 60000, exit, err = kMismatchErr );
 	
 	TLV8BufferInit( &tlv8, 256 );
 	err = TLV8BufferAppendUInt64( &tlv8, 0x01, 200000 );
-	tu_require_noerr( err, exit );
-	tu_require( tlv8.len == 6, exit );
-	tu_require( memcmp( tlv8.ptr, "\x01\x04\x40\x0D\x03\x00", tlv8.len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( tlv8.len == 6, exit, err = kMismatchErr );
+	require_action( memcmp( tlv8.ptr, "\x01\x04\x40\x0D\x03\x00", tlv8.len ) == 0, exit, err = kMismatchErr );
 	s64 = (int64_t) TLV8GetUInt64( tlv8.ptr, tlv8.ptr + tlv8.len, 0x01, &err, NULL );
-	tu_require_noerr( err, exit );
-	tu_require( s64 == 200000, exit );
+	require_noerr( err, exit );
+	require_action( s64 == 200000, exit, err = kMismatchErr );
 	
 	// TLV8MaxPayloadBytesForTotalBytes
 	
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 0 ) == 0, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 1 ) == 0, exit );
-	for( i = 2;   i <= 257; ++i ) tu_require( TLV8MaxPayloadBytesForTotalBytes( i ) == ( i - 2 ), exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 258 ) == 255, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 259 ) == 255, exit );
-	for( i = 260; i <= 514; ++i ) tu_require( TLV8MaxPayloadBytesForTotalBytes( i ) == ( i - 4 ), exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 515 ) == 510, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 516 ) == 510, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 517 ) == 511, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 518 ) == 512, exit );
-	tu_require( TLV8MaxPayloadBytesForTotalBytes( 519 ) == 513, exit );
-	
-	// Print test
-	
-	if( TULogLevelEnabled( inTestCtx, kLogLevelVerbose ) )
-	{
-		TLV8BufferInit( &tlv8, 512 );
-		err = TLV8BufferAppend( &tlv8, 0x00, "", 0 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x01, "This is all text", kSizeCString );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x02, "\x11\x22\x33\xAA\xBB", 5 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x03, 
-			"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
-			"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF", 
-			32 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x04, "a", 1 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x05, "\xAF", 1 );
-		tu_require_noerr( err, exit );
-		
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x10, "", 0 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x11, "This is all text", kSizeCString );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x12, "\x11\x22\x33\xAA\xBB", 5 );
-		tu_require_noerr( err, exit );
-		err = TLV8BufferAppend( &tlv8, 0x13, 
-			"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0A\x0B\x0C\x0D\x0E\x0F"
-			"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF", 
-			32 );
-		tu_require_noerr( err, exit );
-		
-		#define kTLVPrintTestDesciptors \
-			"\x00" "1\0" \
-			"\x01" "Item 2\0" \
-			"\x02" "Test Item 3\0" \
-			"\x03" "Another Item 4\0" \
-			"\x04" "T 5\0" \
-			"\x05" "Testing 6\0" \
-			"\x00"
-		
-		ptr = TLV8BufferGetPtr( &tlv8 );
-		len = TLV8BufferGetLen( &tlv8 );
-		TULogF( inTestCtx, kLogLevelVerbose, "%{tlv8}\n%.1H\n", kTLVPrintTestDesciptors, 
-			ptr, (int) len, ptr, (int) len, (int) len );
-		TLV8BufferFree( &tlv8 );
-	}
-	
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 0 ) == 0, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 1 ) == 0, exit, err = kMismatchErr );
+	for( i = 2;   i <= 257; ++i ) require_action( TLV8MaxPayloadBytesForTotalBytes( i ) == ( i - 2 ), exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 258 ) == 255, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 259 ) == 255, exit, err = kMismatchErr );
+	for( i = 260; i <= 514; ++i ) require_action( TLV8MaxPayloadBytesForTotalBytes( i ) == ( i - 4 ), exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 515 ) == 510, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 516 ) == 510, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 517 ) == 511, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 518 ) == 512, exit, err = kMismatchErr );
+	require_action( TLV8MaxPayloadBytesForTotalBytes( 519 ) == 513, exit, err = kMismatchErr );
+
 exit:
 	ForgetMem( &storage );
 	ForgetMem( &ptr2 );
 	TLV8BufferFree( &tlv8 );
+	return err;
 }
 
 //===========================================================================================================================
 //	TLV16Test
 //===========================================================================================================================
 
-static void	TLV16Test( TUTestContext *inTestCtx )
+static OSStatus	TLV16Test( void )
 {
 	OSStatus			err;
 	const uint8_t *		src  = NULL;
@@ -1231,70 +1181,70 @@ static void	TLV16Test( TUTestContext *inTestCtx )
 	src = (const uint8_t *) kTLV16Test1;
 	end = src + sizeof_string( kTLV16Test1 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kNotFoundErr, exit );
+	require_action( err == kNotFoundErr, exit, err = kMismatchErr );
 	
 	#define kTLV16Test2		"\x00"
 	src = (const uint8_t *) kTLV16Test2;
 	end = src + sizeof_string( kTLV16Test2 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	
 	#define kTLV16Test3		"\x00\x00"
 	src = (const uint8_t *) kTLV16Test3;
 	end = src + sizeof_string( kTLV16Test3 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	
 	#define kTLV16Test4		"\x00\x00\x00"
 	src = (const uint8_t *) kTLV16Test4;
 	end = src + sizeof_string( kTLV16Test4 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require( err == kUnderrunErr, exit );
+	require_action( err == kUnderrunErr, exit, err = kMismatchErr );
 	
 	#define kTLV16Test5		"\x00\x00\x00\x00"
 	src = (const uint8_t *) kTLV16Test5;
 	end = src + sizeof_string( kTLV16Test5 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0, exit );
-	tu_require( ptr == ( src + 4 ), exit );
-	tu_require( len == 0, exit );
+	require_noerr( err, exit );
+	require_action( type == 0, exit, err = kMismatchErr );
+	require_action( ptr == ( src + 4 ), exit, err = kMismatchErr );
+	require_action( len == 0, exit, err = kMismatchErr );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0, exit );
-	tu_require( ptr == ( src + 4 ), exit );
-	tu_require( len == 0, exit );
+	require_noerr( err, exit );
+	require_action( type == 0, exit, err = kMismatchErr );
+	require_action( ptr == ( src + 4 ), exit, err = kMismatchErr );
+	require_action( len == 0, exit, err = kMismatchErr );
 	
 	#define kTLV16Test6		"\xAA\x11\x00\x04" "abcd"
 	src = (const uint8_t *) kTLV16Test6;
 	end = src + sizeof_string( kTLV16Test6 );
 	err = TLV16BEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0xAA11, exit );
-	tu_require( ptr == ( src + 4 ), exit );
-	tu_require( len == 4, exit );
-	tu_require( memcmp( ptr, "abcd", len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( type == 0xAA11, exit, err = kMismatchErr );
+	require_action( ptr == ( src + 4 ), exit, err = kMismatchErr );
+	require_action( len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "abcd", len ) == 0, exit, err = kMismatchErr );
 	
 	#define kTLV16Test7		"\x11\xAA\x04\x00" "abcd"
 	src = (const uint8_t *) kTLV16Test7;
 	end = src + sizeof_string( kTLV16Test7 );
 	err = TLV16LEGetNext( src, end, &type, &ptr, &len, &src2 );
-	tu_require_noerr( err, exit );
-	tu_require( type == 0xAA11, exit );
-	tu_require( ptr == ( src + 4 ), exit );
-	tu_require( len == 4, exit );
-	tu_require( memcmp( ptr, "abcd", len ) == 0, exit );
+	require_noerr( err, exit );
+	require_action( type == 0xAA11, exit, err = kMismatchErr );
+	require_action( ptr == ( src + 4 ), exit, err = kMismatchErr );
+	require_action( len == 4, exit, err = kMismatchErr );
+	require_action( memcmp( ptr, "abcd", len ) == 0, exit, err = kMismatchErr );
 	
 exit:
-	return;
+	return err;
 }
 
 #endif // !EXCLUDE_UNIT_TESTS

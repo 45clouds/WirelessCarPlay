@@ -2,13 +2,13 @@
 	File:    	BonjourBrowser.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__BonjourBrowser_h__
@@ -63,15 +63,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-typedef struct
-{
-	char * name;
-	char * mac_addr;	
-	char * ifname;
-	uint32_t ifindex;	
-	uint32_t transportType;
-}carplayInfo;
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@group		BonjourDeviceKeys
@@ -150,11 +141,6 @@ typedef void ( *BonjourBrowserEventHandlerFunc )( BonjourBrowserEventType inEven
 
 void	BonjourBrowser_SetEventHandler( BonjourBrowserRef inBrowser, BonjourBrowserEventHandlerFunc inFunc, void *inContext );
 
-#if( COMPILER_HAS_BLOCKS )
-	typedef void ( ^BonjourBrowserEventHandlerBlock )( BonjourBrowserEventType inEventType, CFDictionaryRef inEventInfo );
-	void	BonjourBrowser_SetEventHandlerBlock( BonjourBrowserRef inBrowser, BonjourBrowserEventHandlerBlock inHandler );
-#endif
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	BonjourDevice_CopyCFString
 	@abstract	Copies a CFString from the TXT record of the device.
@@ -177,23 +163,6 @@ uint32_t	BonjourDevice_GetBitListValue( CFDictionaryRef inDeviceInfo, const char
 	@result		64-bit scalar device ID (e.g. 48-bit MAC address, zero-prefixed to 64 bits).
 */
 uint64_t	BonjourDevice_GetDeviceID( CFDictionaryRef inDeviceInfo, uint8_t outDeviceID[ 6 ], OSStatus *outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	BonjourDevice_CopyDNSNames
-	@abstract	Copies the DNS names for the device as a prioritized, delimited C string.
-	@discussion
-	
-	The DNS names are delimited with the ASCII record separator (0x1E) character.
-	The string can be passed directly to AsyncConnection or APIs that use it, such as HTTPClient.
-	The names are prioritized in the following order:
-	
-	DirectLink
-	P2P (if kBonjourBrowserFlag_P2P is specified)
-	Ethernet
-	Non-P2P (if kBonjourBrowserFlag_P2P is not specified).
-	Wide Area Bonjour (using the same relative ordering as above).
-*/
-char *	BonjourDevice_CopyDNSNames( CFDictionaryRef inDeviceInfo, uint64_t inFlags, OSStatus *outErr );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	BonjourDevice_GetDNSName

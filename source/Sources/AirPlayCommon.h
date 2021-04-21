@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayCommon.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,13 +48,13 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2017 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayCommon_h__
 #define	__AirPlayCommon_h__
 
-#include <CoreUtils/CommonServices.h>
+#include "CommonServices.h"
 
 #if 0
 #pragma mark == Configuration ==
@@ -64,11 +64,9 @@
 //	Configuration
 //===========================================================================================================================
 
-//#if( 1 && !defined( AIRPLAY_CONFIG_FILE_PATH ) )
-//	#define AIRPLAY_CONFIG_FILE_PATH		"/etc/airplay.conf"
-//#endif
-
-#define AIRPLAY_CONFIG_FILE_PATH getenv("MH_CARPLAY_CONFIG_FILE_PATH")?getenv("MH_CARPLAY_CONFIG_FILE_PATH") : "/etc/carplay.ini"
+#if( 1 && !defined( AIRPLAY_CONFIG_FILE_PATH ) )
+	#define AIRPLAY_CONFIG_FILE_PATH		"/etc/airplay.conf"
+#endif
 
 // AIRPLAY_HTTP_SERVER_LEGACY: 1=Support legacy HTTP server port. 0=Only one, kAirPlayFixedPort_MediaControl(7000) port is supported.
 
@@ -101,63 +99,39 @@
 #define kAirPlayConnectTimeoutNanos				( kAirPlayConnectTimeoutSecs * UINT64_C_safe( kNanosecondsPerSecond ) )
 #define kAirPlayControlKeepAliveIntervalSecs	10
 #define kAirPlayDataTimeoutSecs					30
-#define kAirPlayStoppingDataTimeoutSecs			3
 
 #define kAirPlayFixedPort_RTSPControl			5000 // TCP port for RTSP control.
 #define kAirPlayFixedPort_RTSPEvents			5001 // TCP port for RTSP events.
-#define kAirPlayFixedPort_DACP					5010 // TCP port for DACP events.
 #define kAirPlayFixedPort_KeepAlive				5020 // UDP port for keep alive mechanism
 #define kAirPlayFixedPort_RTPAudio				6000 // TCP or UDP port for RTP audio data.
+#define	kAirPlayFixedPort_RTCPServer			6011 // UDP port for receiving time announcements and retransmit responses.
 #define	kAirPlayFixedPort_RTCPLegacy			6001 // Old UDP port for RTCP packets (time announces, retransmits). Only for old devices.
 #define	kAirPlayFixedPort_TimeSyncLegacy		6002 // Old UDP port for time synchronization. Only for old devices.
 #define kAirPlayFixedPort_RTPAltAudio			6003 // UDP port for receiving RTP alt audio data.
-#define	kAirPlayFixedPort_RTCPClient			6010 // UDP port for receiving retransmit requests.
-#define	kAirPlayFixedPort_RTCPServer			6011 // UDP port for receiving time announcements and retransmit responses.
 #define	kAirPlayFixedPort_TimeSyncClient		6020 // UDP port for receiving time sync responses.
-#define	kAirPlayFixedPort_TimeSyncServer		6021 // UDP port for receiving time sync requests.
 #define kAirPlayFixedPort_RTPScreen				6030 // TCP port for receiving RTP screen data.
-#define kAirPlayFixedPort_PerfDataClient		6100 // Base TCP or UDP port for receiving ACKs from a performance testing server.
-#define kAirPlayFixedPort_PerfDataServer		6200 // Base TCP or UDP port for receiving data from a performance testing client.
 #define	kAirPlayFixedPort_MediaControl			7000 // TCP port for control and events for photos, slideshow, video, etc.
-#define	kAirPlayFixedPort_MediaData				7001 // TCP port for video file data.
-#define	kAirPlayFixedPort_ScreenNTPServer		7010 // UDP port for screen time synchronization requests.
-#define	kAirPlayFixedPort_ScreenNTPClient		7011 // UDP port for screen time synchronization responses.
-#define	kAirPlayFixedPort_ScreenData			7100 // TCP port for screen data (H.264 frames, meta data, etc.).
 
 #if( AIRTUNES_DYNAMIC_PORTS )
-	#define	kAirPlayPort_DACP					0
 	#define kAirPlayPort_KeepAlive				0
 	#define	kAirPlayPort_MediaControl			kAirPlayFixedPort_MediaControl
-	#define	kAirPlayPort_MediaData				kAirPlayFixedPort_MediaData
-	#define	kAirPlayPort_RTCPClient				0
 	#define	kAirPlayPort_RTCPServer				0
 	#define	kAirPlayPort_RTPAudio				0
 	#define	kAirPlayPort_RTPScreen				0
 	#define kAirPlayPort_RTPAltAudio			0
 	#define	kAirPlayPort_RTSPControl			kAirPlayFixedPort_RTSPControl
 	#define	kAirPlayPort_RTSPEvents				0
-	#define	kAirPlayPort_ScreenData				kAirPlayFixedPort_ScreenData
-	#define	kAirPlayPort_ScreenNTPClient		kAirPlayFixedPort_ScreenNTPClient
-	#define	kAirPlayPort_ScreenNTPServer		kAirPlayFixedPort_ScreenNTPServer
 	#define	kAirPlayPort_TimeSyncClient			0
-	#define	kAirPlayPort_TimeSyncServer			0
 #else
-	#define	kAirPlayPort_DACP					kAirPlayFixedPort_DACP
 	#define kAirPlayPort_KeepAlive				kAirPlayFixedPort_KeepAlive
 	#define	kAirPlayPort_MediaControl			kAirPlayFixedPort_MediaControl
-	#define	kAirPlayPort_MediaData				kAirPlayFixedPort_MediaData
-	#define	kAirPlayPort_RTCPClient				kAirPlayFixedPort_RTCPClient
 	#define	kAirPlayPort_RTCPServer				kAirPlayFixedPort_RTCPServer
 	#define	kAirPlayPort_RTPAudio				kAirPlayFixedPort_RTPAudio
 	#define	kAirPlayPort_RTPScreen				kAirPlayFixedPort_RTPScreen
 	#define kAirPlayPort_RTPAltAudio			kAirPlayFixedPort_RTPAltAudio
 	#define	kAirPlayPort_RTSPControl			kAirPlayFixedPort_RTSPControl
 	#define	kAirPlayPort_RTSPEvents				kAirPlayFixedPort_RTSPEvents
-	#define	kAirPlayPort_ScreenData				kAirPlayFixedPort_ScreenData
-	#define	kAirPlayPort_ScreenNTPClient		kAirPlayFixedPort_ScreenNTPClient
-	#define	kAirPlayPort_ScreenNTPServer		kAirPlayFixedPort_ScreenNTPServer
 	#define	kAirPlayPort_TimeSyncClient			kAirPlayFixedPort_TimeSyncClient
-	#define	kAirPlayPort_TimeSyncServer			kAirPlayFixedPort_TimeSyncServer
 #endif
 
 #define kAirTunesAESKeyLen						16
@@ -177,12 +151,10 @@
 
 // Audio
 
-#define kAirPlayAudioBufferMainAltWiredMs	  10 // 10 ms over wired.
+#define kAirPlayAudioBufferMinMs			  32 // 32 ms to hold at least two minimum duation audio packets of 16ms
+#define kAirPlayAudioBufferMainAltWiredMs	  32 // 32 ms over wired.
 #define kAirPlayAudioBufferMainAltWiFiMs	  80 // 80 ms over WiFi.
 #define kAirPlayAudioBufferMainHighMs	    1000 // 1000 ms.
-#define kAirPlayAudioLatencyOther		   88200 // 2 seconds @ 44100 Hz.
-#define kAirPlayAudioLatencyScreen		    3750 // 85 ms @ 44100 Hz.
-#define kAirPlayAudioLatencyThreshold	   13230 // 300 ms @ 44100 Hz. Latency <= this uses redundant audio.
 #define kAirPlayScreenLatencyWiredMs	      25 // 25 ms over wired.
 #define kAirPlayScreenLatencyWiFiMs		      75 // 75 ms over WiFi.
 
@@ -197,29 +169,14 @@
 #define AirTunesSamplesToMs( X )			( ( ( 1000 * (X) ) + ( kAirTunesSampleRate / 2 ) ) / kAirTunesSampleRate )
 #define AirTunesMsToSamples( X )			( ( (X) * kAirTunesSampleRate ) / 1000 )
 #define kAirTunesMaxSkewAdjustRate			 441 // Max number of samples to insert/remove per second for skew compensation,
-#define kAirTunesPlayoutDelay			   11025 // 250 ms delay to sync with AirPort Express'es 250 ms buffer.
 #define	kAirTunesBitsPerSample				  16 // 16-bit samples.
 #define	kAirTunesChannelCount				   2 // Left + Right Channels
 #define	kAirTunesBytesPerUnit				   4 // 2 bytes per channel and 2 channels per unit = 4 bytes.
-
-#define kAirTunesInvalidVolumeDB			-999
-#define kAirTunesSilenceVolumeDB			-144
-#define kAirTunesMinVolumeDB				 -30
-#define kAirTunesMaxVolumeDB				   0
-#define kAirTunesDisabledVolumeDB			   1 // Special flag meaning "volume control is disabled" (line level).
 
 #define	kAirTunesMaxPacketSizeUDP			1472 // Enet MTU (1500) - IPv4 header (20) - UDP header (8) = 1472 (1460 RTP payload).
 												 // Enet MTU (1500) - IPv6 header (40) - UDP header (8) = 1452 (1440 RTP payload).
 												 // 12 byte RTP header + 1460 max payload (IPv4) or 1440 max payload (IPv6). 
 #define	kAirTunesMaxPayloadSizeUDP			1440 // Enet MTU (1500) - IPv6 header (40) - UDP header (8) - RTP header (12) = 1440.
-
-// Max Apple Lossless size is: samplesPerFrame * channelCount * ((10 + sampleSize) / 8) + 1. For example:
-//
-// AirTunes TCP: (4096 * 2 * ((10 + 16) / 8)) + 1 = 24577 and when rounded up to a power of 2 -> 32KB
-// AirTunes UDP: ( 352 * 2 * ((10 + 16) / 8)) + 1 =  2113 and when rounded up to a power of 2 ->  4KB
-
-#define AppleLosslessBufferSize( SAMPLES_PER_FRAME, CHANNEL_COUNT, BITS_PER_SAMPLE ) \
-	( ( (SAMPLES_PER_FRAME) * (CHANNEL_COUNT) * ( ( 10 + (BITS_PER_SAMPLE) ) / 8 ) ) + 1 )
 
 #if( !defined( AirPlayIsBusyError ) )
 	#define AirPlayIsBusyError( X ) ( \
@@ -228,19 +185,12 @@
 		( (X) == kAlreadyInUseErr ) )
 #endif
 
-// AirPlayAudioJackStatus
-
-#define kAirPlayAudioJackStatus_Disconnected			"disconnected"				// Nothing plugged in
-#define kAirPlayAudioJackStatus_ConnectedAnalog			"connected; type=analog"	// Analog cable plugged in.
-#define kAirPlayAudioJackStatus_ConnectedDigital		"connected; type=digital"	// Digital/optical cable plugged in.
-#define kAirPlayAudioJackStatus_ConnectedUnknown		"connected"					// Unknown cable plugged in or can't detect cable.
-
 // AirPlayCompressionType
 
 typedef uint32_t	AirPlayCompressionType;
 #define kAirPlayCompressionType_Undefined		0
 #define kAirPlayCompressionType_PCM				( 1 << 0 ) // 0x01: Uncompressed PCM.
-#define kAirPlayCompressionType_ALAC			( 1 << 1 ) // 0x02: Apple Lossless (ALAC).
+#define kAirPlayCompressionType_Reserved1		( 1 << 1 ) // 0x02: Reserved
 #define kAirPlayCompressionType_AAC_LC			( 1 << 2 ) // 0x04: AAC Low Complexity (AAC-LC).
 #define kAirPlayCompressionType_AAC_ELD			( 1 << 3 ) // 0x08: AAC Enhanced Low Delay (AAC-ELD).
 #define kAirPlayCompressionType_H264			( 1 << 4 ) // 0x10: H.264 video.
@@ -248,19 +198,11 @@ typedef uint32_t	AirPlayCompressionType;
 
 #define AirPlayCompressionTypeToString( X ) ( \
 	( (X) == kAirPlayCompressionType_PCM )		? "PCM"		: \
-	( (X) == kAirPlayCompressionType_ALAC )		? "ALAC"	: \
 	( (X) == kAirPlayCompressionType_AAC_LC )	? "AAC-LC"	: \
 	( (X) == kAirPlayCompressionType_AAC_ELD )	? "AAC-ELD"	: \
 	( (X) == kAirPlayCompressionType_H264 )		? "H.264"	: \
 	( (X) == kAirPlayCompressionType_OPUS )		? "Opus"	: \
 												  "?" )
-
-// AirPlayDiscoveryMode
-
-typedef uint32_t AirPlayDiscoveryMode;
-#define kAirPlayDiscoveryMode_None				0 // No browse.
-#define kAirPlayDiscoveryMode_Presence			1 // Browse until at least one instance of the given service is found.
-#define kAirPlayDiscoveryMode_Detailed			2 // Full browse to find all instances of the given service. 
 
 // AirPlayDisplayFeatures
 
@@ -307,15 +249,12 @@ typedef uint32_t	AirPlaySessionType;
 
 typedef uint32_t	AirPlayStreamType;
 #define kAirPlayStreamType_Invalid			0 // Reserved for an invalid type.
-#define kAirPlayStreamType_GeneralAudio		96	// RTP payload type for general audio output (2 second latency). UDP.
 #define kAirPlayStreamType_MainAudio		100 // RTP payload type for low-latency audio input/output. UDP.
 #define kAirPlayStreamType_AltAudio			101 // RTP payload type for low-latency UI sounds, alerts, etc. output. UDP.
 #define kAirPlayStreamType_MainHighAudio	102 // RTP payload type for high-latency audio output. UDP.
 #define kAirPlayStreamType_Screen			110 // RTP payload type for H.264 screen output. TCP.
-#define kAirPlayStreamType_Playback			120 // AirPlay Video commands
 
 #define AirPlayStreamTypeToString( X ) \
-	( ( (X) == kAirPlayStreamType_GeneralAudio )	? "GeneralAudio"	: \
 	  ( (X) == kAirPlayStreamType_MainAudio )		? "MainAudio"		: \
 	  ( (X) == kAirPlayStreamType_MainHighAudio )	? "MainHighAudio"	: \
 	  ( (X) == kAirPlayStreamType_AltAudio )		? "AltAudio"		: \
@@ -323,7 +262,6 @@ typedef uint32_t	AirPlayStreamType;
 													  "?" )
 
 #define AirPlayStreamTypeToCFString( X ) \
-	( ( (X) == kAirPlayStreamType_GeneralAudio )	? CFSTR( "GeneralAudio" )	: \
 	  ( (X) == kAirPlayStreamType_MainAudio )		? CFSTR( "MainAudio" )		: \
 	  ( (X) == kAirPlayStreamType_MainHighAudio )	? CFSTR( "MainHighAudio" )	: \
 	  ( (X) == kAirPlayStreamType_AltAudio )		? CFSTR( "AltAudio" )		: \
@@ -338,10 +276,6 @@ typedef uint32_t	AirPlayStatusFlags;
 #define kAirPlayStatusFlag_Unconfigured				( 1 << 1 ) // 0x0002: Device is not configured.
 #define kAirPlayStatusFlag_AudioLink				( 1 << 2 ) // 0x0004: Audio cable is attached.
 	#define kAirPlayStatusFlag_PairPIN				( 1 << 9 ) // 0x0200: PIN required to pair.
-
-// WiFi Statistics Reporting
-
-#define kAirPlayWifiStatUpdateIntervalSeconds		3
 
 // Constants for deriving session encryption keys.
 
@@ -377,6 +311,17 @@ typedef uint32_t	AirPlayStatusFlags;
  */
 #define kAirPlayVehicleInformation_ETC			"ElectronicTollCollection"
 
+/*---------------------------------------------------------------------------------------------------------------------------
+	NavigationAidedDriving: Indicates if a vehicle is in a mode where its movement is aided by the native navigation
+							system and would require user intervention if current guidance is ended. [CFDictionary]
+	
+	Keys
+	------------
+	kAirPlayKey_Active	-- Whether or not the vehicle is currently in this mode.
+
+ */
+#define kAirPlayVehicleInformation_NavigationAidedDriving			"NavigationAidedDriving"
+
 #if 0
 #pragma mark -
 #pragma mark == Audio Formats ==
@@ -406,10 +351,10 @@ typedef uint64_t		AirPlayAudioFormat;
 #define kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo		( 1 << 15 )	// 0x00008000
 #define kAirPlayAudioFormat_PCM_48KHz_24Bit_Mono		( 1 << 16 )	// 0x00010000
 #define kAirPlayAudioFormat_PCM_48KHz_24Bit_Stereo		( 1 << 17 )	// 0x00020000
-#define kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo		( 1 << 18 )	// 0x00040000
-#define kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo		( 1 << 19 )	// 0x00080000
-#define kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo		( 1 << 20 )	// 0x00100000
-#define kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo		( 1 << 21 )	// 0x00200000
+#define kAirPlayAudioFormat_Reserved3					( 1 << 18 )	// 0x00040000
+#define kAirPlayAudioFormat_Reserved4					( 1 << 19 )	// 0x00080000
+#define kAirPlayAudioFormat_Reserved5					( 1 << 20 )	// 0x00100000
+#define kAirPlayAudioFormat_Reserved6					( 1 << 21 )	// 0x00200000
 #define kAirPlayAudioFormat_AAC_LC_44KHz_Stereo			( 1 << 22 )	// 0x00400000
 #define kAirPlayAudioFormat_AAC_LC_48KHz_Stereo			( 1 << 23 )	// 0x00800000
 #define kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo		( 1 << 24 )	// 0x01000000
@@ -419,6 +364,8 @@ typedef uint64_t		AirPlayAudioFormat;
 #define kAirPlayAudioFormat_OPUS_16KHz_Mono				( 1 << 28 ) // 0x10000000
 #define kAirPlayAudioFormat_OPUS_24KHz_Mono				( 1 << 29 ) // 0x20000000
 #define kAirPlayAudioFormat_OPUS_48KHz_Mono				( 1 << 30 ) // 0x40000000
+#define kAirPlayAudioFormat_AAC_ELD_44KHz_Mono		( UINT64_C( 1 ) << 31 ) // 0x0080000000
+#define kAirPlayAudioFormat_AAC_ELD_48KHz_Mono		( UINT64_C( 1 ) << 32 ) // 0x0100000000
 
 #define kAirPlayAudioFormatMask_PCM						( kAirPlayAudioFormat_PCM_8KHz_16Bit_Mono		| \
 														  kAirPlayAudioFormat_PCM_8KHz_16Bit_Stereo		| \
@@ -437,18 +384,15 @@ typedef uint64_t		AirPlayAudioFormat;
 														  kAirPlayAudioFormat_PCM_48KHz_24Bit_Mono		| \
 														  kAirPlayAudioFormat_PCM_48KHz_24Bit_Stereo	)
 
-#define kAirPlayAudioFormatMask_ALAC					( kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo	| \
-														  kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo	| \
-														  kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo	| \
-														  kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo	)
-
 #define kAirPlayAudioFormatMask_AAC_LC					( kAirPlayAudioFormat_AAC_LC_44KHz_Stereo		| \
 														  kAirPlayAudioFormat_AAC_LC_48KHz_Stereo		)
 
 #define kAirPlayAudioFormatMask_AAC_ELD					( kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo		| \
 														  kAirPlayAudioFormat_AAC_ELD_48KHz_Stereo		| \
 														  kAirPlayAudioFormat_AAC_ELD_16KHz_Mono		| \
-														  kAirPlayAudioFormat_AAC_ELD_24KHz_Mono		)
+														  kAirPlayAudioFormat_AAC_ELD_24KHz_Mono		| \
+														  kAirPlayAudioFormat_AAC_ELD_44KHz_Mono		| \
+														  kAirPlayAudioFormat_AAC_ELD_48KHz_Mono		)
 
 #define kAirPlayAudioFormatMask_OPUS					( kAirPlayAudioFormat_OPUS_16KHz_Mono			| \
 														  kAirPlayAudioFormat_OPUS_24KHz_Mono			| \
@@ -473,10 +417,6 @@ typedef uint64_t		AirPlayAudioFormat;
 	( (X) == kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo )	? "PCM/48000/16/2"	: \
 	( (X) == kAirPlayAudioFormat_PCM_48KHz_24Bit_Mono )		? "PCM/48000/24/1"	: \
 	( (X) == kAirPlayAudioFormat_PCM_48KHz_24Bit_Stereo )	? "PCM/48000/24/2"	: \
-	( (X) == kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo )	? "ALAC/44100/16/2"	: \
-	( (X) == kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo )	? "ALAC/44100/24/2"	: \
-	( (X) == kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo )	? "ALAC/48000/16/2"	: \
-	( (X) == kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo )	? "ALAC/48000/24/2"	: \
 	( (X) == kAirPlayAudioFormat_AAC_LC_44KHz_Stereo )		? "AAC-LC/44100/2"	: \
 	( (X) == kAirPlayAudioFormat_AAC_LC_48KHz_Stereo )		? "AAC-LC/48000/2"	: \
 	( (X) == kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo )		? "AAC-ELD/44100/2"	: \
@@ -486,6 +426,8 @@ typedef uint64_t		AirPlayAudioFormat;
 	( (X) == kAirPlayAudioFormat_OPUS_16KHz_Mono )			? "OPUS/16000/1"	: \
 	( (X) == kAirPlayAudioFormat_OPUS_24KHz_Mono )			? "OPUS/24000/1"	: \
 	( (X) == kAirPlayAudioFormat_OPUS_48KHz_Mono )			? "OPUS/48000/1"	: \
+	( (X) == kAirPlayAudioFormat_AAC_ELD_44KHz_Mono )		? "AAC-ELD/44100/1"	: \
+	( (X) == kAirPlayAudioFormat_AAC_ELD_48KHz_Mono )		? "AAC-ELD/48000/1"	: \
 															  "Unknown" )
 
 #if 0
@@ -528,61 +470,12 @@ typedef uint64_t		AirPlayAudioFormat;
 #define kAirPlayCommandPath					"/command"
 
 /*---------------------------------------------------------------------------------------------------------------------------
-	ActivationChanged: Tells the server that the device's activation state has changed.
-	
-	No request keys.
-	No response keys.
- */
-#define kAirPlayCommand_ActivationChanged	"activationChanged"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	ConfigChanged: Tells the server that the system's configuration has changed (e.g. network configuration changed).
+	UpdateBonjour: Command to update advertising on the AirPlay receiver.
 	
 	No request keys.
 	No response keys.
 */
-#define kAirPlayCommand_ConfigChanged		"configChanged"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	UpdateAdvertising: Command to update advertising on the AirPlay receiver.
-	
-	No request keys.
-	No response keys.
-*/
-#define kAirPlayCommand_UpdateAdvertising		"updateAdvertising"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	SetConfig: Sets the configuration to use for the accessory (e.g. WiFi SSID, name, password, etc.).
-	
-	The configuration should be validated and saved off, but not applied until the subsequent ApplyConfig command.
-	Applying the configuration before ApplyConfig could cause a loss of connectivity and prevent the controller from 
-	receiving the response. This would appear to the controller as a failure to set the configuration. Waiting for the 
-	ApplyConfig command (which is not sent over the network, but handled internally) ensures a reliable configuration.
-	
-	Request keys
-	------------
-	kAirPlayKey_AdminPassword	-- Optional password to be required to administer the accessory.
-	kAirPlayKey_Name			-- Optional name to give the accessory.
-	kAirPlayKey_PlayPassword	-- Optional password to be required to play to the accessory.
-	kAirPlayKey_WiFiPSK			-- PSK for joining a WPA-protected network.
-	kAirPlayKey_WiFiSSID		-- SSID the accessory should join.
-	
-	Response keys
-	-------------
-	kAirPlayKey_Params			-- Optional parameters returned by the accessory (e.g. Apple App Store info).
-	kAirPlayKey_Status			-- Result of setting the configuration.
-*/
-#define kAirPlayCommand_SetConfig			"setConfig"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	ApplyConfig: Applies the configuration previously set with the SetConfig command.
-	
-	Note: this command is never sent over the network. It's only used internally for reliable configuration.
-	
-	No request keys.
-	No response keys.
-*/
-#define kAirPlayCommand_ApplyConfig			"applyConfig"
+#define kAirPlayCommand_UpdateBonjour		"UpdateBonjour"
 
 /*---------------------------------------------------------------------------------------------------------------------------
 	DuckAudio: Ramps volume down (e.g. Fade down music to play a voice prompt).
@@ -764,22 +657,6 @@ typedef uint64_t		AirPlayAudioFormat;
 #define kAirPlayCommand_ModesChanged		"modesChanged"
 
 /*---------------------------------------------------------------------------------------------------------------------------
-	PrefsChanged: Tells the server that the prefs have changed and it should re-read them.
-	
-	No request keys.
-	No response keys.
-*/
-#define kAirPlayEvent_PrefsChanged			"prefsChanged"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	UpdatePrefs: Hook for the platform to update any platform-specific prefs it might have.
-	
-	No request keys.
-	No response keys.
-*/
-#define kAirPlayCommand_UpdatePrefs			"updatePrefs"
-
-/*---------------------------------------------------------------------------------------------------------------------------
 	RequestSiri: Requests that Siri be invoked with a specified action.
 	
 	Request keys
@@ -880,20 +757,6 @@ typedef uint64_t		AirPlayAudioFormat;
 #define kAirPlayCommand_UpdateVehicleInformation	"updateVehicleInformation"
 
 /*---------------------------------------------------------------------------------------------------------------------------
-	StartedPlayingOverP2PSolo: Tells the server that a P2P Solo playback session started.
-	
-	No response keys.
- */
-#define kAirPlayEvent_StartedPlayingOverP2PSolo		"startedPlayingOverP2PSolo"
-
-/*---------------------------------------------------------------------------------------------------------------------------
-	StoppedPlayingOverP2PSolo: Tells the server that a P2P Solo playback session stopped.
-	
-	No response keys.
- */
-#define kAirPlayEvent_StoppedPlayingOverP2PSolo		"stoppedPlayingOverP2PSolo"
-
-/*---------------------------------------------------------------------------------------------------------------------------
 	SetUpStreams: Sets up one or more streams on the platform. May be call multiple times to set up different streams.
 	
 	Request keys
@@ -989,9 +852,6 @@ typedef uint64_t	AirPlayFeatures;
 // [String] IP address, DNS name, etc.
 #define kAirPlayKey_Address				"address"
 
-// [String] Password used to change settings on the accessory (e.g. configure the network, etc.).
-#define kAirPlayKey_AdminPassword		"adminPassword"
-
 // [Number:AirPlayAppStateID] ID of an app state (e.g. phone call). See kAirPlayAppStateID_*.
 #define kAirPlayKey_AppStateID			"appStateID"
 
@@ -1025,12 +885,6 @@ typedef uint64_t	AirPlayFeatures;
 // [Boolean] Loopback output to input on the AirPlay receiver.
 #define kAirPlayKey_AudioLoopback		"audioLoopback"
 
-// [Dictionary] Vendor specific audio stream configuration data. Keys are vendor specific.
-#define kAirPlayKey_AudioStreamOptions	"audioStreamOptions"
-
-// [String] Unique 10 character string assigned by Apple to an app via the Provisioning Portal (e.g. "24D4XFAF43").
-#define kAirPlayKey_BundleSeedID		"bundleSeedID"
-
 // [Number] Number of audio channels (e.g. 2 for stereo).
 #define kAirPlayKey_Channels			"ch"
 
@@ -1057,7 +911,7 @@ typedef uint64_t	AirPlayFeatures;
 // [Number:AirPlayDisplayFeatures] Features of a particular display.
 #define kAirPlayKey_DisplayFeatures				kAirPlayKey_Features
 
-// [Number:AirPlayDisplayFeatures] Primary input device when multiple input devices are supported.
+// [Number:AirPlayDisplayPrimaryInputDevice] Primary input device when multiple input devices are supported.
 #define kAirPlayKey_PrimaryInputDevice          "primaryInputDevice"
 
 // [Array of Dictionary] Displays available.
@@ -1169,9 +1023,6 @@ typedef uint64_t	AirPlayFeatures;
 // This is often used together with synchronized "wallTime" to establish timing relationships.
 #define kAirPlayKey_MediaTime			"mediaTime"
 
-// [Array] Array of reverse-DNS strings describing supported MFi accessory protocols (e.g. "com.acme.gadget").
-#define kAirPlayKey_MFiProtocols		"mfiProtocols"
-
 // [String] Minimum supported client operating system build version string (e.g. "11A200"). 
 #define kAirPlayKey_ClientOSBuildVersionMin		"clientOSBuildVersionMin"
 
@@ -1251,9 +1102,6 @@ typedef uint64_t	AirPlayFeatures;
 // [Boolean] Whether or not to use right-hand drive mode.
 #define kAirPlayKey_RightHandDrive		"rightHandDrive"
 
-// [Number] Relative Signal Strength Indication (RSSI).
-#define kAirPlayKey_RSSI				"rssi"
-
 // [Number:uint32_t] Sample time.
 #define kAirPlayKey_SampleTime			"sampleTime"
 
@@ -1299,11 +1147,11 @@ typedef uint64_t	AirPlayFeatures;
 // [Boolean] True if media control port is supported.
 #define kAirPlayKey_SupportsMediaControlPort "supportsMediaControlPort"
 
-// [Boolean] Activate the virtual display in a suspended state (no data connection to receiver).
-#define kAirPlayKey_SuspendOnActivate	"SuspendOnActivate"
-
 // [Number] Timestamp in 64-bit NTP format.
 #define kAirPlayKey_Timestamp			"timestamp"
+
+// [Number] Unadjusted Timestamp
+#define kAirPlayKey_TimestampRawNs		"timestampRawNs"
 
 // [Number:AirPlayTransferPriority] Priority of a resource transfer (e.g. nice-to-have). See kAirPlayTransferPriority_*.
 #define kAirPlayKey_TransferPriority	"transferPriority"
@@ -1313,9 +1161,6 @@ typedef uint64_t	AirPlayFeatures;
 
 // [Data] TXT record for _airplay._tcp.
 #define kAirPlayKey_TXTAirPlay			"txtAirPlay"
-
-// [Data] TXT record for _raop._tcp.
-#define kAirPlayKey_TXTRAOP				"txtRAOP"
 
 // [Number or String] Type of command, event, stream, etc.
 // See kAirPlayCommand_* constants for commands.
@@ -1350,13 +1195,6 @@ typedef uint64_t	AirPlayFeatures;
 // This is often used together with "mediaTime" to establish timing relationships.
 #define kAirPlayKey_WallTime			"wallTime"
 
-// [Data] WiFi PSK for joining a WPA-protected WiFi network.
-// This contains between 8 and 63 bytes each being 32-126 decimal, inclusive for the pre-hashed password.
-#define kAirPlayKey_WiFiPSK				"wifiPSK"
-
-// [String] WiFi SSID (network name) for the accessory to join.
-#define kAirPlayKey_WiFiSSID			"wifiSSID"
-
 // [Number] Width in pixels.
 #define kAirPlayKey_WidthPixels			"widthPixels"
 
@@ -1368,63 +1206,6 @@ typedef uint64_t	AirPlayFeatures;
 
 // [Boolean] Whether the receiver supports statistics as part of the keep alive body. 
 #define kAirPlayKey_KeepAliveSendStatsAsBody	"keepAliveSendStatsAsBody"
-
-// [Number] FPS for frames queued for sending via wireless.
-#define kAirPlayKey_QueuedFramesAvg			"queuedFramesAvg"
-
-// [Number] FPS for frames that are sent.
-#define kAirPlayKey_SentFramesAvg			"sentFramesAvg"
-
-// [Number] Average megabits/sec actually being sent.
-#define kAirPlayKey_TxUsageAvg				"txUsageAvg"
-
-// [Number] Average percentage bytes that are lost for video connection.
-#define kAirPlayKey_LossAvg					"lossAvg"
-
-// [Number] Average round-trip-time for the network.
-#define kAirPlayKey_RttAvg					"rttAvg"
-
-// [Number] Primary display FPS (reported from the LCD on the sending device).
-#define kAirPlayKey_PrimaryFPSAvg			"primaryFPSAvg"
-
-// [Number] CPU usage.
-#define kAirPlayKey_CPUAvg					"cpuAvg"
-
-// [Number] Max megabits/sec (i.e. estimated bandwidth available).
-#define kAirPlayKey_TxCapacityAvg			"txCapacityAvg"
-
-// [Number] RSSI of the WiFi interface actively being used.
-#define kAirPlayKey_WifiRSSI				"wifiRSSI"
-
-// [Number] FPS of Submit Surface.
-#define kAirPlayKey_SubmitSurfaceFPS		"submitSurfaceFPS"
-
-// [Number] FPS of frames given to the encoder.
-#define kAirPlayKey_BeforeEncoderFPS		"beforeEncoderFPS"
-
-// [Number] Encoder drops per second.
-#define kAirPlayKey_EncoderDropFPS			"encoderDropFPS"
-
-// [Number] Idle encodes per second.
-#define kAirPlayKey_IdleEncodeFPS			"idleEncoderFPS"
-
-// [Number] Number of times per second the encoder dropped an idle frame.
-#define kAirPlayKey_IdleDropFPS				"idleDropFPS"
-
-// [Number] 
-#define kAirPlayKey_EncoderQueueDropFPS		"encoderQueueDropFPS"
-
-// [Number]
-#define kAirPlayKey_SinkOverflowDropFPS		"sinkOverflowDropFPS"
-
-// [Number] Current target FPS (30 or 60). Based on available bandwidth.
-#define kAirPlayKey_EncoderCurrentFPS		"encoderCurrentFPS"
-
-// [Number] How many times we've backed up enough frames that we had to drop frames and reset.
-#define kAirPlayKey_FrameResets				"frameResets"
-
-// [Number] WiFi channel for the current connection.
-#define kAirPlayKey_WifiChannel				"wifiChannel"
 
 	// [Data] PNG data.
 	#define kAirPlayOEMIconKey_ImageData		"imageData"
@@ -1497,12 +1278,6 @@ typedef int32_t		AirPlayAppStateID;
 #define kAirPlayAppStateIDString_PhoneCall			"phoneCall"
 #define kAirPlayAppStateIDString_TurnByTurn			"turnByTurn"
 
-#define AirPlayAppStateIDFromCFString( X )	MapCFStringToValue( (X), kAirPlayAppStateID_NotApplicable, \
-	CFSTR( kAirPlayAppStateIDString_Speech ),		kAirPlayAppStateID_Speech, \
-	CFSTR( kAirPlayAppStateIDString_PhoneCall ),	kAirPlayAppStateID_PhoneCall, \
-	CFSTR( kAirPlayAppStateIDString_TurnByTurn ),	kAirPlayAppStateID_TurnByTurn, \
-	NULL )
-
 #define AirPlayAppStateIDFromString( X )	MapStringToValue( (X), kAirPlayAppStateID_NotApplicable, \
 	kAirPlayAppStateIDString_Speech,		kAirPlayAppStateID_Speech, \
 	kAirPlayAppStateIDString_PhoneCall,		kAirPlayAppStateID_PhoneCall, \
@@ -1515,14 +1290,6 @@ typedef int32_t		AirPlayAppStateID;
 	( (X) == kAirPlayAppStateID_PhoneCall )		? kAirPlayAppStateIDString_PhoneCall		: \
 	( (X) == kAirPlayAppStateID_TurnByTurn )	? kAirPlayAppStateIDString_TurnByTurn		: \
 												  "?" )
-
-#define AirPlayAppStateIDToCFString( X ) ( \
-	( (X) == kAirPlayAppStateID_NotApplicable ) ? CFSTR( kAirPlayAppStateIDString_NotApplicable )	: \
-	( (X) == kAirPlayAppStateID_Speech )		? CFSTR( kAirPlayAppStateIDString_Speech )			: \
-	( (X) == kAirPlayAppStateID_PhoneCall )		? CFSTR( kAirPlayAppStateIDString_PhoneCall )		: \
-	( (X) == kAirPlayAppStateID_TurnByTurn )	? CFSTR( kAirPlayAppStateIDString_TurnByTurn )		: \
-												  CFSTR( "?" ) )
-
 // AirPlayConstraint
 
 typedef int32_t		AirPlayConstraint;
@@ -1535,12 +1302,6 @@ typedef int32_t		AirPlayConstraint;
 #define kAirPlayConstraintString_Anytime			"anytime"
 #define kAirPlayConstraintString_UserInitiated		"userInitiated"
 #define kAirPlayConstraintString_Never				"never"
-
-#define AirPlayConstraintFromCFString( X )	MapCFStringToValue( (X), kAirPlayConstraint_NotApplicable, \
-	CFSTR( kAirPlayConstraintString_Anytime ),			kAirPlayConstraint_Anytime, \
-	CFSTR( kAirPlayConstraintString_UserInitiated ),	kAirPlayConstraint_UserInitiated, \
-	CFSTR( kAirPlayConstraintString_Never ),			kAirPlayConstraint_Never, \
-	NULL )
 
 #define AirPlayConstraintFromString( X )	MapStringToValue( (X), kAirPlayConstraint_NotApplicable, \
 	kAirPlayConstraintString_Anytime,		kAirPlayConstraint_Anytime, \
@@ -1555,13 +1316,6 @@ typedef int32_t		AirPlayConstraint;
 	( (X) == kAirPlayConstraint_Never )			? kAirPlayConstraintString_Never			: \
 												  "?" )
 
-#define AirPlayConstraintToCFString( X ) ( \
-	( (X) == kAirPlayConstraint_NotApplicable ) ? CFSTR( kAirPlayConstraintString_NotApplicable )	: \
-	( (X) == kAirPlayConstraint_Anytime )		? CFSTR( kAirPlayConstraintString_Anytime )			: \
-	( (X) == kAirPlayConstraint_UserInitiated )	? CFSTR( kAirPlayConstraintString_UserInitiated )	: \
-	( (X) == kAirPlayConstraint_Never )			? CFSTR( kAirPlayConstraintString_Never )			: \
-												  CFSTR( "?" ) )
-
 // AirPlayEntity
 
 typedef int32_t		AirPlayEntity;
@@ -1572,11 +1326,6 @@ typedef int32_t		AirPlayEntity;
 #define kAirPlayEntityString_NotApplicable		"n/a"
 #define kAirPlayEntityString_Controller			"controller"
 #define kAirPlayEntityString_Accessory			"accessory"
-
-#define AirPlayEntityFromCFString( X )	MapCFStringToValue( (X), kAirPlayEntity_NotApplicable, \
-	CFSTR( kAirPlayEntityString_Controller ),	kAirPlayEntity_Controller, \
-	CFSTR( kAirPlayEntityString_Accessory ),	kAirPlayEntity_Accessory, \
-	NULL )
 
 #define AirPlayEntityFromString( X )	MapStringToValue( (X), kAirPlayEntity_NotApplicable, \
 	kAirPlayEntityString_Controller,	kAirPlayEntity_Controller, \
@@ -1589,12 +1338,6 @@ typedef int32_t		AirPlayEntity;
 	( (X) == kAirPlayEntity_Accessory )		? kAirPlayEntityString_Accessory		: \
 											  "?" )
 
-#define AirPlayEntityToCFString( X ) ( \
-	( (X) == kAirPlayEntity_NotApplicable ) ? CFSTR( kAirPlayEntityString_NotApplicable )	: \
-	( (X) == kAirPlayEntity_Controller )	? CFSTR( kAirPlayEntityString_Controller )		: \
-	( (X) == kAirPlayEntity_Accessory )		? CFSTR( kAirPlayEntityString_Accessory )		: \
-											  CFSTR( "?" ) )
-
 // AirPlayResourceID
 
 typedef int32_t		AirPlayResourceID;
@@ -1606,11 +1349,6 @@ typedef int32_t		AirPlayResourceID;
 #define kAirPlayResourceIDString_MainScreen			"mainScreen"
 #define kAirPlayResourceIDString_MainAudio			"mainAudio"
 
-#define AirPlayResourceIDFromCFString( X )	MapCFStringToValue( (X), kAirPlayResourceID_NotApplicable, \
-	CFSTR( kAirPlayResourceIDString_MainScreen ),	kAirPlayResourceID_MainScreen, \
-	CFSTR( kAirPlayResourceIDString_MainAudio ),	kAirPlayResourceID_MainAudio, \
-	NULL )
-
 #define AirPlayResourceIDFromString( X )	MapStringToValue( (X), kAirPlayResourceID_NotApplicable, \
 	kAirPlayResourceIDString_MainScreen,	kAirPlayResourceID_MainScreen, \
 	kAirPlayResourceIDString_MainAudio,		kAirPlayResourceID_MainAudio, \
@@ -1621,12 +1359,6 @@ typedef int32_t		AirPlayResourceID;
 	( (X) == kAirPlayResourceID_MainScreen )	? kAirPlayResourceIDString_MainScreen		: \
 	( (X) == kAirPlayResourceID_MainAudio )		? kAirPlayResourceIDString_MainAudio		: \
 												  "?" )
-
-#define AirPlayResourceIDToCFString( X ) ( \
-	( (X) == kAirPlayResourceID_NotApplicable ) ? CFSTR( kAirPlayResourceIDString_NotApplicable )	: \
-	( (X) == kAirPlayResourceID_MainScreen )	? CFSTR( kAirPlayResourceIDString_MainScreen )		: \
-	( (X) == kAirPlayResourceID_MainAudio )		? CFSTR( kAirPlayResourceIDString_MainAudio )		: \
-												  CFSTR( "?" ) )
 
 // AirPlaySiriAction
 
@@ -1641,12 +1373,6 @@ typedef int32_t		AirPlaySiriAction;
 #define kAirPlaySiriActionString_ButtonDown				"buttondown"
 #define kAirPlaySiriActionString_ButtonUp				"buttonup"
 
-#define AirPlaySiriActionFromCFString( X )	MapCFStringToValue( (X), kAirPlaySiriAction_NotApplicable, \
-	CFSTR( kAirPlaySiriActionString_Prewarm ),		kAirPlaySiriAction_Prewarm, \
-	CFSTR( kAirPlaySiriActionString_ButtonDown ),	kAirPlaySiriAction_ButtonDown, \
-	CFSTR( kAirPlaySiriActionString_ButtonUp ),		kAirPlaySiriAction_ButtonUp, \
-	NULL )
-
 #define AirPlaySiriActionFromString( X )	MapStringToValue( (X), kAirPlaySiriAction_NotApplicable, \
 	kAirPlaySiriActionString_Prewarm,		kAirPlaySiriAction_Prewarm, \
 	kAirPlaySiriActionString_ButtonDown,	kAirPlaySiriAction_ButtonDown, \
@@ -1659,13 +1385,6 @@ typedef int32_t		AirPlaySiriAction;
 	( (X) == kAirPlaySiriAction_ButtonDown )	? kAirPlaySiriActionString_ButtonDown		: \
 	( (X) == kAirPlaySiriAction_ButtonUp )		? kAirPlaySiriActionString_ButtonUp			: \
 												  "?" )
-
-#define AirPlaySiriActionToCFString( X ) ( \
-	( (X) == kAirPlaySiriAction_NotApplicable ) ? CFSTR( kAirPlaySiriActionString_NotApplicable )	: \
-	( (X) == kAirPlaySiriAction_Prewarm )		? CFSTR( kAirPlaySiriActionString_Prewarm )			: \
-	( (X) == kAirPlaySiriAction_ButtonDown )	? CFSTR( kAirPlaySiriActionString_ButtonDown )		: \
-	( (X) == kAirPlaySiriAction_ButtonUp )		? CFSTR( kAirPlaySiriActionString_ButtonUp )		: \
-												  CFSTR( "?" ) )
 
 // AirPlaySpeechMode
 
@@ -1680,12 +1399,6 @@ typedef int32_t		AirPlaySpeechMode;
 #define kAirPlaySpeechModeString_Speaking			"speaking"
 #define kAirPlaySpeechModeString_Recognizing		"recognizing"
 
-#define AirPlaySpeechModeFromCFString( X )	MapCFStringToValue( (X), kAirPlaySpeechMode_NotApplicable, \
-	CFSTR( kAirPlaySpeechModeString_None ),			kAirPlaySpeechMode_None, \
-	CFSTR( kAirPlaySpeechModeString_Speaking ),		kAirPlaySpeechMode_Speaking, \
-	CFSTR( kAirPlaySpeechModeString_Recognizing ),	kAirPlaySpeechMode_Recognizing, \
-	NULL )
-
 #define AirPlaySpeechModeFromString( X )	MapStringToValue( (X), kAirPlaySpeechMode_NotApplicable, \
 	kAirPlaySpeechModeString_None,			kAirPlaySpeechMode_None, \
 	kAirPlaySpeechModeString_Speaking,		kAirPlaySpeechMode_Speaking, \
@@ -1699,13 +1412,6 @@ typedef int32_t		AirPlaySpeechMode;
 	( (X) == kAirPlaySpeechMode_Recognizing )	? kAirPlaySpeechModeString_Recognizing		: \
 												  "?" )
 
-#define AirPlaySpeechModeToCFString( X ) ( \
-	( (X) == kAirPlaySpeechMode_NotApplicable ) ? CFSTR( kAirPlaySpeechModeString_NotApplicable )	: \
-	( (X) == kAirPlaySpeechMode_None )			? CFSTR( kAirPlaySpeechModeString_None )			: \
-	( (X) == kAirPlaySpeechMode_Speaking )		? CFSTR( kAirPlaySpeechModeString_Speaking )		: \
-	( (X) == kAirPlaySpeechMode_Recognizing )	? CFSTR( kAirPlaySpeechModeString_Recognizing )		: \
-												  CFSTR( "?" ) )
-
 // AirPlayTransferPriority
 
 typedef int32_t		AirPlayTransferPriority;
@@ -1717,11 +1423,6 @@ typedef int32_t		AirPlayTransferPriority;
 #define kAirPlayTransferPriorityString_NiceToHave			"niceToHave"
 #define kAirPlayTransferPriorityString_UserInitiated		"userInitiated"
 
-#define AirPlayTransferPriorityFromCFString( X )	MapCFStringToValue( (X), kAirPlayTransferPriority_NotApplicable, \
-	CFSTR( kAirPlayTransferPriorityString_NiceToHave ),		kAirPlayTransferPriority_NiceToHave, \
-	CFSTR( kAirPlayTransferPriorityString_UserInitiated ),	kAirPlayTransferPriority_UserInitiated, \
-	NULL )
-
 #define AirPlayTransferPriorityFromString( X )	MapStringToValue( (X), kAirPlayTransferPriority_NotApplicable, \
 	kAirPlayTransferPriorityString_NiceToHave,		kAirPlayTransferPriority_NiceToHave, \
 	kAirPlayTransferPriorityString_UserInitiated,	kAirPlayTransferPriority_UserInitiated, \
@@ -1732,12 +1433,6 @@ typedef int32_t		AirPlayTransferPriority;
 	( (X) == kAirPlayTransferPriority_NiceToHave )		? kAirPlayTransferPriorityString_NiceToHave		: \
 	( (X) == kAirPlayTransferPriority_UserInitiated )	? kAirPlayTransferPriorityString_UserInitiated	: \
 														  "?" )
-
-#define AirPlayTransferPriorityToCFString( X ) ( \
-	( (X) == kAirPlayTransferPriority_NotApplicable )	? CFSTR( kAirPlayTransferPriorityString_NotApplicable )	: \
-	( (X) == kAirPlayTransferPriority_NiceToHave )		? CFSTR( kAirPlayTransferPriorityString_NiceToHave )	: \
-	( (X) == kAirPlayTransferPriority_UserInitiated )	? CFSTR( kAirPlayTransferPriorityString_UserInitiated )	: \
-														  CFSTR( "?" ) )
 
 // AirPlayTransferType
 
@@ -1754,13 +1449,6 @@ typedef int32_t		AirPlayTransferType;
 #define kAirPlayTransferTypeString_Borrow				"borrow"
 #define kAirPlayTransferTypeString_Unborrow				"unborrow"
 
-#define AirPlayTransferTypeFromCFString( X )	MapCFStringToValue( (X), kAirPlayTransferType_NotApplicable, \
-	CFSTR( kAirPlayTransferTypeString_Take ),		kAirPlayTransferType_Take, \
-	CFSTR( kAirPlayTransferTypeString_Untake ),		kAirPlayTransferType_Untake, \
-	CFSTR( kAirPlayTransferTypeString_Borrow ),		kAirPlayTransferType_Borrow, \
-	CFSTR( kAirPlayTransferTypeString_Unborrow ),	kAirPlayTransferType_Unborrow, \
-	NULL )
-
 #define AirPlayTransferTypeFromString( X )	MapStringToValue( (X), kAirPlayTransferType_NotApplicable, \
 	kAirPlayTransferTypeString_Take,		kAirPlayTransferType_Take, \
 	kAirPlayTransferTypeString_Untake,		kAirPlayTransferType_Untake, \
@@ -1775,14 +1463,6 @@ typedef int32_t		AirPlayTransferType;
 	( (X) == kAirPlayTransferType_Borrow )			? kAirPlayTransferTypeString_Borrow			: \
 	( (X) == kAirPlayTransferType_Unborrow )		? kAirPlayTransferTypeString_Unborrow		: \
 													  "?" )
-
-#define AirPlayTransferTypeToCFString( X ) ( \
-	( (X) == kAirPlayTransferType_NotApplicable ) 	? CFSTR( kAirPlayTransferTypeString_NotApplicable )	: \
-	( (X) == kAirPlayTransferType_Take )			? CFSTR( kAirPlayTransferTypeString_Take )			: \
-	( (X) == kAirPlayTransferType_Untake )			? CFSTR( kAirPlayTransferTypeString_Untake )		: \
-	( (X) == kAirPlayTransferType_Borrow )			? CFSTR( kAirPlayTransferTypeString_Borrow )		: \
-	( (X) == kAirPlayTransferType_Unborrow )		? CFSTR( kAirPlayTransferTypeString_Unborrow )		: \
-													  CFSTR( "?" ) )
 
 // AirPlayTriState
 
@@ -2416,10 +2096,6 @@ check_compile_time( sizeof( AirPlayScreenHeader )				== 128 );
 //		[kAirPlayKey_AudioOutputFormats]
 #define kAirPlayProperty_AudioFormats				"audioFormats"
 
-// [String] Status of the audio jack (connected/disconnect) and optionally a type of connection (analog/digital).
-// Return via the Audio-Jack-Status RTSP header. See kAirPlayAudioJackStatus* constants for specific strings.
-#define kAirPlayProperty_AudioJackStatus			"audioJackStatus"
-
 // [Ordered array of dictionaries] Audio latencies.
 // Each dictionary contains the following keys:
 //		[kAirPlayKey_Type] - if not specified, then latencies are good for all stream types
@@ -2445,9 +2121,9 @@ check_compile_time( sizeof( AirPlayScreenHeader )				== 128 );
 //		kAirPlayKey_HeightPixels
 //		kAirPlayKey_WidthPixels
 //		kAirPlayKey_UUID
+//		kAirPlayKey_WidthPhysical
+//		kAirPlayKey_HeightPhysical
 //		[kAirPlayKey_EDID]
-//		[kAirPlayKey_WidthPhysical]
-//		[kAirPlayKey_HeightPhysical]
 #define kAirPlayProperty_Displays					"displays"
 
 // [Array of strings] Returns any platform-specific extended features. See kAirPlayExtendedFeature_* constants.
@@ -2501,19 +2177,8 @@ check_compile_time( sizeof( AirPlayScreenHeader )				== 128 );
 // [Boolean] Whether or not to display the OEM icon.
 #define kAirPlayProperty_OEMIconVisible				"oemIconVisible"
 
-// [Boolean] For asking the platform if it's okay to use AirPlay.
-// If the platform doesn't implement this, it's assumed to be okay to play.
-#define kAirPlayProperty_PlaybackAllowed			"playbackAllowed"
-
 // [Boolean] Indicates if we're currently playing.
 #define kAirPlayProperty_Playing					"playing"
-
-// [Number:Integer] Sets the current amount of skew, in samples, detected to allow the platform to compensate for it.
-#define kAirPlayProperty_Skew						"skew"
-
-// [Boolean] Read-only.  Returns true if the platform supports and has enabled its own fine-grained skew compensation.
-// If the platform reports false here, a potentially lower quality form of skew compensation may be used.
-#define kAirPlayProperty_SkewCompensation			"skewCompensation"
 
 // [String] AirPlay source version string (e.g. "101.7").
 #define kAirPlayProperty_SourceVersion				"sourceVersion"

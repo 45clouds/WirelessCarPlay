@@ -2,7 +2,7 @@
 	File:    	CFUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2000-2016 Apple Inc. All Rights Reserved.
+	Copyright (C) 2000-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -75,7 +75,7 @@
 #include CF_HEADER
 #include CF_RUNTIME_HEADER
 
-#if( CFL_BINARY_PLISTS || CFL_BINARY_PLISTS_STREAMED )
+#if( CFL_BINARY_PLISTS )
 	#include "CFLiteBinaryPlist.h"
 #endif
 
@@ -175,35 +175,6 @@ OSStatus	CFPropertyListCreateFormatted( CFAllocatorRef inAllocator, void *outObj
 OSStatus	CFPropertyListCreateFormattedVAList( CFAllocatorRef inAllocator, void *outObj, const char *inFormat, va_list inArgs )
 {
 	return( CFPropertyListBuildFormatted( inAllocator, NULL, outObj, inFormat, inArgs ) );
-}
-
-//===========================================================================================================================
-//	CFPropertyListAppendFormatted
-//===========================================================================================================================
-
-OSStatus	CFPropertyListAppendFormatted( CFAllocatorRef inAllocator, CFTypeRef inParent, const char *inFormat, ... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = CFPropertyListAppendFormattedVAList( inAllocator, inParent, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFPropertyListAppendFormattedVAList
-//===========================================================================================================================
-
-OSStatus
-	CFPropertyListAppendFormattedVAList( 
-		CFAllocatorRef	inAllocator, 
-		CFTypeRef 		inParent, 
-		const char *	inFormat, 
-		va_list 		inArgs )
-{
-	return( CFPropertyListBuildFormatted( inAllocator, inParent, NULL, inFormat, inArgs ) );
 }
 
 //===========================================================================================================================
@@ -857,778 +828,8 @@ static void	_CFPropertyListStackFree( CFPropertyListStack *inStack )
 
 #if 0
 #pragma mark -
-#pragma mark == Formatted Extracting and Validation ==
-#endif
-
-//===========================================================================================================================
-//	CFPropertyListExtractFormatted
-//===========================================================================================================================
-
-OSStatus	CFPropertyListExtractFormatted( CFPropertyListRef inObj, void *outResult, const char *inFormat, ... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = CFPropertyListExtractFormattedVAList( inObj, outResult, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFPropertyListExtractFormattedVAList
-//
-//	Spec	Purpose									Parameters
-//	-------	---------------------------------------	----------
-//	<key>	Lookup inline key in dictionary			none
-//	%kC		Lookup FourCharCode key in dictionary	uint32_t code (e.g. 'APPL'/0x4150504C).
-//	%ki		Lookup string-based integer key			uint64_t integerKey
-//	%ks		Lookup c-string key in dictionary		const char *key
-//	%kt		Lookup text key in dictionary			const char *key, int keySize
-//	%kO		Lookup object key in dictionary			CFStringRef key
-//	[n]		Lookup inline index n in array			none
-//	[*]		Lookup variable index n in array		int index
-//
-//	Conversion Types	Purpose								Parameter				Comment
-//	-------------------	-----------------------------------	-----------------------	-------
-//	bool				CFBoolean to Boolean				Boolean *outBool
-//	code				CFString to OSType					uint32_t *outCode
-//	data*				CFData to const void *				void **outPtr			Last va_arg is size_t expected size.
-//	err					CFNumber or CFString to OSStatus	OSStatus *outErr
-//	int					CFNumber or CFString to int			int *outValue
-//	int8				CFNumber or CFString to int8		int8_t *outValue
-//	int16				CFNumber or CFString to int16		int16_t *outValue
-//	int64				CFNumber or CFString to int64		int64_t *outValue
-//	int*				CFNumber or CFString to integer		void *outValue			Last va_arg is size_t sizeof( integer ).
-//	ipv4				CFString to IPv4 address			uint32_t *outIPv4		Returned in host byte order.
-//	mac					CFData or CFString MAC address		uint8_t outMAC[ 6 ]		outMAC must be at least 6 bytes.
-//	macStr				CFData or CFString MAC address		char outMACStr[ 18 ]	outMACStr must be at least 18 bytes.
-//	obj					Retained CF object					CFTypeRef *outObj		Caller must CFRelease on success.
-//	utf8				CFString to malloc'd UTF-8			char **outString		Caller must free on success.
-//	*utf8				CFString to fixed-size UTF-8		char *inBuffer			Last va_arg is size_t inBufferSize.
-//	vers				CFString to 32-bit NumVersion		uint32_t *outVersion
-//	svers				CFString to 32-bit Source Version	uint32_t *outVersion
-//	uuid				CFData or CFString to 16-bytes		uint8_t outUUID[ 16 ]	Returns a big endian UUID.
-//	<n>					CFData to n-bytes of data			uint8_t outData[ n ]	outData must be at least n bytes.
-//===========================================================================================================================
-
-OSStatus	CFPropertyListExtractFormattedVAList( CFPropertyListRef inObj, void *outResult, const char *inFormat, va_list inArgs )
-{
-	OSStatus					err;
-	CFPropertyListRef			obj;
-	const unsigned char *		p;
-	const unsigned char *		q;
-	CFStringRef					key;
-	CFIndex						i;
-	CFTypeRef					value;
-	const char *				s;
-	int							n;
-	uint32_t					u32;
-	Boolean						good;
-	uint8_t						buf[ 8 ];
-	const char *				type;
-	CFRange						range;
-	CFIndex						size;
-	CFStringRef					str;
-	int64_t						s64;
-	uint64_t					u64;
-	char						tempStr[ 64 ];
-	size_t						len;
-	
-	key		= NULL;
-	i		= -1;
-	value	= NULL;
-	obj		= inObj;
-	type	= NULL;
-	
-	while( *inFormat != '\0' )
-	{
-		// Parse a segment ending in a null or '.' (end of segment) or ':' start of type.
-		
-		p = (const unsigned char *) inFormat;
-		while( ( *inFormat != '\0' ) && ( *inFormat != '.' ) && ( *inFormat != ':' ) ) ++inFormat;
-		q = (const unsigned char *) inFormat;
-		while( ( *inFormat != '\0' ) && ( *inFormat != '.' ) ) ++inFormat;
-		
-		// Note: The following code does not explicitly check for "p < q" at each step because the format string is 
-		// required to be null terminated so based on that and the above parsing/checks, we know the segment ends with 
-		// either a null (last segment in the format), '.' (end of segment), or ':' (start of type conversion).
-		// The code is careful to check each character to avoid accessing beyond the null, '.', or ':' sentinel.
-		
-		if( p[ 0 ] == '%' )			// %k specifiers
-		{
-			if( p[ 1 ] == 'k' )
-			{
-				switch( p[ 2 ] )
-				{
-					case 's':		// %ks: Key c-string
-						
-						s = va_arg( inArgs, const char * );
-						require_action( s, exit, err = kParamErr );
-						
-						key = CFStringCreateWithCString( kCFAllocatorDefault, s, kCFStringEncodingUTF8 );
-						require_action( key, exit, err = kNoMemoryErr );
-						break;
-					
-					case 't':		// %kt: Key text
-						
-						s = va_arg( inArgs, const char * );
-						require_action( s, exit, err = kParamErr );
-						n = va_arg( inArgs, int );
-						
-						key = CFStringCreateWithBytes( kCFAllocatorDefault, (const UInt8 *) s, n, kCFStringEncodingUTF8, false );
-						require_action( key, exit, err = kNoMemoryErr );
-						break;
-					
-					case 'C':		// %kC: Key FourCharCode
-					case 'c':		// %kc: Key FourCharCode - DEPRECATED
-						
-						u32 = va_arg( inArgs, uint32_t );
-						buf[ 0 ] = (uint8_t)( ( u32 >> 24 ) & 0xFF );
-						buf[ 1 ] = (uint8_t)( ( u32 >> 16 ) & 0xFF );
-						buf[ 2 ] = (uint8_t)( ( u32 >>  8 ) & 0xFF );
-						buf[ 3 ] = (uint8_t)(   u32         & 0xFF );
-						
-						key = CFStringCreateWithBytes( kCFAllocatorDefault, buf, 4, kCFStringEncodingMacRoman, false );
-						require_action( key, exit, err = kNoMemoryErr );
-						break;
-					
-					case 'O':		// %kO: Key object
-					case 'o':		// %ko: Key object - DEPRECATED
-						
-						key = va_arg( inArgs, CFStringRef );
-						require_action( key, exit, err = kParamErr );
-						
-						CFRetain( key );
-						break;
-					
-					case 'i':		// %ki: Key string-based integer
-						
-						u64 = va_arg( inArgs, uint64_t );
-						SNPrintF( tempStr, sizeof( tempStr ), "%llu", u64 );
-						
-						key = CFStringCreateWithCString( NULL, tempStr, kCFStringEncodingUTF8 );
-						require_action( key, exit, err = kNoMemoryErr );
-						break;
-
-					default:
-						dlog( kLogLevelError, "%s: unknown %%k specifier: %.*s\n", __ROUTINE__, (int)( q - p ), p );
-						err = kFormatErr;
-						goto exit;
-				}
-				p += 3;
-			}
-			else
-			{
-				dlog( kLogLevelError, "%s: unknown specifier: %.*s\n", __ROUTINE__, (int)( q - p ), p );
-				err = kFormatErr;
-				goto exit;
-			}
-		}
-		else if( p[ 0 ] == '[' )	// []: Array specifiers
-		{
-			if( ( p[ 1 ] == '*' ) && ( p[ 2 ] == ']' ) )	// [*]: Variable array index
-			{
-				i = va_arg( inArgs, int );
-				require_action( i >= 0, exit, err = kRangeErr );
-				p += 3;
-			}
-			else if( isdigit( p[ 1 ] ) )					// [n]: Inline array index
-			{
-				++p;
-				i = 0;
-				while( isdigit( *p ) ) i = ( i * 10 ) + ( *p++ - '0' );
-				require_action( i >= 0, exit, err = kRangeErr );
-				require_action( *p == ']', exit, err = kFormatErr );
-				++p;
-			}
-			else
-			{
-				dlog( kLogLevelError, "%s: unknown [] specifier: %.*s\n", __ROUTINE__, (int)( q - p ), p );
-				err = kFormatErr;
-				goto exit;
-			}
-		}
-		else if( p < q )			// Inline keys
-		{
-			key = CFStringCreateWithBytes( kCFAllocatorDefault, p, (CFIndex)( q - p ), kCFStringEncodingUTF8, false );
-			require_action( key, exit, err = kNoMemoryErr );
-			p = q;
-		}
-		
-		// Lookup the value with the dictionary key or array index.
-		
-		if( key )
-		{
-			check( i == -1 );
-			require_action_quiet( CFGetTypeID( obj ) == CFDictionaryGetTypeID(), exit, err = kTypeErr );
-
-			value = (CFTypeRef) CFDictionaryGetValue( (CFDictionaryRef) obj, key );
-			CFRelease( key );
-			key = NULL;
-			require_action_quiet( value, exit, err = kNotFoundErr );
-		}
-		else if( i >= 0 )
-		{
-			require_action_quiet( CFGetTypeID( obj ) == CFArrayGetTypeID(), exit, err = kTypeErr );
-			require_action_quiet( i < CFArrayGetCount( (CFArrayRef) obj ), exit, err = kRangeErr );
-			
-			value = CFArrayGetValueAtIndex( (CFArrayRef) obj, i );
-			i = -1;
-		}
-		else
-		{
-			value = obj;
-		}
-		
-		// Parse the conversion type (if any). Conversions are only allowed in the last segment.
-		
-		if( *p == ':' )
-		{
-			type = (const char *) ++p;
-			while( ( *p != '\0' ) && ( *p != '.' ) ) ++p;
-			require_action( *p == '\0', exit, err = kFormatErr );
-			break;
-		}
-		
-		// Move to the next level (if any).
-		
-		obj = value;
-		if( *inFormat != '\0' ) ++inFormat;
-	}
-	require_action_quiet( value, exit, err = kNotFoundErr );
-	
-	// Perform value conversion (if any). Note: types must be at the end (checked above) so strcmp is safe here.
-	
-	if( type )
-	{
-		if( strcmp( type, "err" ) == 0 )		// err: CFNumber or CFString to OSStatus
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			if( outResult ) *( (OSStatus *) outResult ) = (OSStatus) s64;
-		}
-		else if( strcmp( type, "int" ) == 0 )	// int: CFNumber or CFString to int
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			check( ( s64 >= INT_MIN ) && ( s64 <= UINT_MAX ) );
-			if( outResult ) *( (int *) outResult ) = (int) s64;
-		}
-		else if( strcmp( type, "int8" ) == 0 )	// int8: CFNumber or CFString to int8_t
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			check( ( s64 >= SCHAR_MIN ) && ( s64 <= UCHAR_MAX ) );
-			if( outResult ) *( (uint8_t *) outResult ) = (uint8_t) s64;
-		}
-		else if( strcmp( type, "int16" ) == 0 )	// int16: CFNumber or CFString to int16_t
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			check( ( s64 >= SHRT_MIN ) && ( s64 <= USHRT_MAX ) );
-			if( outResult ) *( (int16_t *) outResult ) = (int16_t) s64;
-		}
-		else if( strcmp( type, "int64" ) == 0 )	// int64: CFNumber or CFString to int64_t
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			if( outResult ) *( (int64_t *) outResult ) = s64;
-		}
-		else if( strcmp( type, "int*" ) == 0 )	// int*: CFNumber or CFString to variable-size int
-		{
-			s64 = CFGetInt64( value, &err );
-			require_noerr( err, exit );
-			
-			len = va_arg( inArgs, size_t );
-			if(      len == 1 ) { check( ( s64 >=  INT8_MIN ) && ( s64 <=  UINT8_MAX ) ); *(  (int8_t *) outResult ) =  (int8_t) s64; }
-			else if( len == 2 ) { check( ( s64 >= INT16_MIN ) && ( s64 <= UINT16_MAX ) ); *( (int16_t *) outResult ) = (int16_t) s64; }
-			else if( len == 4 ) { check( ( s64 >= INT32_MIN ) && ( s64 <= UINT32_MAX ) ); *( (int32_t *) outResult ) = (int32_t) s64; }
-			else if( len == 8 )															  *( (int64_t *) outResult ) = s64;
-			else { dlogassert( "bad integer size %zu", len ); err = kSizeErr; goto exit; }
-		}
-		else if( strcmp( type, "utf8" ) == 0 )	// utf8: CFString to malloc'd UTF-8
-		{
-			uint8_t *		utf8;
-			
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			
-			range = CFRangeMake( 0, CFStringGetLength( (CFStringRef) value ) );
-			size = CFStringGetMaximumSizeForEncoding( range.length, kCFStringEncodingUTF8 );
-			utf8 = (uint8_t *) malloc( (size_t)( size + 1 ) );
-			require_action( utf8, exit, err = kNoMemoryErr );
-			
-			range.location = CFStringGetBytes( (CFStringRef) value, range, kCFStringEncodingUTF8, 0, false, utf8, size, &size );
-			if( range.location == range.length )
-			{
-				utf8[ size ] = '\0';
-				
-				if( outResult ) *( (uint8_t **) outResult ) = utf8;
-				else			free( utf8 );
-			}
-			else
-			{
-				free( utf8 );
-				dlog( kLogLevelError, "%s: cannot convert to UTF-8: %@\n", __ROUTINE__, value );
-				err = kUnexpectedErr;
-				goto exit;
-			}
-		}
-		else if( strcmp( type, "*utf8" ) == 0 )	// *utf8: CFString to fixed-sized UTF-8.
-		{
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			
-			size = (CFIndex) va_arg( inArgs, size_t );
-			good = CFStringGetCString( (CFStringRef) value, (char *) outResult, size, kCFStringEncodingUTF8 );
-			require_action( good, exit, err = kSizeErr );
-		}
-		else if( strcmp( type, "obj" ) == 0 )	// obj: Retained CF object
-		{
-			if( outResult )
-			{
-				CFRetain( value );
-				*( (CFTypeRef *) outResult ) = value;
-			}
-		}
-		else if( strcmp( type, "bool" ) == 0 )	// bool: CFBoolean to Boolean
-		{
-			require_action_quiet( CFGetTypeID( value ) == CFBooleanGetTypeID(), exit, err = kTypeErr );
-			
-			if( outResult ) *( (Boolean *) outResult ) = CFBooleanGetValue( (CFBooleanRef) value );
-		}
-		else if( strcmp( type, "mac" ) == 0 )	// mac: CFData/CFString to 6-byte MAC address array.
-		{
-			if( CFGetTypeID( value ) == CFDataGetTypeID() )
-			{
-				require_action( CFDataGetLength( (CFDataRef) value ) == 6, exit, err = kSizeErr );
-				if( outResult ) memcpy( outResult, CFDataGetBytePtr( (CFDataRef) value ), 6 );
-			}
-			else if( CFGetTypeID( value ) == CFStringGetTypeID() )
-			{
-				good = CFStringGetCString( (CFStringRef) value, tempStr, (CFIndex) sizeof( tempStr ), kCFStringEncodingUTF8 );
-				require_action( good, exit, err = kSizeErr );
-				
-				err = TextToMACAddress( tempStr, kSizeCString, outResult );
-				require_noerr( err, exit );
-			}
-			else
-			{
-				err = kTypeErr;
-				goto exit;
-			}
-		}
-		else if( strcmp( type, "macStr" ) == 0 )	// macStr: CFData/CFString to 18-byte MAC address C string.
-		{
-			if( CFGetTypeID( value ) == CFDataGetTypeID() )
-			{
-				require_action( CFDataGetLength( (CFDataRef) value ) == 6, exit, err = kSizeErr );
-				MACAddressToCString( CFDataGetBytePtr( (CFDataRef) value ), (char *) outResult );
-			}
-			else if( CFGetTypeID( value ) == CFStringGetTypeID() )
-			{
-				good = CFStringGetCString( (CFStringRef) value, tempStr, (CFIndex) sizeof( tempStr ), kCFStringEncodingUTF8 );
-				require_action( good, exit, err = kSizeErr );
-				
-				err = TextToMACAddress( tempStr, kSizeCString, buf );
-				require_noerr( err, exit );
-				
-				MACAddressToCString( buf, (char *) outResult );
-			}
-			else
-			{
-				err = kTypeErr;
-				goto exit;
-			}
-		}
-		else if( strcmp( type, "code" ) == 0 )	// code: CFString to OSType
-		{
-			uint32_t		code;
-			
-			if( CFGetTypeID( value ) == CFStringGetTypeID() )
-			{
-				str = (CFStringRef) value;
-				range = CFRangeMake( 0, CFStringGetLength( str ) );
-				require_action( range.length == 4, exit, err = kSizeErr );
-			
-				size = 0;
-				CFStringGetBytes( str, range, kCFStringEncodingUTF8, 0, false, buf, 4, &size );
-				require_action( size == 4, exit, err = kFormatErr );
-			
-				code = TextToFourCharCode( buf, 4 );
-			}
-			else if( CFGetTypeID( value ) == CFNumberGetTypeID() )
-			{
-				CFNumberGetValue( (CFNumberRef) value, kCFNumberSInt32Type, &code );
-			}
-			else
-			{
-				err = kTypeErr;
-				goto exit;
-			}
-			if( outResult ) *( (uint32_t *) outResult ) = code;
-		}
-		else if( strcmp( type, "ipv4" ) == 0 )	// ipv4: CFString to IPv4 address
-		{
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			str = (CFStringRef) value;
-			
-			good = CFStringGetCString( str, tempStr, (CFIndex) sizeof( tempStr ), kCFStringEncodingUTF8 );
-			require_action( good, exit, err = kOverrunErr );
-			
-			err = StringToIPv4Address( tempStr, kStringToIPAddressFlagsNone, (uint32_t *) outResult, NULL, NULL, NULL, NULL );
-			require_noerr( err, exit );
-		}
-		else if( strcmp( type, "vers" ) == 0 )	// vers: CFString to 32-bit NumVersion
-		{
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			str = (CFStringRef) value;
-			
-			range = CFRangeMake( 0, CFStringGetLength( str ) );
-			size = 0;
-			CFStringGetBytes( str, range, kCFStringEncodingUTF8, 0, false, (uint8_t *) tempStr, 
-				(CFIndex)( sizeof( tempStr ) - 1 ), &size );
-			
-			err = TextToNumVersion( tempStr, (size_t) size, (uint32_t *) outResult );
-			require_noerr( err, exit );
-		}
-		else if( strcmp( type, "svers" ) == 0 )	// vers: CFString to 32-bit Source Version
-		{
-			uint32_t	sourceVersion;
-			
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			str = (CFStringRef) value;
-			
-			range = CFRangeMake( 0, CFStringGetLength( str ) );
-			size = 0;
-			CFStringGetBytes( str, range, kCFStringEncodingUTF8, 0, false, (uint8_t *) tempStr, 
-				(CFIndex)( sizeof( tempStr ) - 1 ), &size );
-			
-			sourceVersion = TextToSourceVersion( tempStr, (size_t) size );
-			require_action( sourceVersion != 0, exit, err = kMalformedErr );
-			
-			*( (uint32_t *) outResult ) = sourceVersion;
-		}
-		else if( strcmp( type, "uuid" ) == 0 )	// uuid: CFData/CFString to 16-byte, big endian UUID
-		{
-			if( CFGetTypeID( value ) == CFDataGetTypeID() )
-			{
-				require_action( CFDataGetLength( (CFDataRef) value ) == 16, exit, err = kSizeErr );
-				if( outResult ) memcpy( outResult, CFDataGetBytePtr( (CFDataRef) value ), 16 );
-			}
-			else if( CFGetTypeID( value ) == CFStringGetTypeID() )
-			{
-				char		uuidStr[ 64 ];
-				
-				good = CFStringGetCString( (CFStringRef) value, uuidStr, (CFIndex) sizeof( uuidStr ), kCFStringEncodingUTF8 );
-				require_action( good, exit, err = kSizeErr );
-				
-				err = StringToUUID( uuidStr, kSizeCString, 0, outResult );
-				require_noerr( err, exit );
-			}
-			else
-			{
-				err = kTypeErr;
-				goto exit;
-			}
-		}
-		else if( strcmp( type, "CFStringUUID" ) == 0 )	// CFStringUUID: CFString UUID validity checking.
-		{
-			require_action_quiet( CFGetTypeID( value ) == CFStringGetTypeID(), exit, err = kTypeErr );
-			
-			good = CFStringGetCString( (CFStringRef) value, tempStr, (CFIndex) sizeof( tempStr ), kCFStringEncodingUTF8 );
-			require_action_quiet( good, exit, err = kSizeErr );
-			
-			err = StringToUUID( tempStr, kSizeCString, false, NULL );
-			require_noerr_quiet( err, exit );
-			
-			if( outResult ) *( (CFTypeRef *) outResult ) = value;
-		}
-		else if( strncmp( type, "CF", 2 ) == 0 ) // CF*: CF object of a specific type.
-		{
-			CFTypeID		requiredTypeID;
-			Boolean			assertOnBadType;
-			
-			s = strchr( type, '!' );
-			if( s ) { len = (size_t)( s - type );	assertOnBadType = true; }
-			else	{ len = strlen( type );			assertOnBadType = false; }
-			
-			if(      strncmpx( type, len, "CFArray" )		== 0 ) requiredTypeID = CFArrayGetTypeID();
-			else if( strncmpx( type, len, "CFBoolean" )		== 0 ) requiredTypeID = CFBooleanGetTypeID();
-			else if( strncmpx( type, len, "CFData" )		== 0 ) requiredTypeID = CFDataGetTypeID();
-			else if( strncmpx( type, len, "CFDate" )		== 0 ) requiredTypeID = CFDateGetTypeID();
-			else if( strncmpx( type, len, "CFDictionary" )	== 0 ) requiredTypeID = CFDictionaryGetTypeID();
-			else if( strncmpx( type, len, "CFNumber" )		== 0 ) requiredTypeID = CFNumberGetTypeID();
-			else if( strncmpx( type, len, "CFString" )		== 0 ) requiredTypeID = CFStringGetTypeID();
-			else { dlogassert( "unknown CF type: '%s'", type ); err = kUnsupportedErr; goto exit; }
-			
-			if( CFGetTypeID( value ) != requiredTypeID )
-			{
-				if( assertOnBadType ) dlogassert( "not type %.*s:\n%1@", (int) len, type, value );
-				err = kTypeErr;
-				goto exit;
-			}
-			if( outResult )
-			{
-				*( (CFTypeRef *) outResult ) = value;
-			}
-		}
-		else if( strcmp( type, "data*" ) == 0 )	// data*: CFData to const void *
-		{
-			require_action( CFGetTypeID( value ) == CFDataGetTypeID(), exit, err = kSizeErr );
-			
-			len = va_arg( inArgs, size_t );
-			require_action( CFDataGetLength( (CFDataRef) value ) == ( (CFIndex) len ), exit, err = kSizeErr );
-			
-			if( outResult ) *( (const uint8_t **) outResult ) = CFDataGetBytePtr( (CFDataRef) value );
-		}
-		else
-		{
-			i = 0;
-			for( p = (unsigned char *) type; isdigit( *p ); ++p ) i = ( i * 10 ) + ( *p - '0' );
-			if( *p != '\0' )
-			{
-				dlog( kLogLevelError, "%s: unknown conversion type: %s\n", __ROUTINE__, type );
-				err = kUnexpectedErr;
-				goto exit;
-			}
-			require_action( i >= 0, exit, err = kRangeErr );
-			require_action( CFGetTypeID( value ) == CFDataGetTypeID(), exit, err = kTypeErr );
-			require_action( CFDataGetLength( (CFDataRef) value ) == i, exit, err = kSizeErr );
-			
-			if( outResult )
-			{
-				memcpy( outResult, CFDataGetBytePtr( (CFDataRef) value ), (size_t) i );
-			}
-		}
-	}
-	else
-	{
-		if( outResult ) *( (void **) outResult ) = (void *) value;
-	}
-	err = kNoErr;
-	
-exit:
-	if( key ) CFRelease( key );
-	return( err );
-}
-
-#if 0
-#pragma mark -
 #pragma mark == Serialization ==
 #endif
-
-//===========================================================================================================================
-//	CFCreateWithPlistBytes
-//===========================================================================================================================
-
-CFTypeRef	CFCreateWithPlistBytes( const void *inPtr, size_t inLen, uint32_t inFlags, CFTypeID inType, OSStatus *outErr )
-{
-	CFTypeRef		result = NULL;
-	OSStatus		err;
-	CFDataRef		data;
-	CFTypeRef		obj = NULL;
-	Boolean			isMutable;
-	
-	if( inLen > 0 )
-	{
-		data = CFDataCreate( NULL, (const uint8_t *) inPtr, (CFIndex) inLen );
-		require_action( data, exit, err = kNoMemoryErr );
-		
-		obj = (CFDictionaryRef) CFPropertyListCreateWithData( NULL, data, inFlags, NULL, NULL );
-		CFRelease( data );
-		require_action_quiet( obj, exit, err = kFormatErr );
-		require_action_quiet( !inType || ( CFGetTypeID( obj ) == inType ), exit, err = kTypeErr );
-	}
-	else
-	{
-		isMutable = ( inFlags & ( kCFPropertyListMutableContainers | kCFPropertyListMutableContainersAndLeaves ) ) ? true : false;
-		if( inType == CFDictionaryGetTypeID() )
-		{
-			if( isMutable )	obj = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-			else			obj = CFDictionaryCreate( NULL, NULL, NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-			require_action( obj, exit, err = kNoMemoryErr );
-		}
-		else if( inType == CFArrayGetTypeID() )
-		{
-			if( isMutable )	obj = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
-			else			obj = CFArrayCreate( NULL, NULL, 0, &kCFTypeArrayCallBacks );
-			require_action( obj, exit, err = kNoMemoryErr );
-		}
-		else
-		{
-			err = kUnsupportedDataErr;
-			goto exit;
-		}
-	}
-	
-	result = obj;
-	obj = NULL;
-	err = kNoErr;
-	
-exit:
-	CFReleaseNullSafe( obj );
-	if( outErr ) *outErr = err;
-	return( result );
-}
-
-//===========================================================================================================================
-//	CFCreateObjectFromString
-//===========================================================================================================================
-
-OSStatus	CFCreateObjectFromString( const char *inStr, CFTypeRef *outObj )
-{
-	return( CFCreateObjectFromStringEx( inStr, "", outObj ) );
-}
-
-//===========================================================================================================================
-//	CFCreateObjectFromStringEx
-//===========================================================================================================================
-
-OSStatus	CFCreateObjectFromStringEx( const char *inStr, const char *inType, CFTypeRef *outObj )
-{
-	OSStatus				err;
-	size_t					len;
-	int64_t					s64;
-	int						n;
-	int						offset;
-	CFTypeRef				obj;
-	CFMutableDataRef		data;
-	
-	data = NULL;
-	
-	if( ( *inType == '\0' ) || ( strcmp( inType, "--bool" ) == 0 ) )
-	{
-		// Boolean true.
-		
-		if( ( stricmp( inStr, "true" )	== 0 ) || 
-			( stricmp( inStr, "yes" )	== 0 ) ||
-			( stricmp( inStr, "y" )		== 0 ) ||
-			( stricmp( inStr, "on" )	== 0 ) )
-		{
-			*outObj = kCFBooleanTrue;
-			err = kNoErr;
-			goto exit;
-		}
-		
-		// Boolean false.
-		
-		if( ( stricmp( inStr, "false" )	== 0 ) || 
-			( stricmp( inStr, "no" )	== 0 ) ||
-			( stricmp( inStr, "n" )		== 0 ) ||
-			( stricmp( inStr, "off" )	== 0 ) )
-		{
-			*outObj = kCFBooleanFalse;
-			err = kNoErr;
-			goto exit;
-		}
-	}
-	
-	// Number
-	
-	if( ( *inType == '\0' ) || ( strcmp( inType, "--integer" ) == 0 ) )
-	{
-		offset = -1;
-		len = strlen( inStr );
-		n = SNScanF( inStr, len, "%lli %n", &s64, &offset );
-		if( ( n == 1 ) && ( offset == (int) len ) )
-		{
-			obj = CFNumberCreateInt64( s64 );
-			require_action( obj, exit, err = kUnknownErr );
-			
-			*outObj = obj;
-			err = kNoErr;
-			goto exit;
-		}
-	}
-	
-	// Data
-	
-	if( strcmp( inType, "--hex" ) == 0 )
-	{
-		err = HexToData( inStr, kSizeCString, kHexToData_DefaultFlags, NULL, 0, NULL, &len, NULL );
-		require_noerr_quiet( err, exit );
-		
-		data = CFDataCreateMutable( NULL, 0 );
-		require_action( data, exit, err = kNoMemoryErr );
-		
-		CFDataSetLength( data, (CFIndex) len );
-		require_action( CFDataGetLength( data ) == (CFIndex) len, exit, err = kNoMemoryErr );
-		
-		err = HexToData( inStr, kSizeCString, kHexToData_DefaultFlags, CFDataGetMutableBytePtr( data ), len, NULL, &len, NULL );
-		require_noerr( err, exit );
-		
-		*outObj = data;
-		data = NULL;
-		err = kNoErr;
-		goto exit;
-	}
-	
-	// TXT Record
-	
-	if( strcmp( inType, "--txt" ) == 0 )
-	{
-		uint8_t *		txtRec;
-		size_t			txtLen;
-		
-		err = CreateTXTRecordWithCString( inStr, &txtRec, &txtLen );
-		require_noerr_quiet( err, exit );
-		
-		obj = CFDataCreate( NULL, txtRec, (CFIndex) txtLen );
-		free( txtRec );
-		require_action( obj, exit, err = kNoMemoryErr );
-		
-		*outObj = obj;
-		err = kNoErr;
-		goto exit;
-	}
-	
-	// Array
-	
-	if( ( ( *inType == '\0' ) && ( strcmp( inStr, "[]" ) == 0 ) ) || ( strcmp( inType, "--array" ) == 0 ) )
-	{
-		obj = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
-		require_action( obj, exit, err = kUnknownErr );
-		
-		*outObj = obj;
-		err = kNoErr;
-		goto exit;
-	}
-	
-	// Dictionary
-	
-	if( ( ( *inType == '\0' ) && ( strcmp( inStr, "{}" ) == 0 ) ) || ( strcmp( inType, "--dict" ) == 0 ) )
-	{
-		obj = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-		require_action( obj, exit, err = kUnknownErr );
-		
-		*outObj = obj;
-		err = kNoErr;
-		goto exit;
-	}
-	
-	// Assume anything else is just a string.
-	
-	if( ( *inType == '\0' ) || ( strcmp( inType, "--string" ) == 0 ) )
-	{
-		obj = CFStringCreateWithCString( NULL, inStr, kCFStringEncodingUTF8 );
-		require_action( obj, exit, err = kUnknownErr );
-		
-		*outObj = obj;
-		err = kNoErr;
-		goto exit;
-	}
-	
-	err = kFormatErr;
-	
-exit:
-	if( data ) CFRelease( data );
-	return( err );
-}
 
 //===========================================================================================================================
 //	CFDictionaryCreateWithINIBytes
@@ -1928,20 +1129,6 @@ static OSStatus
 		}
 	}
 	if( 0 ) {} // Empty if to simplify conditionalize code below.
-#if( CFL_BINARY_PLISTS_STREAMED )
-	else if( strcmp( inFormat, "streamed" ) == 0 )
-	{
-		data = CFBinaryPlistStreamedCreateData( inPlist, &err );
-		require_noerr( err, exit );
-	}
-#endif
-#if( CFL_XML )
-	else if( ( strcmp( inFormat, "xml" ) == 0 ) || ( strcmp( inFormat, "xml1" ) == 0 ) )
-	{
-		data = CFPropertyListCreateData( NULL, inPlist, kCFPropertyListXMLFormat_v1_0, 0, NULL );
-		require_action( data, exit, err = kUnknownErr );
-	}
-#endif
 #if( TARGET_OS_DARWIN || CFL_BINARY_PLISTS )
 	else if( strcmp( inFormat, "binary1" ) == 0 )
 	{
@@ -1976,105 +1163,6 @@ exit:
 	if( file )			fclose( file );
 	return( err );
 }
-
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-
-#if 0
-#pragma mark -
-#pragma mark == IOKit ==
-#endif
-
-//===========================================================================================================================
-//	CFIOKitObject
-//===========================================================================================================================
-
-struct CFIOKitObjectPrivate
-{
-	CFRuntimeBase		base; // Must be first.
-	io_object_t			iokitObject;
-};
-
-static void	_CFIOKitObjectFinalize( CFTypeRef inCF );
-
-static const CFRuntimeClass		kCFIOKitObjectClass = 
-{
-	0,						// version
-	"CFIOKitObject",		// className
-	NULL,					// init
-	NULL,					// copy
-	_CFIOKitObjectFinalize,	// finalize
-	NULL,					// equal -- NULL means pointer equality.
-	NULL,					// hash  -- NULL means pointer hash.
-	NULL,					// copyFormattingDesc
-	NULL,					// copyDebugDesc
-	NULL,					// reclaim
-	NULL					// refcount
-};
-
-static dispatch_once_t		gCFIOKitObjectInitOnce = 0;
-static CFTypeID				gCFIOKitObjectTypeID = _kCFRuntimeNotATypeID;
-
-//===========================================================================================================================
-//	CFIOKitObjectGetTypeID
-//===========================================================================================================================
-
-CFTypeID	CFIOKitObjectGetTypeID( void )
-{
-	dispatch_once( &gCFIOKitObjectInitOnce, 
-	^{
-		gCFIOKitObjectTypeID = _CFRuntimeRegisterClass( &kCFIOKitObjectClass );
-		check( gCFIOKitObjectTypeID != _kCFRuntimeNotATypeID );
-	} );
-	return( gCFIOKitObjectTypeID );
-}
-
-//===========================================================================================================================
-//	CFIOKitObjectCreate
-//===========================================================================================================================
-
-OSStatus	CFIOKitObjectCreate( CFIOKitObjectRef *outObj, io_object_t inIOKitObject )
-{
-	OSStatus				err;
-	size_t					len;
-	CFIOKitObjectRef		me;
-	
-	len = sizeof( *me ) - sizeof( me->base );
-	me = (CFIOKitObjectRef) _CFRuntimeCreateInstance( NULL, CFIOKitObjectGetTypeID(), (CFIndex) len, NULL );
-	require_action( me, exit, err = kNoMemoryErr );
-	memset( ( (uint8_t *) me ) + sizeof( me->base ), 0, len );
-	
-	IOObjectRetain( inIOKitObject );
-	me->iokitObject = inIOKitObject;
-	
-	*outObj = me;
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_CFIOKitObjectFinalize
-//===========================================================================================================================
-
-static void	_CFIOKitObjectFinalize( CFTypeRef inCF )
-{
-	CFIOKitObjectRef const		me = (CFIOKitObjectRef) inCF;
-	
-	IOObjectRelease( me->iokitObject );
-	me->iokitObject = IO_OBJECT_NULL;
-}
-
-//===========================================================================================================================
-//	CFIOKitObjectGetIOKitObject
-//===========================================================================================================================
-
-io_object_t	CFIOKitObjectGetIOKitObject( CFIOKitObjectRef me )
-{
-	return( me->iokitObject );
-}
-
-#endif // TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES
 
 #if 0
 #pragma mark -
@@ -2193,173 +1281,6 @@ static void _CFObjectControlResponse( void *inArg )
 	CFReleaseNullSafe( params->response );
 	arc_safe_dispatch_release( params->responseQueue );
 	free( params );
-}
-
-//===========================================================================================================================
-//	CFObjectControlAsyncF
-//===========================================================================================================================
-
-OSStatus
-	CFObjectControlAsyncF( 
-		CFTypeRef					inObject,
-		dispatch_queue_t			inQueue, 
-		CFObjectControlFunc			inFunc, 
-		CFObjectFlags				inFlags, 
-		CFStringRef					inCommand, 
-		CFTypeRef					inQualifier, 
-		dispatch_queue_t			inResponseQueue, 
-		CFObjectControlResponseFunc	inResponseFunc, 
-		void *						inResponseContext, 
-		const char *				inFormat, 
-		... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = CFObjectControlAsyncV( inObject, inQueue, inFunc, inFlags, inCommand, inQualifier, 
-		inResponseQueue, inResponseFunc, inResponseContext, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFObjectControlAsyncV
-//===========================================================================================================================
-
-OSStatus
-	CFObjectControlAsyncV( 
-		CFTypeRef					inObject,
-		dispatch_queue_t			inQueue, 
-		CFObjectControlFunc			inFunc, 
-		CFObjectFlags				inFlags, 
-		CFStringRef					inCommand, 
-		CFTypeRef					inQualifier, 
-		dispatch_queue_t			inResponseQueue, 
-		CFObjectControlResponseFunc	inResponseFunc, 
-		void *						inResponseContext, 
-		const char *				inFormat, 
-		va_list						inArgs )
-{
-	OSStatus					err;
-	CFMutableDictionaryRef		params;
-	
-	params = NULL;
-	err = CFPropertyListCreateFormattedVAList( NULL, &params, inFormat, inArgs );
-	require_noerr( err, exit );
-	
-	err = CFObjectControlAsync( inObject, inQueue, inFunc, inFlags, inCommand, inQualifier, params, 
-		inResponseQueue, inResponseFunc, inResponseContext );
-	CFReleaseNullSafe( params );
-	
-exit:
-	return( err );
-}
-#if 0
-#pragma mark -
-#endif
-
-//===========================================================================================================================
-//	CFObjectControlSync
-//===========================================================================================================================
-
-typedef struct
-{
-	CFTypeRef				object;
-	CFObjectControlFunc		func;
-	CFObjectFlags			flags;
-	CFStringRef				command;
-	CFTypeRef				qualifier;
-	CFDictionaryRef			params;
-	CFDictionaryRef *		responsePtr;
-	OSStatus				error;
-	
-}	CFObjectControlSyncParams;
-
-static void	_CFObjectControlSync( void *inContext );
-
-OSStatus
-	CFObjectControlSync( 
-		CFTypeRef			inObject,
-		dispatch_queue_t	inQueue, 
-		CFObjectControlFunc	inFunc, 
-		CFObjectFlags		inFlags, 
-		CFStringRef			inCommand, 
-		CFTypeRef			inQualifier, 
-		CFDictionaryRef		inParams, 
-		CFDictionaryRef *	outResponse )
-{
-	if( !( inFlags & kCFObjectFlagDirect ) )
-	{
-		CFObjectControlSyncParams		params = { inObject, inFunc, inFlags, inCommand, inQualifier, inParams, outResponse, kUnknownErr };
-		
-		dispatch_sync_f( inQueue, &params, _CFObjectControlSync );
-		return( params.error );
-	}
-	return( inFunc( inObject, inFlags, inCommand, inQualifier, inParams, outResponse ) );
-}
-
-static void	_CFObjectControlSync( void *inContext )
-{
-	CFObjectControlSyncParams * const		params = (CFObjectControlSyncParams *) inContext;
-	
-	params->error = params->func( params->object, params->flags, params->command, params->qualifier, params->params, 
-		params->responsePtr );
-}
-
-//===========================================================================================================================
-//	CFObjectControlSyncF
-//===========================================================================================================================
-
-OSStatus
-	CFObjectControlSyncF( 
-		CFTypeRef			inObject, 
-		dispatch_queue_t	inQueue, 
-		CFObjectControlFunc	inFunc, 
-		CFObjectFlags		inFlags, 
-		CFStringRef			inCommand, 
-		CFTypeRef			inQualifier, 
-		CFDictionaryRef *	outResponse, 
-		const char *		inFormat, 
-		... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = CFObjectControlSyncV( inObject, inQueue, inFunc, inFlags, inCommand, inQualifier, outResponse, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFObjectControlSyncV
-//===========================================================================================================================
-
-OSStatus
-	CFObjectControlSyncV( 
-		CFTypeRef			inObject, 
-		dispatch_queue_t	inQueue, 
-		CFObjectControlFunc	inFunc, 
-		CFObjectFlags		inFlags, 
-		CFStringRef			inCommand, 
-		CFTypeRef			inQualifier, 
-		CFDictionaryRef *	outResponse, 
-		const char *		inFormat, 
-		va_list				inArgs )
-{
-	OSStatus					err;
-	CFMutableDictionaryRef		params;
-	
-	params = NULL;
-	err = CFPropertyListCreateFormattedVAList( NULL, &params, inFormat, inArgs );
-	require_noerr( err, exit );
-	
-	err = CFObjectControlSync( inObject, inQueue, inFunc, inFlags, inCommand, inQualifier, params, outResponse );
-	CFRelease( params );
-	
-exit:
-	return( err );
 }
 
 #if 0
@@ -3301,14 +2222,6 @@ char *	CFGetCString( CFTypeRef inObj, char *inBuf, size_t inMaxLen )
 		}
 		*dst = '\0';
 	}
-	else if( typeID == CFDateGetTypeID() )
-	{
-		int		year, month, day, hour, minute, second, micros;
-		
-		CFDateGetComponents( (CFDateRef) inObj, &year, &month, &day, &hour, &minute, &second, &micros );
-		snprintf( inBuf, inMaxLen, "%04d-%02d-%02d %02d:%02d:%02d.%06d %s", 
-			year, month, day, Hour24ToHour12( hour ), minute, second, micros, Hour24ToAMPM( hour ) );
-	}
 	else if( typeID == CFDictionaryGetTypeID() )	snprintf( inBuf, inMaxLen, "{}" );
 	else if( typeID == CFArrayGetTypeID() )			snprintf( inBuf, inMaxLen, "[]" );
 	else											*inBuf = '\0';
@@ -3486,13 +2399,8 @@ double	CFGetDouble( CFTypeRef inObj, OSStatus *outErr )
 		if(      IsTrueString( tempStr, kSizeCString ) )				value = 1;
 		else if( IsFalseString( tempStr, kSizeCString ) )				value = 0;
 		else if( sscanf( tempStr, "%lf", &value )				== 1 )	{}
-		else if( SNScanF( tempStr, kSizeCString, "%lli", &s64 ) == 1 )	value = (double) s64;
+		else if( sscanf( tempStr, "%lli", &s64 ) == 1 )	value = (double) s64;
 		else { err = kFormatErr; goto exit; }
-		err = kNoErr;
-	}
-	else if( typeID == CFDateGetTypeID() )
-	{
-		value = CFDateGetAbsoluteTime( (CFDateRef) inObj );
 		err = kNoErr;
 	}
 	else
@@ -3609,7 +2517,7 @@ int64_t	CFGetInt64( CFTypeRef inObj, OSStatus *outErr )
 		
 		if(      IsTrueString( tempStr, kSizeCString ) )					value = 1;
 		else if( IsFalseString( tempStr, kSizeCString ) )					value = 0;
-		else if( SNScanF( tempStr, kSizeCString, "%lli", &value ) != 1 )	{ err = kFormatErr; goto exit; }
+		else if( sscanf( tempStr, "%lli", &value ) != 1 )	{ err = kFormatErr; goto exit; }
 	}
 	else if( typeID == CFDataGetTypeID() )
 	{
@@ -3624,10 +2532,6 @@ int64_t	CFGetInt64( CFTypeRef inObj, OSStatus *outErr )
 		{
 			value = ( value << 8 ) + *ptr;
 		}
-	}
-	else if( typeID == CFDateGetTypeID() )
-	{
-		value = (int64_t) CFDateGetAbsoluteTime( (CFDateRef) inObj );
 	}
 	else if( typeID == CFNullGetTypeID() ) {} // Leave value at 0.
 	else
@@ -3771,138 +2675,9 @@ exit:
 	return( err );
 }
 
-//===========================================================================================================================
-//	CFSetObjectAtPath
-//===========================================================================================================================
-
-OSStatus	CFSetObjectAtPath( CFTypeRef inPlist, const char *inPath, CFTypeRef inObj )
-{
-	OSStatus			err;
-	CFTypeRef			parent;
-	CFTypeRef			newParent;
-	const char *		name;
-	char				c;
-	size_t				len;
-	CFStringRef			key;
-	int					lastIndex;
-	
-	// Parse the format string to find the deepest parent.
-	
-	lastIndex = -1;
-	parent = inPlist;
-	for( ;; )
-	{
-		for( name = inPath; ( ( c = *inPath ) != '\0' ) && ( c != '.' ); ++inPath ) {}
-		len = (size_t)( inPath - name );
-		if( c == '\0' ) break;
-		++inPath;
-		
-		// Handle [] array specifiers.
-		
-		if( *name == '[' )
-		{
-			int		i;
-			int		n;
-			
-			n = SNScanF( name + 1, len - 1, "%i]", &i );
-			require_action_quiet( n == 1, exit, err = kFormatErr );
-			
-			require_action_quiet( CFGetTypeID( parent ) == CFArrayGetTypeID(), exit, err = kTypeErr );
-			require_action_quiet( ( i >= 0 ) && ( i < CFArrayGetCount( (CFArrayRef) parent ) ), exit, err = kRangeErr );
-			
-			parent = CFArrayGetValueAtIndex( (CFArrayRef) parent, i );
-			lastIndex = i;
-		}
-		
-		// Handle dictionary key specifiers.
-		
-		else
-		{
-			require_action_quiet( CFGetTypeID( parent ) == CFDictionaryGetTypeID(), exit, err = kTypeErr );
-			
-			key = CFStringCreateWithBytes( NULL, (const uint8_t *) name, (CFIndex) len, kCFStringEncodingUTF8, false );
-			require_action( key, exit, err = kUnknownErr );
-			
-			newParent = CFDictionaryGetValue( (CFDictionaryRef) parent, key );
-			if( !newParent )
-			{
-				newParent = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, 
-					&kCFTypeDictionaryValueCallBacks );
-				if( newParent )
-				{
-					CFDictionarySetValue( (CFMutableDictionaryRef) parent, key, newParent );
-					CFRelease( newParent );
-				}
-			}
-			CFRelease( key );
-			require_action( newParent, exit, err = kNoMemoryErr );
-			parent = newParent;
-			lastIndex = -1;
-		}
-	}
-	
-	// Set the value.
-	
-	if( CFGetTypeID( parent ) == CFDictionaryGetTypeID() )
-	{
-		require_action_quiet( len > 0, exit, err = kFormatErr );
-		
-		key = CFStringCreateWithBytes( NULL, (const uint8_t *) name, (CFIndex) len, kCFStringEncodingUTF8, false );
-		require_action( key, exit, err = kUnknownErr );
-		
-		if( inObj ) CFDictionarySetValue( (CFMutableDictionaryRef) parent, key, inObj );
-		else		CFDictionaryRemoveValue( (CFMutableDictionaryRef) parent, key );
-		CFRelease( key );
-	}
-	else if( CFGetTypeID( parent ) == CFArrayGetTypeID() )
-	{
-		require_action_quiet( len == 0, exit, err = kFormatErr );
-		
-		if( inObj )
-		{
-			CFArrayAppendValue( (CFMutableArrayRef) parent, inObj );
-		}
-		else
-		{
-			require_action( lastIndex >= 0, exit, err = kFormatErr );
-			
-			CFArrayRemoveValueAtIndex( (CFMutableArrayRef) parent, lastIndex );
-		}
-	}
-	else
-	{
-		err = kTypeErr;
-		goto exit;
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
 #if 0
 #pragma mark -
 #pragma mark == Type-specific Utilities ==
-#endif
-
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-//===========================================================================================================================
-//	CFArrayApplyBlock
-//===========================================================================================================================
-
-static void	_CFArrayApplyBlockApplier( const void *inValue, void *inContext );
-
-void	CFArrayApplyBlock( CFArrayRef inArray, CFRange inRange, CFArrayApplierBlock inBlock )
-{
-	CFArrayApplyFunction( inArray, inRange, _CFArrayApplyBlockApplier, inBlock );
-}
-
-static void	_CFArrayApplyBlockApplier( const void *inValue, void *inContext )
-{
-	CFArrayApplierBlock const		block = (CFArrayApplierBlock) inContext;
-	
-	block( inValue );
-}
 #endif
 
 //===========================================================================================================================
@@ -3952,25 +2727,6 @@ OSStatus	CFArrayAppendCString( CFMutableArrayRef inArray, const char *inStr, siz
 exit:
 	return( err );
 }
-
-//===========================================================================================================================
-//	CFArrayCreateSortedByKeyPath
-//===========================================================================================================================
-
-#if( TARGET_OS_DARWIN )
-CFArrayRef	CFArrayCreateSortedByKeyPath( CFArrayRef inArray, const char *inKeyPath )
-{
-	CFMutableArrayRef		sortedArray;
-	
-	sortedArray = CFArrayCreateMutableCopy( NULL, 0, inArray );
-	require( sortedArray, exit );
-	
-	CFArraySortValues( sortedArray, CFRangeMake( 0, CFArrayGetCount( sortedArray ) ), CFSortCompareKeyPath, (void *) inKeyPath );
-	
-exit:
-	return( sortedArray );
-}
-#endif
 
 //===========================================================================================================================
 //	CFArrayEnsureCreatedAndAppend
@@ -4200,26 +2956,6 @@ exit:
 }
 #endif // !CFLITE_ENABLED
 
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-//===========================================================================================================================
-//	CFDictionaryApplyBlock
-//===========================================================================================================================
-
-static void	_CFDictionaryApplyBlockApplier( const void *inKey, const void *inValue, void *inContext );
-
-void	CFDictionaryApplyBlock( CFDictionaryRef inDictionary, CFDictionaryApplierBlock inBlock )
-{
-	CFDictionaryApplyFunction( inDictionary, _CFDictionaryApplyBlockApplier, inBlock );
-}
-
-static void	_CFDictionaryApplyBlockApplier( const void *inKey, const void *inValue, void *inContext )
-{
-	CFDictionaryApplierBlock const		block = (CFDictionaryApplierBlock) inContext;
-	
-	block( inKey, inValue );
-}
-#endif
-
 //===========================================================================================================================
 //	CFDictionaryCopyKeys
 //===========================================================================================================================
@@ -4247,217 +2983,6 @@ CFArrayRef	CFDictionaryCopyKeys( CFDictionaryRef inDict, OSStatus *outErr )
 exit:
 	if( outErr ) *outErr = err;
 	return( result );
-}
-
-//===========================================================================================================================
-//	CFDictionaryCreateFromNameTypeValueArgList
-//===========================================================================================================================
-
-OSStatus	CFDictionaryCreateFromNameTypeValueArgList( CFDictionaryRef *outDict, int inArgI, int inArgC, const char *inArgV[] )
-{
-	OSStatus					err;
-	CFMutableDictionaryRef		dict;
-	const char *				s;
-	const char *				name;
-	const char *				nameEnd;
-	const char *				type;
-	const char *				typeEnd;
-	const char *				value;
-	const char *				valueEnd;
-	int							x;
-	int							n;
-	char						tempName[ 256 ];
-	char						tempValue[ 256 ];
-	
-	dict = CFDictionaryCreateMutable( kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict, exit, err = kNoMemoryErr );
-				
-	while( inArgI < inArgC )
-	{
-		s = inArgV[ inArgI++ ];
-		require_action( s, exit, err = kParamErr );
-		
-		// Parse the string as "name:type:value".
-	
-		name = s;
-		nameEnd = strchr( name, ':' );
-		require_action_quiet( nameEnd, exit, err = kMalformedErr );
-		
-		type = nameEnd + 1;
-		typeEnd = strchr( type, ':' );
-		require_action_quiet( typeEnd, exit, err = kMalformedErr );
-		
-		value = typeEnd + 1;
-		
-		// Append a key/value pair based on the type.
-		
-		if( strncmpx( type, (size_t)( typeEnd - type ), "b" ) == 0 )		// Boolean
-		{
-			if(      IsTrueString( value, kSizeCString ) )	x = 1;
-			else if( IsFalseString( value, kSizeCString ) )	x = 0;
-			else { err = kValueErr; goto exit; }
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%b", (int)( nameEnd - name ), name, x );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "i" ) == 0 )	// Integer
-		{
-			n = sscanf( value, "%i", &x );
-			require_action_quiet( n == 1, exit, err = kValueErr );
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%i", (int)( nameEnd - name ), name, x );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "m" ) == 0 )	// MAC address string
-		{
-			uint8_t		macAddr[ 6 ];
-			
-			err = TextToMACAddress( value, kSizeCString, macAddr );
-			require_noerr_quiet( err, exit );
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%D", (int)( nameEnd - name ), name, macAddr, 6 );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "s" ) == 0 )	// String
-		{
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%s", (int)( nameEnd - name ), name, value );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "u" ) == 0 )	// UUID string
-		{
-			uint8_t		uuid[ 16 ];
-			
-			err = StringToUUID( value, kSizeCString, false, uuid );
-			require_noerr_quiet( err, exit );
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%D", (int)( nameEnd - name ), name, uuid, 16 );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "h" ) == 0 )	// Hex string
-		{
-			uint8_t		buf[ 256 ];
-			size_t		len;
-			
-			err = HexToData( value, kSizeCString, kHexToData_DefaultFlags, buf, sizeof( buf ), NULL, &len, NULL );
-			require_noerr_quiet( err, exit );
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=%D", (int)( nameEnd - name ), name, buf, len );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "{}" ) == 0 )	// Dictionary
-		{
-			CFMutableDictionaryRef		tempDict;
-			
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks={%@}", 
-				(int)( nameEnd - name ), name, &tempDict );
-			require_noerr( err, exit );
-			
-			valueEnd = value + strlen( value );
-			while( ParseCommaSeparatedNameValuePair( value, valueEnd, 
-				tempName,  sizeof( tempName ),  NULL, NULL, 
-				tempValue, sizeof( tempValue ), NULL, NULL, 
-				&value ) == kNoErr )
-			{
-				err = CFPropertyListAppendFormatted( NULL, tempDict, "%ks=%s", tempName, tempValue );
-				require_noerr( err, exit );
-			}
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "[]" ) == 0 )	// Empty Array
-		{
-			err = CFPropertyListAppendFormatted( kCFAllocatorDefault, dict, "%.*ks=[]", (int)( nameEnd - name ), name );
-			require_noerr( err, exit );
-		}
-		else if( strncmpx( type, (size_t)( typeEnd - type ), "s[]" ) == 0 )	// String Array
-		{
-			CFMutableArrayRef		array;
-			
-			err = CFPropertyListAppendFormatted( NULL, dict, "%.*ks=[%@]", (int)( nameEnd - name ), name, &array );
-			require_noerr( err, exit );
-			
-			valueEnd = value + strlen( value );
-			while( value < valueEnd )
-			{
-				err = ParseEscapedString( value, valueEnd, ',', tempValue, sizeof( tempValue ), NULL, NULL, &value );
-				require_noerr_quiet( err, exit );
-				
-				err = CFPropertyListAppendFormatted( NULL, array, "%s", tempValue );
-				require_noerr( err, exit );
-			}
-		}
-		else
-		{
-			err = kTypeErr;
-			goto exit;
-		}
-	}
-	
-	*outDict = dict;
-	dict = NULL;
-	err = kNoErr;
-
-exit:
-	if( dict ) CFRelease( dict );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFDictionaryCreateWithCFStringArray
-//===========================================================================================================================
-
-OSStatus	CFDictionaryCreateWithCFStringArray( CFArrayRef inArray, CFMutableDictionaryRef *outDict )
-{
-	OSStatus					err;
-	CFMutableDictionaryRef		dict;
-	CFIndex						i, n;
-	CFStringRef					str;
-	
-	dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict, exit, err = kNoMemoryErr );
-	
-	n = CFArrayGetCount( inArray );
-	for( i = 0; i < n; ++i )
-	{
-		str = (CFStringRef) CFArrayGetValueAtIndex( inArray, i );
-		require_action( CFGetTypeID( str ) == CFStringGetTypeID(), exit, err = kTypeErr );
-		
-		CFDictionarySetValue( dict, str, kCFBooleanTrue );
-	}
-	
-	*outDict = dict;
-	dict = NULL;
-	err = kNoErr;
-	
-exit:
-	if( dict ) CFRelease( dict );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFDictionaryCreateWithFourCharCodeArray
-//===========================================================================================================================
-
-OSStatus	CFDictionaryCreateWithFourCharCodeArray( const uint32_t inArray[], size_t inCount, CFMutableDictionaryRef *outDict )
-{
-	OSStatus					err;
-	CFMutableDictionaryRef		dict;
-	size_t						i;
-	
-	dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict, exit, err = kNoMemoryErr );
-	
-	for( i = 0; i < inCount; ++i )
-	{
-		err = CFPropertyListAppendFormatted( NULL, dict, "%kC=%O", inArray[ i ], kCFBooleanTrue );
-		require_noerr( err, exit );
-	}
-	
-	*outDict = dict;
-	dict = NULL;
-	err = kNoErr;
-	
-exit:
-	if( dict ) CFRelease( dict );
-	return( err );
 }
 
 //===========================================================================================================================
@@ -4986,26 +3511,6 @@ exit:
 	return( obj );
 }
 
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-//===========================================================================================================================
-//	CFSetApplyBlock
-//===========================================================================================================================
-
-static void	_CFSetApplyBlockApplier( const void *inValue, void *inContext );
-
-void	CFSetApplyBlock( CFSetRef inSet, CFSetApplierBlock inBlock )
-{
-	CFSetApplyFunction( inSet, _CFSetApplyBlockApplier, inBlock );
-}
-
-static void	_CFSetApplyBlockApplier( const void *inValue, void *inContext )
-{
-	CFSetApplierBlock const		block = (CFSetApplierBlock) inContext;
-	
-	block( inValue );
-}
-#endif
-
 //===========================================================================================================================
 //	CFStringCreateComponentsSeparatedByString
 //===========================================================================================================================
@@ -5227,72 +3732,6 @@ exit:
 #endif
 
 //===========================================================================================================================
-//	CFSortCompareKeyPath
-//===========================================================================================================================
-
-CFComparisonResult	CFSortCompareKeyPath( const void *inLeft, const void *inRight, void *inContext )
-{
-	const char * const		keyPath = (const char *) inContext;
-	CFComparisonResult		cmp;
-	OSStatus				err;
-	void *					temp;
-	CFTypeRef				left, right;
-	CFTypeID				leftTypeID, rightTypeID;
-	
-	cmp = -1;
-	
-	err = CFPropertyListExtractFormatted( inLeft, &temp, keyPath );
-	require_noerr( err, exit );
-	left = (CFTypeRef) temp;
-
-	err = CFPropertyListExtractFormatted( inRight, &temp, keyPath );
-	require_noerr( err, exit );
-	right = (CFTypeRef) temp;
-
-	leftTypeID  = CFGetTypeID( left );
-	rightTypeID = CFGetTypeID( right );
-	require( leftTypeID == rightTypeID, exit );
-	
-	if( leftTypeID == CFNumberGetTypeID() )
-	{
-		int64_t		left64, right64;
-		
-		CFNumberGetValue( (CFNumberRef) left,  kCFNumberSInt64Type, &left64 );
-		CFNumberGetValue( (CFNumberRef) right, kCFNumberSInt64Type, &right64 );
-		if(      left64 < right64 ) cmp = -1;
-		else if( left64 > right64 ) cmp =  1;
-		else						cmp = 0;
-	}
-	else if( leftTypeID == CFStringGetTypeID() )
-	{
-		cmp = CFStringLocalizedStandardCompare( (CFStringRef) left, (CFStringRef) right );
-	}
-	else if( leftTypeID == CFDateGetTypeID() )
-	{
-		cmp = CFDateCompare( (CFDateRef) left, (CFDateRef) right, NULL );
-	}
-	else
-	{
-		dlogassert( "unsupport CF type: %d\n", (int) leftTypeID );
-		goto exit;
-	}
-	
-exit:
-	return( cmp );
-}
-
-//===========================================================================================================================
-//	CFSortLocalizedStandardCompare
-//===========================================================================================================================
-
-CFComparisonResult	CFSortLocalizedStandardCompare( const void *inLeft, const void *inRight, void *inContext )
-{
-	(void) inContext;
-	
-	return( CFStringLocalizedStandardCompare( (CFStringRef) inLeft, (CFStringRef) inRight ) );
-}
-
-//===========================================================================================================================
 //	MapCFStringToValue
 //===========================================================================================================================
 
@@ -5352,317 +3791,14 @@ CFStringRef	MapValueToCFString( int inValue, CFStringRef inDefaultStr, ... )
 	return( mappedStr );
 }
 
-//===========================================================================================================================
-//	StringToRangeArray
-//
-//	Parses a number list string (e.g. "1-5" or "1,2,3-7" or "3,2,1") to a CFArray of begin/end number CFDictionary's.
-//===========================================================================================================================
-
-OSStatus	StringToRangeArray( const char *inStr, CFArrayRef *outArray )
-{
-	OSStatus					err;
-	CFMutableArrayRef			array;
-	const unsigned char *		p;
-	const unsigned char *		q;
-	int							x;
-	int							y;
-	int							z;
-	
-	array = NULL;
-	
-	require_action( inStr, exit, err = kParamErr );
-	
-	array = CFArrayCreateMutable( kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks );
-	require_action( array, exit, err = kNoMemoryErr );
-	
-	p = (const unsigned char *) inStr;
-	while( isspace( *p ) ) ++p;
-	while( *p != '\0' )
-	{
-		// Parse a number, skipping any leading or trailing whitespace.
-		
-		q = p;
-		x = 0;
-		for( ; isdigit( *p ); ++p ) x = ( x * 10 ) + ( *p - '0' );
-		require_action_quiet( p > q, exit, err = kMalformedErr );
-		while( isspace( *p ) ) ++p;
-		
-		if( *p == '-' ) // Range (e.g. 1-5).
-		{
-			// Parse the second number in the range, skipping any leading whitespace.
-			
-			++p;
-			while( isspace( *p ) ) ++p;
-			q = p;
-			y = 0;
-			for( ; isdigit( *p ); ++p ) y = ( y * 10 ) + ( *p - '0' );
-			require_action_quiet( p > q, exit, err = kMalformedErr );
-			
-			if( x > y )	// First > second (e.g. 5-1) so swap them to put in ascending order.
-			{
-				z = x;
-				x = y;
-				y = z;
-			}
-		}
-		else // Single number so begin=end (ranges are inclusive).
-		{
-			y = x;
-		}
-		err = CFPropertyListAppendFormatted( kCFAllocatorDefault, array, "{" "begin=%i" "end=%i" "}", x, y );
-		require_noerr( err, exit );
-		
-		// Skip space and comma delimiters to move to the next entry.
-		
-		while( isspace( *p ) ) ++p;
-		if( *p == ',' ) ++p;
-		while( isspace( *p ) ) ++p;
-	}
-	
-	*outArray = array; array = NULL;
-	err = kNoErr;
-	
-exit:
-	if( array ) CFRelease( array );
-	return( err );
-}
-
-//===========================================================================================================================
-//	RangeArrayToString
-//
-//	Converts a CFArray of begin/end number CFDictionary's to a string (e.g. "1, 2, 3-7").
-//===========================================================================================================================
-
-OSStatus	RangeArrayToString( CFArrayRef inArray, CFStringRef *outString )
-{
-	OSStatus				err;
-	CFMutableStringRef		str;
-	CFIndex					i;
-	CFIndex					n;
-	CFDictionaryRef			dict;
-	CFNumberRef				num;
-	int						x;
-	int						y;
-	Boolean					good;
-	char					buf[ 64 ];
-	char *					ptr;
-	
-	str = CFStringCreateMutable( kCFAllocatorDefault, 0 );
-	require_action( str, exit, err = kNoMemoryErr );
-	
-	n = CFArrayGetCount( inArray );
-	for( i = 0; i < n; )
-	{
-		// Extract the begin/end numbers.
-		
-		dict = (CFDictionaryRef) CFArrayGetValueAtIndex( inArray, i );
-		require_action( CFGetTypeID( dict ) == CFDictionaryGetTypeID(), exit, err = kTypeErr );
-		
-		num = (CFNumberRef) CFDictionaryGetValue( dict, CFSTR( "begin" ) );
-		require_action( num, exit, err = kNotFoundErr );
-		require_action( CFGetTypeID( num ) == CFNumberGetTypeID(), exit, err = kTypeErr );
-		
-		good = CFNumberGetValue( num, kCFNumberIntType, &x );
-		require_action( good, exit, err = kSizeErr );
-		require_action( x >= 0, exit, err = kRangeErr );
-		
-		num = (CFNumberRef) CFDictionaryGetValue( dict, CFSTR( "end" ) );
-		require_action( num, exit, err = kNotFoundErr );
-		require_action( CFGetTypeID( num ) == CFNumberGetTypeID(), exit, err = kTypeErr );
-		
-		good = CFNumberGetValue( num, kCFNumberIntType, &y );
-		require_action( good, exit, err = kSizeErr );
-		require_action( y >= 0, exit, err = kRangeErr );
-		
-		// Append the entry to the string.
-		
-		ptr = buf;
-		if( x == y ) ptr += snprintf( buf, sizeof( buf ), "%d", x );
-		else		 ptr += snprintf( buf, sizeof( buf ), "%d-%d", x, y );
-		++i;
-		if( i < n )
-		{
-			*ptr++ = ',';
-			*ptr++ = ' ';
-			*ptr   = '\0';
-		}
-		CFStringAppendCString( str, buf, kCFStringEncodingUTF8 );
-	}
-	
-	*outString = str; str = NULL;
-	err = kNoErr;
-	
-exit:
-	if( str ) CFRelease( str );
-	return( err );
-}
-
-//===========================================================================================================================
-//	ValidateRangeArrayStrings
-//
-//	Checks if two range array strings are compatible.
-//===========================================================================================================================
-
-OSStatus	ValidateRangeArrayStrings( const char *inStr1, const char *inStr2 )
-{
-	OSStatus			err;
-	CFArrayRef			a1;
-	CFArrayRef			a2;
-	CFDictionaryRef		dict;
-	CFIndex				i;
-	CFIndex				n;
-	int					begin;
-	int					end;
-	int					x;
-	
-	a1 = NULL;
-	a2 = NULL;
-	
-	err = StringToRangeArray( inStr1, &a1 );
-	require_noerr( err, exit );
-	
-	err = StringToRangeArray( inStr2, &a2 );
-	require_noerr( err, exit );
-	
-	// Both arrays must map to the exact same number of entries.
-	
-	n = CFArrayGetCount( a1 );
-	require_action_quiet( n == CFArrayGetCount( a2 ), exit, err = kCountErr );
-	
-	// Each entry must the exactly same distance between begin and end numbers.
-	
-	for( i = 0; i < n; ++i )
-	{
-		dict = (CFDictionaryRef) CFArrayGetValueAtIndex( a1, i );
-		
-		err = CFPropertyListExtractFormatted( dict, &begin, "%kO:int", CFSTR( "begin" ) );
-		require_noerr( err, exit );
-		
-		err = CFPropertyListExtractFormatted( dict, &end, "%kO:int", CFSTR( "end" ) );
-		require_noerr( err, exit );
-		
-		x = end - begin;
-		
-		dict = (CFDictionaryRef) CFArrayGetValueAtIndex( a2, i );
-		
-		err = CFPropertyListExtractFormatted( dict, &begin, "%kO:int", CFSTR( "begin" ) );
-		require_noerr( err, exit );
-		
-		err = CFPropertyListExtractFormatted( dict, &end, "%kO:int", CFSTR( "end" ) );
-		require_noerr( err, exit );
-		
-		require_action_quiet( x == ( end - begin ), exit, err = kRangeErr );
-	}
-	err = kNoErr;
-	
-exit:
-	if( a1 ) CFRelease( a1 );
-	if( a2 ) CFRelease( a2 );
-	return( err );
-}
-
-//===========================================================================================================================
-//	ConflictingRangeArrayStrings
-//
-//	Checks if two range array strings have any overlapping values. kNoErr means no conflicts.
-//===========================================================================================================================
-
-OSStatus	ConflictingRangeArrayStrings( const char *inStr1, const char *inStr2 )
-{
-	OSStatus		err;
-	CFArrayRef		array;
-	
-	require_action( inStr1, exit, err = kParamErr );
-	require_action( inStr2, exit, err = kParamErr );
-	
-	err = StringToRangeArray( inStr2, &array );
-	require_noerr( err, exit );
-	
-	err = ConflictingRangeArrayStringAndRangeArray( inStr1, array );
-	CFRelease( array );
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	ConflictingRangeArrayStringAndRangeArray
-//
-//	Checks if a range array strings and a range array have any overlapping values. kNoErr means no conflicts.
-//===========================================================================================================================
-
-OSStatus	ConflictingRangeArrayStringAndRangeArray( const char *inStr, CFArrayRef inArray )
-{
-	OSStatus			err;
-	CFArrayRef			outerArray;
-	CFArrayRef			innerArray;
-	CFDictionaryRef		outerDict;
-	CFDictionaryRef		innerDict;
-	CFIndex				outerIndex;
-	CFIndex				outerCount;
-	CFIndex				innerIndex;
-	CFIndex				innerCount;
-	int					outerBegin;
-	int					outerEnd;
-	int					innerBegin;
-	int					innerEnd;
-	
-	outerArray = NULL;
-	innerArray = NULL;
-	
-	require_action( inStr, exit, err = kParamErr );
-	require_action( inArray, exit, err = kParamErr );
-	
-	err = StringToRangeArray( inStr, &outerArray );
-	require_noerr( err, exit );
-	
-	innerArray = inArray;
-	
-	outerCount = CFArrayGetCount( outerArray );
-	innerCount = CFArrayGetCount( innerArray );
-	
-	// For each entry, compare its begin and end against each begin and end in the other array.
-	
-	for( outerIndex = 0; outerIndex < outerCount; ++outerIndex )
-	{
-		outerDict = (CFDictionaryRef) CFArrayGetValueAtIndex( outerArray, outerIndex );
-		
-		err = CFPropertyListExtractFormatted( outerDict, &outerBegin, "%kO:int", CFSTR( "begin" ) );
-		require_noerr( err, exit );
-		
-		err = CFPropertyListExtractFormatted( outerDict, &outerEnd, "%kO:int", CFSTR( "end" ) );
-		require_noerr( err, exit );
-		
-		for( innerIndex = 0; innerIndex < innerCount; ++innerIndex )
-		{
-			innerDict = (CFDictionaryRef) CFArrayGetValueAtIndex( innerArray, innerIndex );
-			
-			err = CFPropertyListExtractFormatted( innerDict, &innerBegin, "%kO:int", CFSTR( "begin" ) );
-			require_noerr( err, exit );
-			
-			err = CFPropertyListExtractFormatted( innerDict, &innerEnd, "%kO:int", CFSTR( "end" ) );
-			require_noerr( err, exit );
-			
-			// Check for the actual conflicts.
-			
-			require_action_quiet( ( ( innerBegin < outerBegin ) && ( innerEnd < outerEnd ) ) || 
-								  ( ( innerBegin > outerBegin ) && ( innerEnd > outerEnd ) ), 
-								  exit, err = kAlreadyInUseErr );
-		}
-	}
-	err = kNoErr;
-	
-exit:
-	if( outerArray ) CFRelease( outerArray );
-	return( err );
-}
-
 #if 0
 #pragma mark -
 #pragma mark == Debugging ==
 #endif
 
 #if( !EXCLUDE_UNIT_TESTS )
+
+#pragma GCC diagnostic ignored "-Wfloat-equal"
 
 OSStatus	CFUtilsTestCFObjectAccessors( void );
 
@@ -5680,7 +3816,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	CFArrayRef					array;
 	CFBooleanRef				boolObj;
 	CFDataRef					data, data2;
-	CFDateRef					date;
 	CFDictionaryRef				dict;
 	CFNumberRef					num;
 	CFStringRef					str;
@@ -5688,13 +3823,10 @@ OSStatus	CFUtilsTest( int inPrint )
 	CFMutableStringRef			mstr;
 	int							x;
 	double						d;
-	Boolean						ok;
-	OSStatus					errorCode;
 	const char *				utf8Ptr;
 	char *						utf8;
 	CFStringRef					value28;
 	uint8_t						buf[ 128 ];
-	uint32_t					code;
 	int8_t						s8;
 	uint8_t						u8;
 	int16_t						s16;
@@ -5704,7 +3836,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	int64_t						s64;
 	uint64_t					u64;
 	char						tempStr[ 64 ];
-	uint8_t *					u8ptr;
 	const uint8_t *				cu8Ptr;
 	size_t						len;
 	
@@ -5829,385 +3960,7 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_noerr( err, exit );
 	
 	if( inPrint ) FPrintF( stderr, "%@\n", plist );
-	
-	//
-	// Formatted Extraction
-	//
-	
-	value = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "%ks.%kt.%kO", "key 19", "key 20", 6, CFSTR( "key 25" ) );
-	require_noerr( err, exit );
-	require_action( value, exit, err = kResponseErr );
-	require_action( CFStringCompare( value, CFSTR( "value 25" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	value = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "%ks.key 20.key 25", "key 19" );
-	require_noerr( err, exit );
-	require_action( value, exit, err = kResponseErr );
-	require_action( CFStringCompare( value, CFSTR( "value 25" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	value = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "key 4" );
-	require_noerr( err, exit );
-	require_action( value, exit, err = kResponseErr );
-	require_action( CFStringCompare( value, CFSTR( "value 4" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	value = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "%kC", (uint32_t) 0x6B657936 );	// 'key6'
-	require_noerr( err, exit );
-	require_action( value, exit, err = kResponseErr );
-	require_action( CFStringCompare( value, CFSTR( "val6" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	num = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &num, "key 19.key 20.key 21.key 22.[2]" );
-	require_noerr( err, exit );
-	require_action( num, exit, err = kResponseErr );
-	ok = CFNumberGetValue( num, kCFNumberIntType, &x );
-	require_action( ok, exit, err = kResponseErr );
-	require_action( x == 123456789, exit, err = kResponseErr );
-	
-	num = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &num, "key 19.key 20.key 21.key 22.[*]", 1 );
-	require_noerr( err, exit );
-	require_action( num, exit, err = kResponseErr );
-	ok = CFNumberGetValue( num, kCFNumberIntType, &x );
-	require_action( ok, exit, err = kResponseErr );
-	require_action( x == 0x7FFFFFFF, exit, err = kResponseErr );
-	
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "fake" );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "key 19.fake" );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	err = CFPropertyListExtractFormatted( plist, (void *) &value, "key 19.key 20.key 21.key 22.[3]" );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	x = 0;
-	err = CFPropertyListExtractFormatted( plist, &x, "key 19.key 20.key 21.key 22.[1]:int" );
-	require_noerr( err, exit );
-	require_action( x == 0x7FFFFFFF, exit, err = kResponseErr );
-	
-	err = CFPropertyListExtractFormatted( plist, &errorCode, "key 19.key 20.key 21.key 22.[0]:err" );
-	require_noerr( err, exit );
-	require_action( errorCode == -123, exit, err = kResponseErr );
-	
-	utf8 = NULL;
-	err = CFPropertyListExtractFormatted( plist, &utf8, "key 3:utf8" );
-	require_noerr( err, exit );
-	require_action( utf8, exit, err = kResponseErr );
-	require_action( strcmp( utf8, "value 3" ) == 0, exit, err = kResponseErr );
-	free( utf8 );
-	
-	str = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &str, "key 28" );
-	require_noerr( err, exit );
-	require_action( str && ( str != value28 ), exit, err = kResponseErr );
-	require_action( CFStringCompare( str, value28, 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	ok = false;
-	err = CFPropertyListExtractFormatted( plist, &ok, "key 9:bool" );
-	require_noerr( err, exit );
-	require_action( ok, exit, err = kResponseErr );
-	
-	memset( buf, 'Z', sizeof( buf ) );
-	err = CFPropertyListExtractFormatted( plist, buf, "key 29:mac" );
-	require_noerr( err, exit );
-	require_action( memcmp( buf, "\x00\x11\x22\x33\x44\x55", 6 ) == 0, exit, err = kResponseErr );
-	require_action( buf[ 6 ] == 'Z', exit, err = kResponseErr );
-	
-	code = 0;
-	err = CFPropertyListExtractFormatted( plist, &code, "key6:code" );
-	require_noerr( err, exit );
-	require_action( code == 0x76616C36, exit, err = kResponseErr ); // 0x76616C36/val6
-	
-	u32 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u32, "key 30:vers" );
-	require_noerr( err, exit );
-	require_action( u32 == NumVersionBuild( 1, 2, 3, kVersionStageBeta, 4 ), exit, err = kResponseErr );
-	
-	s64 = 0;
-	err = CFPropertyListExtractFormatted( plist, &s64, "key 31:int64" );
-	require_noerr( err, exit );
-	require_action( s64 == INT64_C( 1234567890123 ), exit, err = kResponseErr );
-	
-	memset( buf, 'Z', sizeof( buf ) );
-	err = CFPropertyListExtractFormatted( plist, buf, "key 32:mac" );
-	require_noerr( err, exit );
-	require_action( memcmp( buf, "\x11\x22\x33\x44\x55\x66", 6 ) == 0, exit, err = kResponseErr );
-	require_action( buf[ 6 ] == 'Z', exit, err = kResponseErr );
-	
-	memset( buf, 'Z', sizeof( buf ) );
-	err = CFPropertyListExtractFormatted( plist, buf, "key 33:uuid" );
-	require_noerr( err, exit );
-	require_action( memcmp( buf, "\x6b\xa7\xb8\x10\x9d\xad\x11\xd1\x80\xb4\x00\xc0\x4f\xd4\x30\xc8", 16 ) == 0, exit, err = kResponseErr );
-	require_action( buf[ 16 ] == 'Z', exit, err = kResponseErr );
-	
-	memset( buf, 'Z', sizeof( buf ) );
-	err = CFPropertyListExtractFormatted( plist, buf, "key 34:uuid" );
-	require_noerr( err, exit );
-	require_action( memcmp( buf, "\x6b\xa7\xb8\x10\x9d\xad\x11\xd1\x80\xb4\x00\xc0\x4f\xd4\x30\xc8", 16 ) == 0, exit, err = kResponseErr );
-	require_action( buf[ 16 ] == 'Z', exit, err = kResponseErr );
-	
-	u16 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u16, "key 35:int16" );
-	require_noerr( err, exit );
-	require_action( u16 == 12345, exit, err = kResponseErr );
-	
-	str = NULL;
-	err = CFPropertyListExtractFormatted( plist, (void *) &str, "key 36" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "8129b4b2-86dd-4f40-951f-6be834da5b8e" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	u8 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u8, "key 37:int8" );
-	require_noerr( err, exit );
-	require_action( u8 == 123, exit, err = kResponseErr );
-	
-	code = 0;
-	err = CFPropertyListExtractFormatted( plist, &code, "key 38:code" );
-	require_noerr( err, exit );
-	require_action( code == 0x76613338, exit, err = kResponseErr );
-	
-	code = 0;
-	err = CFPropertyListExtractFormatted( plist, &code, "key 39:code" );
-	require_noerr( err, exit );
-	require_action( code == 0x76613339, exit, err = kResponseErr );
-	
-	tempStr[ 0 ] = '\0';
-	err = CFPropertyListExtractFormatted( plist, tempStr, "key 40:macStr" );
-	require_noerr( err, exit );
-	require_action( strcmp( tempStr, "00:11:22:33:44:55" ) == 0, exit, err = kResponseErr );
-	
-	tempStr[ 0 ] = '\0';
-	err = CFPropertyListExtractFormatted( plist, tempStr, "key 41:macStr" );
-	require_noerr( err, exit );
-	require_action( strcmp( tempStr, "00:11:22:33:44:55" ) == 0, exit, err = kResponseErr );
-	
-	s64 = 0;
-	err = CFPropertyListExtractFormatted( plist, &s64, "key 31:int*", sizeof( s64 ) );
-	require_noerr( err, exit );
-	require_action( s64 == INT64_C( 1234567890123 ), exit, err = kResponseErr );
-	
-	u32 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u32, "key 7:int*", sizeof( u32 ) );
-	require_noerr( err, exit );
-	require_action( u32 == 7777777, exit, err = kResponseErr );
-	
-	u16 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u16, "key 43:int*", sizeof( u16 ) );
-	require_noerr( err, exit );
-	require_action( u16 == 12345, exit, err = kResponseErr );
-	
-	u8 = 0;
-	err = CFPropertyListExtractFormatted( plist, &u8, "key 42:int*", sizeof( u8 ) );
-	require_noerr( err, exit );
-	require_action( u8 == 123, exit, err = kResponseErr );
-	
-	u8ptr = NULL;
-	err = CFPropertyListExtractFormatted( plist, &u8ptr, "key 41:data*", (size_t) 6 );
-	require_noerr( err, exit );
-	require_action( u8ptr && ( memcmp( u8ptr, "\x00\x11\x22\x33\x44\x55", 6 ) == 0 ), exit, err = kResponseErr );
-	
-	str = (CFStringRef) CFDictionaryGetValue( plist, CFSTR( "key 44" ) );
-	require_action( !str, exit, err = kResponseErr );
-	
-	str = (CFStringRef) CFDictionaryGetValue( plist, CFSTR( "key 45" ) );
-	require_action( str && CFEqual( str, CFSTR( "value 45" ) ), exit, err = kResponseErr );
-	
-	num = (CFNumberRef) CFDictionaryGetValue( plist, CFSTR( "key 46" ) );
-	require_action( !num, exit, err = kResponseErr );
-	
-	x = 0;
-	err = CFPropertyListExtractFormatted( plist, &x, "key 47:int" );
-	require_noerr( err, exit );
-	require_action( x == 47, exit, err = kResponseErr );
-	
-	data = CFDictionaryGetCFData( plist, CFSTR( "key 48" ), &err );
-	require_noerr( err, exit );
-	str = (CFStringRef) CFPropertyListCreateWithData( NULL, data, 0, NULL, NULL );
-	require_action( str, exit, err = kResponseErr );
-	ok = CFEqual( str, CFSTR( "xy" ) );
-	CFRelease( str );
-	require_action( ok, exit, err = kResponseErr );
-	
-	CFRelease( plist );
-	
-	memset( buf, 0, 16 );
-	err = CFPropertyListExtractFormatted( CFSTR( "f0d24e63-f408-4fee-a31d-9dd83bac67f2" ), buf, ":uuid" );
-	require_noerr( err, exit );
-	require_action( memcmp( buf, "\xF0\xD2\x4E\x63\xF4\x08\x4F\xEE\xA3\x1D\x9D\xD8\x3B\xAC\x67\xF2", 16 ) == 0, exit, err = -1 );
-	
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-{
-	__block OSStatus			blockErr;
-	__block	int					blockIndex;
-	CFMutableArrayRef			mutableArray;
-	CFMutableDictionaryRef		mutableDict;
-	__block	Boolean				blockGot1;
-	__block	Boolean				blockGot2;
-	__block	Boolean				blockGot3;
-	CFMutableSetRef				mutableSet;
-	
-	// CFArrayApplyBlock
-	
-	err = CFPropertyListCreateFormatted( NULL, &mutableArray, "[%i%i%i]", 1, 2, 3 );
-	require_noerr( err, exit );
-	
-	blockErr = 0;
-	blockIndex = 0;
-	CFArrayApplyBlock( mutableArray, CFRangeMake( 0, CFArrayGetCount( mutableArray ) ), 
-	^( const void *inApplierArrayValue )
-	{
-		int		localInt = -1;
-		
-		if( blockErr ) return;
-		CFNumberGetValue( (CFNumberRef) inApplierArrayValue, kCFNumberIntType, &localInt );
-		++blockIndex;
-		if( localInt != blockIndex ) blockErr = -1;
-	} );
-	CFRelease( mutableArray );
-	require_noerr_action( blockErr, exit, err = -1 );
-	require_action( blockIndex == 3, exit, err = -1 );
-	
-	// CFDictionaryApplyBlock
-	
-	err = CFPropertyListCreateFormatted( NULL, &mutableDict, 
-	"{"
-		"%kO=%O"
-		"%kO=%O"
-		"%kO=%O"
-	"}", 
-	CFSTR( "key 1" ), CFSTR( "value 1" ), 
-	CFSTR( "key 2" ), CFSTR( "value 2" ), 
-	CFSTR( "key 3" ), CFSTR( "value 3" ) );
-	require_noerr( err, exit );
-	
-	blockErr = 0;
-	blockGot1 = false;
-	blockGot2 = false;
-	blockGot3 = false;
-	CFDictionaryApplyBlock( mutableDict, 
-	^( const void *inApplierDictKey, const void *inApplierDictValue )
-	{
-		if( blockErr ) return;
-		if( CFEqual( inApplierDictKey, CFSTR( "key 1" ) ) )
-		{
-			if( blockGot1 ) { blockErr = -11; return; }
-			blockErr = CFEqual( inApplierDictValue, CFSTR( "value 1" ) ) ? kNoErr : -1;
-			if( !blockErr ) blockGot1 = true;
-		}
-		else if( CFEqual( inApplierDictKey, CFSTR( "key 2" ) ) )
-		{
-			if( blockGot2 ) { blockErr = -22; return; }
-			blockErr = CFEqual( inApplierDictValue, CFSTR( "value 2" ) ) ? kNoErr : -2;
-			if( !blockErr ) blockGot2 = true;
-		}
-		else if( CFEqual( inApplierDictKey, CFSTR( "key 3" ) ) )
-		{
-			if( blockGot3 ) { blockErr = -33; return; }
-			blockErr = CFEqual( inApplierDictValue, CFSTR( "value 3" ) ) ? kNoErr : -3;
-			if( !blockErr ) blockGot3 = true;
-		}
-		else
-		{
-			blockErr = -10;
-		}
-	} );
-	CFRelease( mutableDict );
-	require_noerr_action( blockErr, exit, err = -1 );
-	require_action( blockGot1 && blockGot2 && blockGot3, exit, err = -1 );
-	
-	// CFSetApplyBlock
-	
-	mutableSet = CFSetCreateMutable( NULL, 0, &kCFTypeSetCallBacks );
-	require_action( mutableSet, exit, err = -1 );
-	CFSetAddValue( mutableSet, CFSTR( "value 1" ) );
-	CFSetAddValue( mutableSet, CFSTR( "value 2" ) );
-	CFSetAddValue( mutableSet, CFSTR( "value 3" ) );
-	
-	blockErr = 0;
-	blockGot1 = false;
-	blockGot2 = false;
-	blockGot3 = false;
-	CFSetApplyBlock( mutableSet, 
-	^( const void *inApplierSetValue )
-	{
-		if( blockErr ) return;
-		if( CFEqual( inApplierSetValue, CFSTR( "value 1" ) ) )
-		{
-			if( blockGot1 ) { blockErr = -11; return; }
-			blockGot1 = true;
-		}
-		else if( CFEqual( inApplierSetValue, CFSTR( "value 2" ) ) )
-		{
-			if( blockGot2 ) { blockErr = -22; return; }
-			blockGot2 = true;
-		}
-		else if( CFEqual( inApplierSetValue, CFSTR( "value 3" ) ) )
-		{
-			if( blockGot3 ) { blockErr = -33; return; }
-			blockGot3 = true;
-		}
-		else
-		{
-			blockErr = -10;
-		}
-	} );
-	CFRelease( mutableSet );
-	require_noerr_action( blockErr, exit, err = -1 );
-	require_action( blockGot1 && blockGot2 && blockGot3, exit, err = -1 );
-}
-#endif // COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES
-	
-	// CFArrayCreateSortedByKeyPath
-	
-#if( TARGET_OS_DARWIN )
-{
-	CFArrayRef		sortedArray;
-	
-	err = CFPropertyListCreateFormatted( NULL, &plist, 
-		"["
-			"{"
-				"key1=abc;"
-			"}"
-			"{"
-				"key1=xyz;"
-			"}"
-			"{"
-				"key1=def;"
-			"}"
-			"{"
-				"key1=abd;"
-			"}"
-		"]" );
-	require_noerr( err, exit );
-	
-	sortedArray = CFArrayCreateSortedByKeyPath( (CFArrayRef) plist, "key1" );
-	CFRelease( plist );
-	require_action( sortedArray, exit, err = kNoMemoryErr );
-	require_action( CFArrayGetCount( sortedArray ) == 4, exit, err = -1 );
-	
-	err = CFPropertyListExtractFormatted( sortedArray, &str, "[0].key1" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "abc" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	err = CFPropertyListExtractFormatted( sortedArray, &str, "[1].key1" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "abd" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	err = CFPropertyListExtractFormatted( sortedArray, &str, "[2].key1" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "def" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	err = CFPropertyListExtractFormatted( sortedArray, &str, "[3].key1" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "xyz" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	CFRelease( sortedArray );
-}	
-#endif
-	
+
 	// CFNumberCreateInt64
 	
 	num = CFNumberCreateInt64( 0 );
@@ -6436,77 +4189,6 @@ OSStatus	CFUtilsTest( int inPrint )
 		NULL );
 	require_action( str == NULL, exit, err = kResponseErr );
 	
-	// StringToRangeArray
-		
-	err = StringToRangeArray( "1,2,30-70", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "1, 2, 30-70" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	err = StringToRangeArray( "1234 , 2 , 3 - 7 , ", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "1234, 2, 3-7" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	err = StringToRangeArray( "5000", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "5000" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	err = StringToRangeArray( "", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	err = StringToRangeArray( "200-100", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "100-200" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	err = StringToRangeArray( "  1 , 2 , 3 , 4  ", &array );
-	require_noerr( err, exit );
-	err = RangeArrayToString( array, &str );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "1, 2, 3, 4" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	CFRelease( array );
-	CFRelease( str );
-	
-	// ValidateRangeArrayStrings
-	
-	require_noerr( ValidateRangeArrayStrings( "100-200, 300", "100-200,300" ), exit );
-	require_noerr( ValidateRangeArrayStrings( "100-200, 300", "5000-5100, 601" ), exit );
-	require_action( ValidateRangeArrayStrings( "300-400", "700, 7001" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ValidateRangeArrayStrings( "300-400", "700-701" ) != kNoErr, exit, err = kResponseErr );
-	
-	// ConflictingRangeArrayStrings
-	
-	require_noerr( ConflictingRangeArrayStrings( "1, 2, 3", "4, 5, 6" ), exit );
-	require_noerr( ConflictingRangeArrayStrings( "1, 3, 5", "2, 4, 6" ), exit );
-	require_noerr( ConflictingRangeArrayStrings( "1-2, 3-5, 6", "7-8, 9-11, 12" ), exit );
-	require_noerr( ConflictingRangeArrayStrings( "1-2, 6, 9-11", "3-5, 7-8, 12" ), exit );
-	require_action( ConflictingRangeArrayStrings( "1, 2, 3", "1, 2, 3" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "100-200", "100-200" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "1, 5, 27", "10, 27, 50" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "10-20, 50-60", "21-31, 50-60" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "1-5", "2-3" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "1-10", "3, 4, 5" ) != kNoErr, exit, err = kResponseErr );
-	require_action( ConflictingRangeArrayStrings( "10-20", "5-30" ) != kNoErr, exit, err = kResponseErr );
-	
 	// CFGetBoolean
 	
 	err = -1;
@@ -6628,7 +4310,7 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( data, exit, err = -1 );
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( data, buf, sizeof( buf ), &len, NULL );
+	CFGetData( data, buf, sizeof( buf ), &len, NULL );
 	CFRelease( data );
 	require_action( len == 10, exit, err = -1 );
 	require_action( memcmp( buf, "\x11\x22\x33\x44\x55\x66\xaa\xbb\xcc\xdd", len ) == 0, exit, err = -1 );
@@ -6638,7 +4320,7 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( data, exit, err = -1 );
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( data, buf, 10, &len, NULL );
+	CFGetData( data, buf, 10, &len, NULL );
 	CFRelease( data );
 	require_action( len == 10, exit, err = -1 );
 	require_action( memcmp( buf, "\x11\x22\x33\x44\x55\x66\xaa\xbb\xcc\xdd", len ) == 0, exit, err = -1 );
@@ -6648,7 +4330,7 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( data, exit, err = -1 );
 	len = 0;
 	memset( buf, 'z', sizeof( buf ) );
-	u8ptr = CFGetData( data, buf, 8, &len, NULL );
+	CFGetData( data, buf, 8, &len, NULL );
 	CFRelease( data );
 	require_action( len == 8, exit, err = -1 );
 	require_action( memcmp( buf, "\x11\x22\x33\x44\x55\x66\xaa\xbb", len ) == 0, exit, err = -1 );
@@ -6658,27 +4340,27 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( data, exit, err = -1 );
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( data, buf, 0, &len, NULL );
+	CFGetData( data, buf, 0, &len, NULL );
 	CFRelease( data );
 	require_action( len == 0, exit, err = -1 );
 	require_action( buf[ len ] == 'z', exit, err = -1 );
 	
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( CFSTR( "00112233" ), buf, sizeof( buf ), &len, NULL );
+	CFGetData( CFSTR( "00112233" ), buf, sizeof( buf ), &len, NULL );
 	require_action( len == 4, exit, err = -1 );
 	require_action( memcmp( buf, "\x00\x11\x22\x33", len ) == 0, exit, err = -1 );
 	require_action( buf[ len ] == 'z', exit, err = -1 );
 	
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( CFSTR( "" ), buf, sizeof( buf ), &len, NULL );
+	CFGetData( CFSTR( "" ), buf, sizeof( buf ), &len, NULL );
 	require_action( len == 0, exit, err = -1 );
 	require_action( buf[ len ] == 'z', exit, err = -1 );
 	
 	memset( buf, 'z', sizeof( buf ) );
 	len = 0;
-	u8ptr = CFGetData( CFSTR( "00:11:22:33" ), buf, sizeof( buf ), &len, NULL );
+	CFGetData( CFSTR( "00:11:22:33" ), buf, sizeof( buf ), &len, NULL );
 	require_action( len == 4, exit, err = -1 );
 	require_action( memcmp( buf, "\x00\x11\x22\x33", len ) == 0, exit, err = -1 );
 	require_action( buf[ len ] == 'z', exit, err = -1 );
@@ -7214,10 +4896,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( CFIsType( data, CFData ), exit, err = -1 );
 	require_noerr( err, exit );
 	
-	date = CFDictionaryGetCFDate( plist, CFSTR( "date" ), &err );
-	require_action( CFIsType( date, CFDate ), exit, err = -1 );
-	require_noerr( err, exit );
-	
 	dict = CFDictionaryGetCFDictionary( plist, CFSTR( "dict" ), &err );
 	require_action( CFIsType( dict, CFDictionary ), exit, err = -1 );
 	require_noerr( err, exit );
@@ -7242,10 +4920,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	
 	data = CFDictionaryGetCFData( plist, CFSTR( "x" ), &err );
 	require_action( data == NULL, exit, err = -1 );
-	require_action( err == kNotFoundErr, exit, err = -1 );
-	
-	date = CFDictionaryGetCFDate( plist, CFSTR( "x" ), &err );
-	require_action( date == NULL, exit, err = -1 );
 	require_action( err == kNotFoundErr, exit, err = -1 );
 	
 	dict = CFDictionaryGetCFDictionary( plist, CFSTR( "x" ), &err );
@@ -7274,10 +4948,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( data == NULL, exit, err = -1 );
 	require_action( err == kTypeErr, exit, err = -1 );
 	
-	date = CFDictionaryGetCFDate( plist, CFSTR( "array" ), &err );
-	require_action( date == NULL, exit, err = -1 );
-	require_action( err == kTypeErr, exit, err = -1 );
-	
 	dict = CFDictionaryGetCFDictionary( plist, CFSTR( "array" ), &err );
 	require_action( dict == NULL, exit, err = -1 );
 	require_action( err == kTypeErr, exit, err = -1 );
@@ -7291,102 +4961,6 @@ OSStatus	CFUtilsTest( int inPrint )
 	require_action( err == kTypeErr, exit, err = -1 );
 	
 	CFRelease( plist );
-	
-	// ----------------------------------------------------------------------------------------------------------------------
-	// CFSetObjectAtPath
-	// ----------------------------------------------------------------------------------------------------------------------
-	
-	plist = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( plist, exit, err = -1 );
-	
-	err = CFSetObjectAtPath( plist, "a.b.key1", CFSTR( "test" ) );
-	require_noerr( err, exit );
-	
-	err = CFPropertyListExtractFormatted( plist, (void *) &str, "a.b.key1" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "test" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	err = CFSetObjectAtPath( plist, "a.key2", CFSTR( "test2" ) );
-	require_noerr( err, exit );
-	
-	err = CFPropertyListExtractFormatted( plist, (void *) &str, "a.key2" );
-	require_noerr( err, exit );
-	require_action( CFStringCompare( str, CFSTR( "test2" ), 0 ) == kCFCompareEqualTo, exit, err = -1 );
-	
-	CFRelease( plist );
-	
-	// CFDictionaryCreateFromNameTypeValueArgList
-{
-	const char *		argList[ 10 ];
-	CFDictionaryRef		argDict;
-	
-	argList[ 0 ] = "param 1:b:true";
-	argList[ 1 ] = "param 2:i:0x123";
-	argList[ 2 ] = "param 3:s:some string";
-	argList[ 3 ] = "param 4:m:00:11:22:33:44:55";
-	argList[ 4 ] = "param 5:u:069E4F7B-06E9-4BDE-8BB5-C902F0D1FF8E";
-	argList[ 5 ] = "param 6:h:00112233445566778899aabbccddeeff";
-	err = CFDictionaryCreateFromNameTypeValueArgList( &argDict, 0, 6, argList );
-	require_noerr( err, exit );
-	
-	ok = false;
-	err = CFPropertyListExtractFormatted( argDict, &ok, "param 1:bool" );
-	require_noerr( err, exit );
-	require_action( ok, exit, err = kResponseErr );
-	
-	x = -1;
-	err = CFPropertyListExtractFormatted( argDict, &x, "param 2:int" );
-	require_noerr( err, exit );
-	require_action( x == 0x123, exit, err = kResponseErr );
-	
-	str = NULL;
-	err = CFPropertyListExtractFormatted( argDict, (void *) &str, "param 3" );
-	require_noerr( err, exit );
-	require_action( str, exit, err = kResponseErr );
-	require_action( CFStringCompare( str, CFSTR( "some string" ), 0 ) == kCFCompareEqualTo, exit, err = kResponseErr );
-	
-	data = NULL;
-	err = CFPropertyListExtractFormatted( argDict, (void *) &data, "param 4" );
-	require_noerr( err, exit );
-	require_action( data, exit, err = kResponseErr );
-	require_action( CFDataGetLength( data ) == 6, exit, err = kSizeErr );
-	require_action( memcmp( CFDataGetBytePtr( data ), "\x00\x11\x22\x33\x44\x55", 6 ) == 0, exit, err = kResponseErr );
-	
-	data = NULL;
-	err = CFPropertyListExtractFormatted( argDict, (void *) &data, "param 5" );
-	require_noerr( err, exit );
-	require_action( data, exit, err = kResponseErr );
-	require_action( CFDataGetLength( data ) == 16, exit, err = kSizeErr );
-	require_action( memcmp( CFDataGetBytePtr( data ), 
-		"\x06\x9E\x4F\x7B\x06\xE9\x4B\xDE\x8B\xB5\xC9\x02\xF0\xD1\xFF\x8E", 6 ) == 0, exit, err = kResponseErr );
-	
-	data = NULL;
-	err = CFPropertyListExtractFormatted( argDict, (void *) &data, "param 6" );
-	require_noerr( err, exit );
-	require_action( data, exit, err = kResponseErr );
-	require_action( CFDataGetLength( data ) == 16, exit, err = kSizeErr );
-	require_action( memcmp( CFDataGetBytePtr( data ), 
-		"\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xaa\xbb\xcc\xdd\xee\xff", 6 ) == 0, exit, err = kResponseErr );
-	
-	CFRelease( argDict );
-	
-	
-	argList[ 0 ] = "param 4:x:some string";
-	err = CFDictionaryCreateFromNameTypeValueArgList( &argDict, 0, 1, argList );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	argList[ 0 ] = "param 5:b:bob";
-	err = CFDictionaryCreateFromNameTypeValueArgList( &argDict, 0, 1, argList );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	argList[ 0 ] = "param 5";
-	err = CFDictionaryCreateFromNameTypeValueArgList( &argDict, 0, 1, argList );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-	
-	argList[ 0 ] = "param 5:b";
-	err = CFDictionaryCreateFromNameTypeValueArgList( &argDict, 0, 1, argList );
-	require_action( err != kNoErr, exit, err = kResponseErr );
-}
 
 	// CFDictionaryCreateWithINIBytes	
 {
@@ -7609,21 +5183,6 @@ exitINI:
 	require_action( CFEqual( CFArrayGetValueAtIndex( array, 2 ), CFSTR( "+" ) ), exit, err = -1 );
 	CFRelease( array );
 	
-	// CFCreateWithPlistBytes and variants.
-	
-	plist = CFDictionaryCreateMutableWithBytes( NULL, 0, &err );
-	require_noerr( err, exit );
-	CFDictionarySetValue( plist, CFSTR( "key" ), CFSTR( "value" ) );
-	err = CFPropertyListCreateBytes( plist, kCFPropertyListBinaryFormat_v1_0, &u8ptr, &len );
-	CFRelease( plist );
-	require_noerr( err, exit );
-	dict = CFDictionaryCreateWithBytes( u8ptr, len, &err );
-	free( u8ptr );
-	require_noerr( err, exit );
-	err = CFDictionaryGetValue( dict, CFSTR( "key" ) ) ? kNoErr : kNotFoundErr;
-	CFRelease( dict );
-	require_noerr( err, exit );
-	
 	err = CFUtilsTestCFObjectAccessors();
 	require_noerr( err, exit );
 	
@@ -7652,7 +5211,6 @@ OSStatus	CFUtilsTestCFObjectAccessors( void )
 	CFArrayRef					cfArray			= NULL;
 	CFBooleanRef				cfBoolean		= NULL;
 	CFDataRef					cfData			= NULL;
-	CFDateRef					cfDate			= NULL;
 	CFDictionaryRef				cfDictionary	= NULL;
 	CFNumberRef					cfNumber		= NULL;
 	CFStringRef					cfString		= NULL;
@@ -7677,13 +5235,8 @@ OSStatus	CFUtilsTestCFObjectAccessors( void )
 	
 	plist = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 	require_action( plist, exit, err = -1 );
-	CFPropertyListAppendFormatted( NULL, plist, "%kO=[]", CFSTR( "array" ) );
 	CFDictionarySetBoolean( plist, CFSTR( "false" ), false );
 	CFDictionarySetBoolean( plist, CFSTR( "true" ), true );
-	CFPropertyListAppendFormatted( NULL, plist, "%kO=%D", CFSTR( "data" ), "\x11\xAA\x22", 3 );
-	CFPropertyListAppendFormatted( NULL, plist, "%kO=%T", CFSTR( "date" ), 2014, 11, 22, 7, 57, 54 );
-	CFPropertyListAppendFormatted( NULL, plist, "%kO={}", CFSTR( "dict" ) );
-	CFPropertyListAppendFormatted( NULL, plist, "%kO=%i", CFSTR( "num" ), 12345 );
 	CFDictionarySetDouble( plist, CFSTR( "double" ), 123.45 );
 	CFDictionarySetValue( plist, CFSTR( "hardwareAddress" ), CFSTR( "00:11:22:33:44:55:66:77" ) );
 	CFDictionarySetValue( plist, CFSTR( "macAddress" ), CFSTR( "AA:BB:CC:DD:EE:FF" ) );
@@ -7749,18 +5302,6 @@ OSStatus	CFUtilsTestCFObjectAccessors( void )
 	cfData = CFUtilsTestDictionaryCopyCFData( plist, CFSTR( "missing" ), &err );
 	require_action( err == kNotFoundErr, exit, err = -1 );
 	require_action( !cfData, exit, err = -1 );
-	
-	err = -1;
-	cfDate = CFUtilsTestDictionaryCopyCFDate( plist, CFSTR( "date" ), &err );
-	require_noerr( err, exit );
-	require_action( CFIsType( cfDate, CFDate ), exit, err = -1 );
-	ForgetCF( &cfDate );
-	cfDate = CFUtilsTestDictionaryCopyCFDate( plist, CFSTR( "num" ), &err );
-	require_action( err == kTypeErr, exit, err = -1 );
-	require_action( !cfDate, exit, err = -1 );
-	cfDate = CFUtilsTestDictionaryCopyCFDate( plist, CFSTR( "missing" ), &err );
-	require_action( err == kNotFoundErr, exit, err = -1 );
-	require_action( !cfDate, exit, err = -1 );
 	
 	err = -1;
 	cfDictionary = CFUtilsTestDictionaryCopyCFDictionary( plist, CFSTR( "dict" ), &err );
@@ -8115,7 +5656,6 @@ exit:
 	CFReleaseNullSafe( cfArray );
 	CFReleaseNullSafe( cfBoolean );
 	CFReleaseNullSafe( cfData );
-	CFReleaseNullSafe( cfDate );
 	CFReleaseNullSafe( cfDictionary );
 	CFReleaseNullSafe( cfNumber );
 	CFReleaseNullSafe( cfString );
@@ -8165,5 +5705,4 @@ static OSStatus	_CFUtilsTestDictionarySetValue( CFTypeRef inObj, CFStringRef inK
 exit:
 	return( err );
 }
-
 #endif // !EXCLUDE_UNIT_TESTS

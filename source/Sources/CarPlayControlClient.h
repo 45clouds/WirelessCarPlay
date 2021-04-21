@@ -1,14 +1,14 @@
 /*
 	File:    	CarPlayControlClient.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,15 +48,15 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2014-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2014-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__CarPlayControlClient_h__
 #define	__CarPlayControlClient_h__
 
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
+#include "CFUtils.h"
+#include "CommonServices.h"
+#include "DebugServices.h"
 #include "AirPlayReceiverServer.h"
 
 #ifdef __cplusplus
@@ -125,7 +125,8 @@ OSStatus	CarPlayControlClientDisconnect( CarPlayControlClientRef inClient, CarPl
 OSStatus	CarPlayControllerCopyName( CarPlayControllerRef inController, CFStringRef *outName );
 OSStatus	CarPlayControllerGetBluetoothMacAddress( CarPlayControllerRef inController, uint8_t outAddress[ 6 ] );
 OSStatus	CarPlayControllerCopySourceVersion( CarPlayControllerRef inController, CFStringRef *outSourceVersion );
-OSStatus	CarPlayControllerCopyDNSName( CarPlayControllerRef inController, CFStringRef *outIfName );
+OSStatus    CarPlayControllerGetInterfaceName( CarPlayControllerRef inController, CFStringRef *outName );
+
 //! @endgroup
 
 #ifdef __cplusplus

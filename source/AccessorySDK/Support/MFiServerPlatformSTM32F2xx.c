@@ -2,7 +2,7 @@
 	File:    	MFiServerPlatformSTM32F2xx.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2013 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2013 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	STM32f2xx platform plugin for MFi-SAP authentication/encryption.
 	
@@ -129,12 +129,11 @@
 #define kMFiAuthIndividualMaxTries				20		// Number of times to try a single I2C transaction.
 #define kMFiAuthRetryDelayTicks					10		// 10 ms.
 
-#define kMFiAuthDeviceAddress				getenv("MH_I2C_DEV_ADDR")?(guint)atoi( getenv("MH_I2C_DEV_ADDR")) : 0x22
-//#if( defined( MFI_AUTH_DEVICE_ADDRESS ) )
-//	#define kMFiAuthDeviceAddress				MFI_AUTH_DEVICE_ADDRESS
-//#else
-//	#define kMFiAuthDeviceAddress				0x22	// RST has a pull-up resistor, which decides the address.
-//#endif
+#if( defined( MFI_AUTH_DEVICE_ADDRESS ) )
+	#define kMFiAuthDeviceAddress				MFI_AUTH_DEVICE_ADDRESS
+#else
+	#define kMFiAuthDeviceAddress				0x22	// RST has a pull-up resistor, which decides the address.
+#endif
 
 #define kMFiAuthReg_AuthControlStatus			0x10
 	#define kMFiAuthFlagError						0x80
