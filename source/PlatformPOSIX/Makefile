@@ -177,7 +177,7 @@ endif
 COMMON_WARNINGS			+= -W
 COMMON_WARNINGS			+= -Wall
 COMMON_WARNINGS			+= -Wempty-body
-COMMON_WARNINGS			+= -Werror
+#COMMON_WARNINGS			+= -Werror
 COMMON_WARNINGS			+= -Wextra
 COMMON_WARNINGS			+= -Wformat
 COMMON_WARNINGS			+= -Wmissing-braces
@@ -197,6 +197,7 @@ COMMON_WARNINGS			+= -Wunused-label
 COMMON_WARNINGS			+= -Wunused-parameter
 COMMON_WARNINGS			+= -Wunused-value
 COMMON_WARNINGS			+= -Wunused-variable
+COMMON_WARNINGS			+= -fPIC
 
 CWARNS					+= $(COMMON_WARNINGS)
 CWARNS					+= -Wmissing-prototypes

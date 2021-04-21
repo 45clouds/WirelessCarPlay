@@ -469,7 +469,7 @@ COMMON_WARNINGS	+= -Wall
 COMMON_WARNINGS	+= -Wextra
 
 COMMON_WARNINGS	+= -Wempty-body
-COMMON_WARNINGS	+= -Werror
+#COMMON_WARNINGS	+= -Werror
 COMMON_WARNINGS	+= -Wformat
 COMMON_WARNINGS	+= -Wmissing-braces
 COMMON_WARNINGS	+= -Wmissing-field-initializers
