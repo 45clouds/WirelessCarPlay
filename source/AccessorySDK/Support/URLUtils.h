@@ -2,7 +2,7 @@
 	File:    	URLUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2011 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2011 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__URLUtils_h__
@@ -60,45 +60,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	URLEncodedMaxSize
-	@abstract	Calculates the max size of URL encoded data.
-	@param		SIZE	Size of the data to be URL encoded.
-	@result		Number of bytes when URL encoded.
-*/
-
-#define URLEncodedMaxSize( SIZE )		( (SIZE) * 3 ) // Max is each byte converted to "%XX".
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	URLEncode/URLEncodeCopy
-	@abstract	Encodes the data for use in a URL (i.e. percent-encoding, such as converting a space to %20.
-	@discussion	The "Copy" version returns a malloc'd, null-terminated string holding the encoded data.
-*/
-
-typedef enum
-{
-	kURLEncodeType_Generic	= 0, //! General encoding.
-	kURLEncodeType_Query	= 1  //! Make suitable for as URL query string.
-	
-}	URLEncodeType;
-
-OSStatus
-	URLEncode( 
-		URLEncodeType	inType, 
-		const void *	inSourceData, 
-		size_t			inSourceSize, 
-		void *			inEncodedDataBuffer, 	// may be NULL (to calculate the encoded size).
-		size_t			inEncodedDataBufferSize,
-		size_t *		outEncodedSize );
-
-OSStatus
-	URLEncodeCopy( 
-		URLEncodeType	inType, 
-		const void *	inSourceData, 
-		size_t			inSourceSize, 
-		void *			outEncodedStr, 
-		size_t *		outEncodedLen ); // may be NULL
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	URLDecode
@@ -153,23 +114,6 @@ typedef struct
 }	URLComponents;
 
 OSStatus	URLParseComponents( const char *inSrc, const char *inEnd, URLComponents *outComponents, const char **outSrc );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	URLGetNextPathSegment
-	@abstract	Parses the next URL segment from a URL.
-	@discussion
-	
-	If you had a URL such as "/path/to/my/resource/", you would get the following with this function:
-	
-	kNoErr			"path"
-	kNoErr			"to"
-	kNoErr			"my"
-	kNoErr			"resource"
-	kNotFoundErr
-	
-*/
-
-OSStatus	URLGetNextPathSegment( URLComponents *inComps, const char **outSegmentPtr, size_t *outSegmentLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	URLGetOrCopyNextVariable / URLGetNextVariable

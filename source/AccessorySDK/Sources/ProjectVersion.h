@@ -2,7 +2,7 @@
 	File:    	ProjectVersion.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,12 +48,12 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2013-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2013-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #define kProjectMarketingVersion		4.1
 #define kProjectMarketingVersionStr		StringifyExpansion( kProjectMarketingVersion )
 
-#define kProjectSourceVersion			410.8
+#define kProjectSourceVersion			410.12
 #define kProjectSourceVersionStr		StringifyExpansion( kProjectSourceVersion )
 

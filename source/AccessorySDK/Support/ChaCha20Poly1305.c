@@ -2,7 +2,7 @@
 	File:    	ChaCha20Poly1305.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2013-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2013-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	Implements ChaCha20 encryption, Poly1305 MAC, and ChaCha20-Poly1305 AEAD APIs.
 */
@@ -637,9 +637,11 @@ static void	_chacha20_xor( chacha20_state *inState, uint8_t *out, const uint8_t 
 
 #if( !EXCLUDE_UNIT_TESTS )
 
-#include "PrintFUtils.h"
 #include "StringUtils.h"
 #include "TickUtils.h"
+
+#define sixteenByteHexFormat "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x"
+#define sixteenBytes(buffer) buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7], buffer[8], buffer[9], buffer[10], buffer[11], buffer[12], buffer[13], buffer[14], buffer[15]
 
 //===========================================================================================================================
 //	chacha20_test
@@ -1062,8 +1064,8 @@ OSStatus	chacha20_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		secs = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H...\n", 
-			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), buf, 16, 16 );
+		fprintf( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "...\n",
+			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), sixteenBytes(buf) );
 		free( buf );
 		
 		// Medium performance test.
@@ -1080,8 +1082,8 @@ OSStatus	chacha20_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		secs = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H\n", 
-			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), buf, 16, 16 );
+		fprintf( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "\n",
+			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), sixteenBytes(buf) );
 		free( buf );
 		
 		// Big performance test.
@@ -1098,8 +1100,8 @@ OSStatus	chacha20_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		secs = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H\n", 
-			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), buf, 16, 16 );
+		fprintf( stderr, "\tchacha20 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "\n",
+			len, secs, ( 1000000 * secs ) / i, ( i * len ) / ( secs * 1048576.0 ), sixteenBytes(buf) );
 		free( buf );
 	}
 	err = kNoErr;
@@ -1824,8 +1826,8 @@ OSStatus	poly1305_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), result, 16, 16 );
+		fprintf( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(result) );
 		free( buf );
 		
 		// Medium performance test.
@@ -1843,8 +1845,8 @@ OSStatus	poly1305_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), result, 16, 16 );
+		fprintf( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(result) );
 		free( buf );
 		
 		// Big performance test.
@@ -1862,8 +1864,8 @@ OSStatus	poly1305_test( int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), result, 16, 16 );
+		fprintf( stderr, "\tpoly1305 (%zu bytes): %f (%f µs, %.2f MB/sec): " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(result) );
 		free( buf );
 	}
 	err = kNoErr;
@@ -2425,8 +2427,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 encrypt all (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf2, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 encrypt all (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf2), sixteenBytes(mac) );
 		
 		// Small performance test (decrypt all-at-once API).
 		
@@ -2438,8 +2440,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 decrypt all good (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 decrypt all good (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		
 		// Small performance test (decrypt all-at-once API when bad).
 		
@@ -2452,8 +2454,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 decrypt all bad (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 decrypt all bad (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		
 		// Small performance encrypt test.
 		
@@ -2466,8 +2468,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 encrypt (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf2, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 encrypt (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf2), sixteenBytes(mac) );
 		
 		// Small performance decrypt test when good.
 		
@@ -2481,8 +2483,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 decrypt good (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 decrypt good (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		
 		// Small performance decrypt test when bad.
 		
@@ -2497,8 +2499,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 decrypt bad (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 decrypt bad (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		
 		ForgetMem( &buf );
 		ForgetMem( &buf2 );
@@ -2519,8 +2521,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		ForgetMem( &buf );
 		
 		// Big performance test.
@@ -2539,8 +2541,8 @@ OSStatus	chacha20_poly1305_test( int inPrint, int inPerf )
 		}
 		ticks = UpTicks() - ticks;
 		d = ( (double) ticks ) / UpTicksPerSecond();
-		FPrintF( stderr, "\tchacha20_poly1305 (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), buf, 16, 16, mac, 16, 16 );
+		fprintf( stderr, "\tchacha20_poly1305 (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			len, d, ( 1000000 * d ) / i, ( i * len ) / ( d * 1048576.0 ), sixteenBytes(buf), sixteenBytes(mac) );
 		ForgetMem( &buf );
 	}
 	err = kNoErr;
@@ -2555,6 +2557,13 @@ exit:
 //===========================================================================================================================
 //	chacha20_poly1305_test_one
 //===========================================================================================================================
+
+static void FilePrintHexDump(FILE * file, const uint8_t* buffer, size_t len)
+{
+	fprintf(file, "%02x", buffer[0]);
+	for (size_t i = 1; i < len; i++)
+		fprintf(file, " %02x", buffer[i]);
+}
 
 static OSStatus	chacha20_poly1305_test_one( const chacha20_poly1305_test_vector *inVector, int inPrint )
 {
@@ -2628,15 +2637,23 @@ static OSStatus	chacha20_poly1305_test_one( const chacha20_poly1305_test_vector 
 	n += chacha20_poly1305_final( &state, &buf[ n ], tag );
 	if( inPrint )
 	{
-		FPrintF( stderr, "\t--> %s\n", inVector->label );
-		FPrintF( stderr, "\tKEY:   %.3H\n", keyPtr, (int) keyLen, (int) keyLen );
-		FPrintF( stderr, "\tNONCE: %.3H\n", noncePtr, (int) nonceLen, (int) nonceLen );
-		FPrintF( stderr, "\tAAD:   %.3H\n", aadPtr, (int) aadLen, (int) aadLen );
-		FPrintF( stderr, "\tCT:    %.3H\n", ctPtr, (int) ctLen, (int) ctLen );
-		FPrintF( stderr, "\tCT ?:  %.3H\n", buf, (int) n, (int) n );
-		FPrintF( stderr, "\tTAG:   %.3H\n", tagPtr, (int) tagLen, (int) tagLen );
-		FPrintF( stderr, "\tTAG ?: %.3H\n", tag, 16, 16 );
-		FPrintF( stderr, "\tPT:    %.3H\n", ptPtr, (int) ptLen, (int) ptLen );
+		fprintf( stderr, "\t--> %s\n", inVector->label );
+		fprintf( stderr, "\tKEY:   ");
+		FilePrintHexDump( stderr, keyPtr, keyLen );
+		fprintf( stderr, "\n\tNONCE: " );
+		FilePrintHexDump( stderr, noncePtr, nonceLen );
+		fprintf( stderr, "\n\tAAD:   " );
+		FilePrintHexDump( stderr, aadPtr, aadLen );
+		fprintf( stderr, "\n\tCT:    " );
+		FilePrintHexDump( stderr, ctPtr, ctLen );
+		fprintf( stderr, "\n\tCT ?:  " );
+		FilePrintHexDump( stderr, buf, n );
+		fprintf( stderr, "\n\tTAG:   " );
+		FilePrintHexDump( stderr, tagPtr, tagLen );
+		fprintf( stderr, "\n\tTAG ?: " sixteenByteHexFormat , sixteenBytes(tag) );
+		fprintf( stderr, "\n\tPT:    " );
+		FilePrintHexDump( stderr, ptPtr, ptLen );
+		fprintf( stderr, "\n");
 	}
 	require_action( n == ctLen, exit, err = kSizeErr );
 	require_action( memcmp( buf, ctPtr, ctLen ) == 0, exit, err = kMismatchErr );
@@ -2652,8 +2669,9 @@ static OSStatus	chacha20_poly1305_test_one( const chacha20_poly1305_test_vector 
 	n += chacha20_poly1305_verify( &state, &buf[ n ], tagPtr, &err );
 	if( inPrint )
 	{
-		FPrintF( stderr, "\tPT ?:  %.3H\n", buf, (int) n, (int) n );
-		FPrintF( stderr, "\n" );
+		fprintf( stderr, "\tPT ?:  " );
+		FilePrintHexDump( stderr, buf, n );
+		fprintf( stderr, "\n" );
 	}
 	require_noerr( err, exit );
 	require_action( n == ptLen, exit, err = kSizeErr );

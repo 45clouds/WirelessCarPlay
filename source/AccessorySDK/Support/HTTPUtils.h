@@ -2,7 +2,7 @@
 	File:    	HTTPUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__HTTPUtils_h__
@@ -277,7 +277,7 @@ typedef enum
 */
 typedef struct
 {
-	char				buf[ 8192 ];		//! Buffer holding the start line and all headers.
+	char				buf[ 1024 ];			//! Buffer holding the start line and all headers.
 	size_t				len;				//! Number of bytes in the header.
 	const char *		extraDataPtr;		//! Ptr within "buf" for any extra data beyond the header.
 	size_t				extraDataLen;		//! Length of any extra data beyond the header.
@@ -303,31 +303,16 @@ typedef struct
 }	HTTPHeader;
 
 OSStatus	HTTPHeader_InitRequest( HTTPHeader *inHeader, const char *inMethod, const char *inURL, const char *inProtocol );
-OSStatus	HTTPHeader_InitRequestF( HTTPHeader *inHeader, const char *inProtocol, const char *inMethod, const char *inFormat, ... );
-OSStatus
-	HTTPHeader_InitRequestV( 
-		HTTPHeader *	inHeader, 
-		const char *	inProtocol, 
-		const char *	inMethod, 
-		const char *	inFormat, 
-		va_list			inArgs );
 OSStatus
 	HTTPHeader_InitResponse(
 		HTTPHeader *	inHeader,
 		const char *	inProtocol,
 		int				inStatusCode,
 		const char *	inReasonPhrase );
-OSStatus
-	HTTPHeader_InitResponseEx( 
-		HTTPHeader *	inHeader, 
-		const char *	inProtocol, 
-		int				inStatusCode, 
-		const char *	inReasonPhrase, 
-		OSStatus		inError );
 OSStatus	HTTPHeader_Commit( HTTPHeader *inHeader );
 OSStatus	HTTPHeader_Uncommit( HTTPHeader *inHeader );
-OSStatus	HTTPHeader_SetField( HTTPHeader *inHeader, const char *inName, const char *inFormat, ... );
-OSStatus	HTTPHeader_SetFieldV( HTTPHeader *inHeader, const char *inName, const char *inFormat, va_list inArgs );
+OSStatus	HTTPHeader_AddField( HTTPHeader *inHeader, const char *inName, const char *inValue );
+OSStatus	HTTPHeader_AddFieldF( HTTPHeader *inHeader, const char *inName, const char *inFormat, ... ) PRINTF_STYLE_FUNCTION( 3, 4 );
 
 OSStatus	HTTPHeader_Parse( HTTPHeader *ioHeader );
 Boolean		HTTPHeader_Validate( HTTPHeader *inHeader );
@@ -351,12 +336,6 @@ OSStatus
 		const char **	outValuePtr, 
 		size_t *		outValueLen, 
 		const char **	outNext );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPIsChunked
-	@abstract	Searches for a Transfer-Encoding header field and returns true if it describes a chunked encoding.
-*/
-Boolean	HTTPIsChunked( const char *inHeaderPtr, size_t inHeaderLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPMakeDateString
@@ -417,179 +396,7 @@ OSStatus
 	
 	@result		The number of successfully parsed items or a negative error code if there is a failure.
 */
-int	HTTPScanFHeaderValue( const char *inHeaderPtr, size_t inHeaderLen, const char *inName, const char *inFormat, ... );
-
-#if 0
-#pragma mark -
-#pragma mark == HTTPAuthorization ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		HTTPTimedNonce
-	@abstract	Support for generating and validating a nonce that's based on timestamps.
-	@discussion
-	
-	HTTPMakeTimedNonce() should be given a nonce buffer that can hold 64 bytes to be safe.
-*/
-#define kHTTPTimedNonceETagPtr			"YjM5ODQ4MDE0MmI3YTI4ZmQ1MzdjNGIxMDVmNzYxMDg="
-#define kHTTPTimedNonceETagLen			sizeof_string( kHTTPTimedNonceETagPtr )
-
-#define kHTTPTimedNoncePrivateKeyPtr	"\xa3\xcf\x76\x3b\x1f\x24\x85\xa9\x64\x10\xbb\x9f\x73\x06\x58\x38"
-#define kHTTPTimedNoncePrivateKeyLen	sizeof_string( kHTTPTimedNoncePrivateKeyPtr )
-
-OSStatus
-	HTTPMakeTimedNonce( 
-		const char *	inETagPtr, 
-		size_t			inETagLen, 
-		const void *	inKeyPtr, 
-		size_t			inKeyLen, 
-		char *			inNonceBuf, 
-		size_t			inNonceLen, 
-		size_t *		outNonceLen );
-
-OSStatus
-	HTTPVerifyTimedNonce( 
-		const char *	inNoncePtr, 
-		size_t			inNonceLen, 
-		unsigned int	inGoodSecs, 
-		const char *	inETagPtr, 
-		size_t			inETagLen, 
-		const void *	inKeyPtr, 
-		size_t			inKeyLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		HTTPAuthorization
-	@abstract	Support for doing HTTP basic and digest authentication.
-*/
-typedef uint32_t	HTTPAuthorizationScheme;
-#define kHTTPAuthorizationScheme_None		0			//! No authorization.
-#define kHTTPAuthorizationScheme_Basic		( 1 << 0 )	//! Basic authorization is supported and/or required.
-#define kHTTPAuthorizationScheme_Digest		( 1 << 1 )	//! Digest authorization is supported and/or required.
-
-// HTTPClientAuthorizationInfo
-
-typedef struct HTTPClientAuthorizationInfo *	HTTPClientAuthorizationInfoRef;
-typedef struct HTTPClientAuthorizationInfo		HTTPClientAuthorizationInfo;
-struct HTTPClientAuthorizationInfo
-{
-	// User code must fill in these fields.
-	
-	HTTPAuthorizationScheme		allowedAuthSchemes;	// Authorization schemes we'll allow.
-	Boolean						uppercaseHex;		// true=Use uppercase hex digits to support old clients.
-													// false=Use RFC 2617-compliant lowercase hex digits should be used.
-	const char *				username;
-	const char *				password;
-	
-	HTTPHeader *				requestHeader;		// Request header sent (or about to be sent).
-	const HTTPHeader *			responseHeader;		// Last response from the server.
-	
-	// Fields managed by HTTPApplyAuthentication
-	
-	char *						algorithmStr;
-	size_t						algorithmLen;
-	
-	char *						authSchemeStr;
-	size_t						authSchemeLen;
-	
-	char *						domainStr;
-	size_t						domainLen;
-	
-	char *						nonceStr;
-	size_t						nonceLen;
-	
-	char *						opaqueStr;
-	size_t						opaqueLen;
-	
-	char *						realmStr;
-	size_t						realmLen;
-	
-	char *						qopStr;
-	size_t						qopLen;
-	
-	char *						staleStr;
-	size_t						staleLen;
-	
-	HTTPAuthorizationScheme		lastAuthScheme;		// Last authentication scheme used.
-};
-
-void		HTTPClientAuthorization_Init( HTTPClientAuthorizationInfoRef inAuthInfo );
-void		HTTPClientAuthorization_Free( HTTPClientAuthorizationInfoRef inAuthInfo );
-OSStatus	HTTPClientAuthorization_Apply( HTTPClientAuthorizationInfoRef inAuthInfo );
-
-// HTTPAuthorizationInfo
-
-typedef struct HTTPAuthorizationInfo *		HTTPAuthorizationInfoRef;
-typedef struct HTTPAuthorizationInfo		HTTPAuthorizationInfo;
-
-typedef HTTPStatus	( *HTTPAuthorization_CopyPasswordPtr )( HTTPAuthorizationInfoRef inInfo, char **outPassword );
-typedef Boolean		( *HTTPAuthorization_IsValidNoncePtr )( HTTPAuthorizationInfoRef inInfo );
-
-struct HTTPAuthorizationInfo
-{
-	// User code must fill in these fields.
-	
-	HTTPAuthorizationScheme				serverScheme;			// Authorization scheme used by the server.
-	const char *						serverPassword;			// Optional password instead of copyPasswordFunction.
-	const void *						serverTimedNonceKeyPtr;	// Optional timed nonce key instead of isValidNonceFunction.
-	size_t								serverTimedNonceKeyLen; // ... and length.
-	
-	HTTPAuthorization_CopyPasswordPtr	copyPasswordFunction;	// Function to get the password.
-	void *								copyPasswordContext;
-	
-	HTTPAuthorization_IsValidNoncePtr	isValidNonceFunction;	// Function to check if the nonce is valid.
-	void *								isValidNonceContext;
-	
-	const char *						headerPtr;				// HTTP request headers (may include request line).
-	size_t								headerLen;				// Length of the HTTP request headers.
-	
-	const char *						requestMethodPtr;		// HTTP request method (e.g. "POST").
-	size_t								requestMethodLen;
-	
-	const char *						requestURLPtr;			// HTTP request URL.
-	size_t								requestURLLen;
-	
-	// Fields parsed by HTTPVerifyAuthentication
-	
-	const char *						requestUsernamePtr;
-	size_t								requestUsernameLen;
-	
-	const char *						requestPasswordPtr;
-	size_t								requestPasswordLen;
-	
-	const char *						requestRealmPtr;
-	size_t								requestRealmLen;
-	
-	const char *						requestNoncePtr;
-	size_t								requestNonceLen;
-	
-	const char *						requestURIPtr;
-	size_t								requestURILen;
-	
-	const char *						requestResponsePtr;
-	size_t								requestResponseLen;
-	
-	const char *						requestAlgorithmPtr;
-	size_t								requestAlgorithmLen;
-	
-	const char *						requestCNoncePtr;
-	size_t								requestCNonceLen;
-	
-	const char *						requestOpaquePtr;
-	size_t								requestOpaqueLen;
-	
-	const char *						requestQOPPtr;
-	size_t								requestQOPLen;
-	
-	const char *						requestNCPtr;
-	size_t								requestNCLen;
-	
-	// Results of the verification.
-	
-	Boolean								staleNonce;	// True if nonce was rejected because it's too old.
-	Boolean								badMatch;	// True if password was checked and failed.
-};
-
-HTTPStatus	HTTPVerifyAuthorization( HTTPAuthorizationInfoRef ioAuthInfo );
+int	HTTPScanFHeaderValue( const char *inHeaderPtr, size_t inHeaderLen, const char *inName, const char *inFormat, ... ) SCANF_STYLE_FUNCTION(4, 5);
 
 #if 0
 #pragma mark -
@@ -599,12 +406,6 @@ HTTPStatus	HTTPVerifyAuthorization( HTTPAuthorizationInfoRef ioAuthInfo );
 #define kHTTPBonjourServiceType		"_http._tcp."
 
 #if( TARGET_HAS_SOCKETS )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPDownloadFile
-	@abstract	Downloads a file via HTTP into a malloc'd buffer.
-*/
-OSStatus	HTTPDownloadFile( const char *inURL, size_t inMaxSize, char **outData, size_t *outSize );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPReadHeader
@@ -655,14 +456,6 @@ OSStatus	HTTPReadLine( HTTPHeader *inHeader, NetTransportRead_f inRead_f, void *
 	Subsequent calls to NetSocket_Read() will read from that leftover data until it is consumed.
 */
 OSStatus	NetSocket_HTTPReadHeader( NetSocketRef inSock, HTTPHeader *inHeader, int32_t inTimeoutSecs );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPNetUtils_Test	
-	@abstract	Unit test.
-*/
-#if( !EXCLUDE_UNIT_TESTS )
-	OSStatus	HTTPNetUtils_Test( void );
-#endif
 
 #endif // TARGET_HAS_SOCKETS
 

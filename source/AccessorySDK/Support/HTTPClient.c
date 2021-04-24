@@ -2,7 +2,7 @@
 	File:    	HTTPClient.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "HTTPClient.h"
@@ -62,9 +62,8 @@
 #include "HTTPMessage.h"
 #include "HTTPUtils.h"
 #include "NetUtils.h"
-#include "PrintFUtils.h"
 #include "StringUtils.h"
-#include <glib.h>
+
 #include CF_RUNTIME_HEADER
 #include LIBDISPATCH_HEADER
 
@@ -101,7 +100,6 @@ struct HTTPClientPrivate
 	
 	// Configuration
 	
-	HTTPAuthorizationScheme		allowedAuthSchemes;		// Auth schemes to allow.
 	HTTPClientDelegate			delegate;				// Delegate for handling events, etc.
 	char *						destination;			// Destination hostname, IP address, URL, etc. of the server to talk to.
 	int							defaultPort;			// Default port to connect to if not provided in the destination string.
@@ -110,10 +108,7 @@ struct HTTPClientPrivate
 	LogCategory *				connectionUcat;			// Log category to use for connection logging.
 	int							keepAliveIdleSecs;		// Number of idle seconds before a keep-alive probe is sent.
 	int							keepAliveMaxUnansweredProbes; // Max number of unanswered probes before a connection is terminated
-	char *						password;				// Password for HTTP auth.
-	Boolean						rfc2617DigestAuth;		// True to use RFC 2617-style digest auth (i.e. lowercase hex).
 	int							timeoutSecs;			// Seconds without any data before timing out on a response or event.
-	char *						username;				// Username for HTTP auth.
 	
 	// Networking
 	
@@ -126,9 +121,8 @@ struct HTTPClientPrivate
 	dispatch_source_t			writeSource;			// GCD source for writability notification.
 	Boolean						writeSuspended;			// True if GCD write source has been suspended.
 	dispatch_source_t			timerSource;			// GCD source for handling timeouts.
-	char						extraDataBuf[ 8192 ];	// Extra data from a previous read.
+	char						extraDataBuf[ 1024 ];	// Extra data from a previous read.
 	size_t						extraDataLen;			// Number of bytes in extraDataBuf;
-	HTTPClientAuthorizationInfo	httpAuthInfo;			// Info for HTTP-style auth.
 	HTTPMessageRef				eventMsg;				// Object for reading events.
 	HTTPClientDebugDelegate		debugDelegate;			// Delegate for debug hooks.
 	NetTransportDelegate		transportDelegate;		// Delegate for transport-specific message reading/writing.
@@ -154,7 +148,6 @@ static void		_HTTPClientGetTypeID( void *inContext );
 static void		_HTTPClientFinalize( CFTypeRef inCF );
 static void		_HTTPClientInvalidate( void *inContext );
 static void		_HTTPClientRunStateMachine( HTTPClientRef me );
-static void		_HTTPClientSendBinaryCompletion( HTTPMessageRef inMsg );
 static void		_HTTPClientSendMessage( void *inContext );
 static void		_HTTPClientConnectHandler( SocketRef inSock, OSStatus inError, void *inArg );
 static void		_HTTPClientReadHandler( void *inContext );
@@ -164,8 +157,6 @@ static void		_HTTPClientErrorHandler( HTTPClientRef me, OSStatus inError );
 static void		_HTTPClientTimerFiredHandler( void *inContext );
 static void		_HTTPClientTimerCanceledHandler( void *inContext );
 static void		_HTTPClientCompleteMessage( HTTPClientRef me, HTTPMessageRef inMsg, OSStatus inStatus );
-static OSStatus	_HTTPClientSaveRequest( HTTPMessageRef inMsg );
-static OSStatus	_HTTPClientPrepareForAuthResend( HTTPClientRef me, HTTPMessageRef inMsg );
 static OSStatus	_HTTPClientHandleIOError( HTTPClientRef me, OSStatus inError, Boolean inRead );
 
 //===========================================================================================================================
@@ -229,12 +220,10 @@ OSStatus	HTTPClientCreate( HTTPClientRef *outClient )
 	me->queue = dispatch_get_main_queue();
 	arc_safe_dispatch_retain( me->queue );
 	
-	me->rfc2617DigestAuth			= true;
 	me->ucat						= &log_category_from_name( HTTPClientCore );
 	me->transportDelegate.read_f	= SocketTransportRead;
 	me->transportDelegate.writev_f	= SocketTransportWriteV;
 	me->messageNext = &me->messageList;
-	HTTPClientAuthorization_Init( &me->httpAuthInfo );
 	
 	*outClient = me;
 	err = kNoErr;
@@ -272,12 +261,9 @@ static void	_HTTPClientFinalize( CFTypeRef inCF )
 	
 	dispatch_forget( &me->queue );
 	ForgetMem( &me->destination );
-	ForgetMem( &me->password );
-	ForgetMem( &me->username );
 	if( me->transportDelegate.finalize_f ) me->transportDelegate.finalize_f( me->transportDelegate.context );
 	check( me->sockRefCount == 0 );
 	ForgetSocket( &me->sock );
-	HTTPClientAuthorization_Free( &me->httpAuthInfo );
 }
 
 //===========================================================================================================================
@@ -410,106 +396,6 @@ void	HTTPClientSetConnectionLogging( HTTPClientRef me, LogCategory *inLogCategor
 void	HTTPClientSetLogging( HTTPClientRef me, LogCategory *inLogCategory )
 {
 	me->ucat = inLogCategory;
-}
-
-//===========================================================================================================================
-//	_HTTPClientCopyProperty
-//===========================================================================================================================
-
-CFTypeRef	_HTTPClientCopyProperty( CFTypeRef inObject, CFStringRef inProperty, OSStatus *outErr )
-{
-	HTTPClientRef const		me		= (HTTPClientRef) inObject;
-	CFTypeRef				value	= NULL;
-	OSStatus				err;
-	
-	(void) me;
-	(void) inProperty;
-	
-	if( 0 ) {}
-	
-	// Unsupported.
-	
-	else
-	{
-		err = kNotHandledErr;
-		goto exit;
-	}
-	err = kNoErr;
-	
-exit:
-	if( outErr ) *outErr = err;
-	return( value );
-}
-
-//===========================================================================================================================
-//	_HTTPClientSetProperty
-//===========================================================================================================================
-
-OSStatus	_HTTPClientSetProperty( CFTypeRef inObject, CFStringRef inProperty, CFTypeRef inValue )
-{
-	HTTPClientRef const		me = (HTTPClientRef) inObject;
-	OSStatus				err;
-	char *					cptr;
-	
-	if( 0 ) {}
-	
-	// AllowedAuthSchemes
-	
-	else if( CFEqual( inProperty, kHTTPClientProperty_AllowedAuthSchemes ) )
-	{
-		me->allowedAuthSchemes = (HTTPAuthorizationScheme) CFGetInt64( inValue, NULL );
-	}
-	
-	// Password
-	
-	else if( CFEqual( inProperty, kHTTPClientProperty_Password ) )
-	{
-		require_action( !inValue || CFIsType( inValue, CFString ), exit, err = kTypeErr );
-		
-		cptr = NULL;
-		if( inValue && ( CFStringGetLength( (CFStringRef) inValue ) > 0 ) )
-		{
-			err = CFStringCopyUTF8CString( (CFStringRef) inValue, &cptr );
-			require_noerr( err, exit );
-		}
-		FreeNullSafe( me->password );
-		me->password = cptr;
-	}
-	
-	// RFC2617DigestAuth
-	
-	else if( CFEqual( inProperty, kHTTPClientProperty_RFC2617DigestAuth ) )
-	{
-		me->rfc2617DigestAuth = CFGetBoolean( inValue, NULL );
-	}
-	
-	// Username
-	
-	else if( CFEqual( inProperty, kHTTPClientProperty_Username ) )
-	{
-		require_action( !inValue || CFIsType( inValue, CFString ), exit, err = kTypeErr );
-		
-		cptr = NULL;
-		if( inValue && ( CFStringGetLength( (CFStringRef) inValue ) > 0 ) )
-		{
-			err = CFStringCopyUTF8CString( (CFStringRef) inValue, &cptr );
-			require_noerr( err, exit );
-		}
-		FreeNullSafe( me->username );
-		me->username = cptr;
-	}
-	
-	// Other
-	
-	else
-	{
-		err = kNotHandledErr;
-		goto exit;
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
 }
 
 //===========================================================================================================================
@@ -671,13 +557,7 @@ static void	_HTTPClientRunStateMachine( HTTPClientRef me )
 				me->debugDelegate.sendMessage_f( msg->header.buf, msg->header.len, msg->bodyPtr, msg->bodyLen, 
 					me->debugDelegate.context );
 			}
-			me->state = HTTPMessageIsInterleavedBinary( msg ) ? 
-				kHTTPClientStateFinishingMesssage : kHTTPClientStateReadingResponse;
-			if( me->allowedAuthSchemes && me->username && me->password )
-			{
-				err = _HTTPClientSaveRequest( msg );
-				require_noerr( err, exit );
-			}
+			me->state = kHTTPClientStateReadingResponse;
 			HTTPMessageReset( msg );
 		}
 		else if( me->state == kHTTPClientStateReadingResponse )
@@ -686,7 +566,7 @@ static void	_HTTPClientRunStateMachine( HTTPClientRef me )
 			require_action( msg, exit, err = kInternalErr );
 			msg->header.extraDataPtr = me->extraDataBuf;
 			msg->header.extraDataLen = me->extraDataLen;
-			err = HTTPMessageReadMessageEx( msg, me->transportDelegate.read_f, me->transportDelegate.context );
+			err = HTTPMessageReadMessage( msg, me->transportDelegate.read_f, me->transportDelegate.context );
 			err = _HTTPClientHandleIOError( me, err, true );
 			if( err == EWOULDBLOCK ) break;
 			require_noerr_quiet( err, exit );
@@ -700,31 +580,12 @@ static void	_HTTPClientRunStateMachine( HTTPClientRef me )
 				me->debugDelegate.receiveMessage_f( msg->header.buf, msg->header.len, msg->bodyPtr, msg->bodyLen, 
 					me->debugDelegate.context );
 			}
-			if( HTTPMessageIsInterleavedBinary( msg ) )
-			{
-				if( me->delegate.handleBinary_f )
-				{
-					me->delegate.handleBinary_f( msg->header.channelID, msg->bodyPtr, msg->bodyLen, me->delegate.context );
-				}
-				HTTPMessageReset( msg );
-				continue;
-			}
-			else if( ( me->flags & kHTTPClientFlag_Events ) && 
+			if( ( me->flags & kHTTPClientFlag_Events ) &&
 				     ( strncmpx( msg->header.protocolPtr, msg->header.protocolLen, "EVENT/1.0" ) == 0 ) )
 			{
 				if( me->delegate.handleEvent_f ) me->delegate.handleEvent_f( msg, me->delegate.context );
 				HTTPMessageReset( msg );
 				continue;
-			}
-			if( ( msg->header.statusCode == kHTTPStatus_Unauthorized ) && 
-				me->allowedAuthSchemes && me->username && me->password )
-			{
-				err = _HTTPClientPrepareForAuthResend( me, msg );
-				if( !err )
-				{
-					me->state = kHTTPClientStatePreparingRequest;
-					continue;
-				}
 			}
 			me->state = kHTTPClientStateFinishingMesssage;
 		}
@@ -787,7 +648,7 @@ static void	_HTTPClientRunStateMachine( HTTPClientRef me )
 			msg = me->eventMsg;
 			msg->header.extraDataPtr = me->extraDataBuf;
 			msg->header.extraDataLen = me->extraDataLen;
-			err = HTTPMessageReadMessageEx( msg, me->transportDelegate.read_f, me->transportDelegate.context );
+			err = HTTPMessageReadMessage( msg, me->transportDelegate.read_f, me->transportDelegate.context );
 			err = _HTTPClientHandleIOError( me, err, true );
 			if( err == EWOULDBLOCK )
 			{
@@ -812,14 +673,7 @@ static void	_HTTPClientRunStateMachine( HTTPClientRef me )
 				me->debugDelegate.receiveMessage_f( msg->header.buf, msg->header.len, msg->bodyPtr, msg->bodyLen, 
 					me->debugDelegate.context );
 			}
-			if( HTTPMessageIsInterleavedBinary( msg ) )
-			{
-				if( me->delegate.handleBinary_f )
-				{
-					me->delegate.handleBinary_f( msg->header.channelID, msg->bodyPtr, msg->bodyLen, me->delegate.context );
-				}
-			}
-			else if( me->delegate.handleEvent_f )
+			if( me->delegate.handleEvent_f )
 			{
 				me->delegate.handleEvent_f( msg, me->delegate.context );
 			}
@@ -1091,72 +945,6 @@ exit:
 }
 
 //===========================================================================================================================
-//	HTTPClientSendBinaryBytes
-//===========================================================================================================================
-
-OSStatus
-	HTTPClientSendBinaryBytes( 
-		HTTPClientRef					me, 
-		HTTPMessageFlags				inFlags, 
-		uint8_t							inChannelID, 
-		const void *					inPtr, 
-		size_t							inLen,  
-		HTTPMessageBinaryCompletion_f	inCompletion, 
-		void *							inContext )
-{
-	OSStatus			err;
-	HTTPMessageRef		msg = NULL;
-	uint8_t *			dst;
-	
-	require_action( inLen <= 0xFFFF, exit, err = kSizeErr );
-	
-	err = HTTPMessageCreate( &msg );
-	require_noerr( err, exit );
-	
-	if( inFlags & kHTTPMessageFlag_NoCopy )
-	{
-		msg->bodyPtr = (uint8_t *) inPtr;
-		msg->bodyLen = inLen;
-	}
-	else
-	{
-		err = HTTPMessageSetBodyLength( msg, inLen );
-		require_noerr( err, exit );
-		if( inLen > 0 ) memmove( msg->bodyPtr, inPtr, inLen ); // memmove in case inPtr is in the middle of the buffer.
-	}
-	
-	dst = (uint8_t *) msg->header.buf;
-	dst[ 0 ] = '$';
-	dst[ 1 ] = inChannelID;
-	dst[ 2 ] = (uint8_t)( inLen >> 8 );
-	dst[ 3 ] = (uint8_t)( inLen & 0xFF );
-	msg->header.len	= 4;
-	
-	if( inCompletion )
-	{
-		msg->binaryCompletion_f	= inCompletion;
-		msg->userContext1		= inContext;
-		msg->completion			= _HTTPClientSendBinaryCompletion;
-	}
-	
-	err = HTTPClientSendMessage( me, msg );
-	require_noerr( err, exit );
-	
-exit:
-	CFReleaseNullSafe( msg );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_HTTPClientSendBinaryCompletion
-//===========================================================================================================================
-
-static void	_HTTPClientSendBinaryCompletion( HTTPMessageRef inMsg )
-{
-	inMsg->binaryCompletion_f( inMsg->status, inMsg->userContext1 );
-}
-
-//===========================================================================================================================
 //	HTTPClientSendMessage
 //===========================================================================================================================
 
@@ -1168,7 +956,7 @@ OSStatus	HTTPClientSendMessage( HTTPClientRef me, HTTPMessageRef inMsg )
 	{
 		if( inMsg->closeAfterRequest )
 		{
-			HTTPHeader_SetField( &inMsg->header, kHTTPHeader_Connection, "close" );
+			HTTPHeader_AddFieldF( &inMsg->header, kHTTPHeader_Connection, "close" );
 		}
 		
 		err = HTTPHeader_Commit( &inMsg->header );
@@ -1250,95 +1038,6 @@ static void	_HTTPClientSendMessageSyncCompletion( HTTPMessageRef inMsg )
 }
 
 //===========================================================================================================================
-//	_HTTPClientSaveRequest
-//===========================================================================================================================
-
-static OSStatus	_HTTPClientSaveRequest( HTTPMessageRef inMsg )
-{
-	OSStatus		err;
-	
-	if( !inMsg->requestHeader )
-	{
-		inMsg->requestHeader = (HTTPHeader *) calloc( 1, sizeof( *inMsg->requestHeader ) );
-		require_action( inMsg->requestHeader, exit, err = kNoMemoryErr );
-	}
-	memcpy( inMsg->requestHeader->buf, inMsg->header.buf, inMsg->header.len );
-	inMsg->requestHeader->len = inMsg->header.len;
-	
-	ForgetPtrLen( &inMsg->requestBodyPtr, &inMsg->requestBodyLen );
-	if( inMsg->bodyLen > 0 )
-	{
-		if( inMsg->bodyPtr == inMsg->bigBodyBuf )
-		{
-			inMsg->requestBodyPtr	= inMsg->bodyPtr;
-			inMsg->bodyPtr			= NULL;
-			inMsg->bigBodyBuf		= NULL;
-		}
-		else
-		{
-			inMsg->requestBodyPtr = (uint8_t *) malloc( inMsg->bodyLen );
-			require_action( inMsg->requestBodyPtr, exit, err = kNoMemoryErr );
-			memcpy( inMsg->requestBodyPtr, inMsg->bodyPtr, inMsg->bodyLen );
-		}
-		inMsg->requestBodyLen = inMsg->bodyLen;
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_HTTPClientPrepareForAuthResend
-//===========================================================================================================================
-
-static OSStatus	_HTTPClientPrepareForAuthResend( HTTPClientRef me, HTTPMessageRef inMsg )
-{
-	OSStatus		err;
-	
-	require_action( inMsg->requestHeader, exit, err = kInternalErr );
-	
-	err = HTTPHeader_Parse( inMsg->requestHeader );
-	require_noerr( err, exit );
-	inMsg->requestHeader->firstErr = kAlreadyInUseErr;
-	
-	me->httpAuthInfo.allowedAuthSchemes	= me->allowedAuthSchemes;
-	me->httpAuthInfo.requestHeader		= inMsg->requestHeader;
-	me->httpAuthInfo.responseHeader		= &inMsg->header;
-	me->httpAuthInfo.uppercaseHex		= !me->rfc2617DigestAuth;
-	me->httpAuthInfo.username			= me->username;
-	me->httpAuthInfo.password			= me->password;
-	err = HTTPClientAuthorization_Apply( &me->httpAuthInfo );
-	require_noerr_quiet( err, exit );
-	
-	err = HTTPHeader_Commit( inMsg->requestHeader );
-	require_noerr( err, exit );
-	memcpy( inMsg->header.buf, inMsg->requestHeader->buf, inMsg->requestHeader->len );
-	inMsg->header.len = inMsg->requestHeader->len;
-	
-	FreeNullSafe( inMsg->bigBodyBuf );
-	inMsg->bigBodyBuf		= inMsg->requestBodyPtr;
-	inMsg->bodyPtr			= inMsg->requestBodyPtr;
-	inMsg->bodyLen			= inMsg->requestBodyLen;
-	inMsg->requestBodyPtr	= NULL;
-	inMsg->requestBodyLen	= 0;
-	
-	inMsg->iov[ 0 ].iov_base = inMsg->header.buf;
-	inMsg->iov[ 0 ].iov_len  = inMsg->header.len;
-	inMsg->ion = 1;
-	if( inMsg->bodyLen > 0 )
-	{
-		inMsg->iov[ 1 ].iov_base = (char *) inMsg->bodyPtr;
-		inMsg->iov[ 1 ].iov_len  = inMsg->bodyLen;
-		inMsg->ion = 2;
-	}
-	inMsg->iop = inMsg->iov;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
 //	_HTTPClientHandleIOError
 //===========================================================================================================================
 
@@ -1382,13 +1081,6 @@ static OSStatus	_HTTPClientHandleIOError( HTTPClientRef me, OSStatus inError, Bo
 //	HTTPClientTest
 //===========================================================================================================================
 
-#if( !defined( HTTP_CLIENT_TEST_AUTH ) )
-	#define HTTP_CLIENT_TEST_AUTH		0
-#endif
-#if( HTTP_CLIENT_TEST_AUTH )
-	static OSStatus	_HTTPClientTestAuth( void );
-#endif
-
 ulog_define( HTTPClientTest, kLogLevelWarning, kLogFlags_Default, "HTTPClient", NULL );
 
 static void	_HTTPClientTestCompletion( HTTPMessageRef inMsg );
@@ -1401,11 +1093,6 @@ OSStatus	HTTPClientTest( void )
 	HTTPMessageRef			msg2	= NULL;
 	dispatch_queue_t		queue	= NULL;
 	dispatch_semaphore_t	sem		= NULL;
-	
-#if( HTTP_CLIENT_TEST_AUTH )
-	err = _HTTPClientTestAuth();
-	require_noerr( err, exit );
-#endif
 	
 	err = HTTPClientCreate( &client );
 	require_noerr( err, exit );
@@ -1448,35 +1135,35 @@ OSStatus	HTTPClientTest( void )
 	// Simple get.
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "www.apple.com" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "www.apple.com" );
 	err = HTTPClientSendMessageSync( client, msg );
 	if( IsHTTPOSStatus( err ) ) err = kNoErr;
 	require_noerr( err, exit );
-	FPrintF( stderr, "\twww.apple.com -> %#m\n", msg->header.statusCode );
+	fprintf( stderr, "\twww.apple.com -> %d\n", msg->header.statusCode );
 	HTTPMessageReset( msg );
 	
 	// Simple get, close after request.
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "www.apple.com" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "www.apple.com" );
 #if( !HTTP_CLIENT_TEST_GCM )
 	msg->closeAfterRequest = true;
 #endif
 	err = HTTPClientSendMessageSync( client, msg );
 	if( IsHTTPOSStatus( err ) ) err = kNoErr;
 	require_noerr( err, exit );
-	FPrintF( stderr, "\twww.apple.com/ (close) -> %#m\n", msg->header.statusCode );
+	fprintf( stderr, "\twww.apple.com/ (close) -> %d\n", msg->header.statusCode );
 	HTTPMessageReset( msg );
 	msg->closeAfterRequest = false;
 	
 	// Simple get with redirect response.
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/developer", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "www.apple.com" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "www.apple.com" );
 	err = HTTPClientSendMessageSync( client, msg );
 	if( IsHTTPOSStatus( err ) ) err = kNoErr;
 	require_noerr( err, exit );
-	FPrintF( stderr, "\twww.apple.com/developer -> %#m\n", msg->header.statusCode );
+	fprintf( stderr, "\twww.apple.com/developer -> %d\n", msg->header.statusCode );
 	HTTPMessageReset( msg );
 	HTTPClientForget( &client );
 	
@@ -1489,11 +1176,11 @@ OSStatus	HTTPClientTest( void )
 	err = HTTPClientSetDestination( client, "http://httpbin.org", 80 );
 	require_noerr( err, exit );
 	HTTPHeader_InitRequest( &msg->header, "GET", "/drip?numbytes=400&duration=3&delay=1", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "httpbin.org" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "httpbin.org" );
 	err = HTTPClientSendMessageSync( client, msg );
 	require_noerr( err, exit );
 	require_action( msg->bodyLen == 400, exit, err = kSizeErr );
-	FPrintF( stderr, "\thttp://httpbin.org/drip?numbytes=400&duration=3&delay=1 -> %#m\n", err );
+	fprintf( stderr, "\thttp://httpbin.org/drip?numbytes=400&duration=3&delay=1 -> %d\n", (int)err );
 	HTTPMessageReset( msg );
 	HTTPClientForget( &client );
 	
@@ -1507,13 +1194,13 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/delay/10", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "httpbin.org" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "httpbin.org" );
 	msg->connectTimeoutSecs	= 3;
 	msg->dataTimeoutSecs	= 5;
 	
 	err = HTTPClientSendMessageSync( client, msg );
 	require_action( err == kTimeoutErr, exit, err = kResponseErr );
-	FPrintF( stderr, "\thttp://httpbin.org/delay/8 -> %#m\n", err );
+	fprintf( stderr, "\thttp://httpbin.org/delay/8 -> %d\n", (int)err );
 	
 	HTTPClientForget( &client );
 	
@@ -1527,13 +1214,13 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/delay/3", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "httpbin.org" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "httpbin.org" );
 	msg->connectTimeoutSecs	= 3;
 	msg->dataTimeoutSecs	= 5;
 	
 	err = HTTPClientSendMessageSync( client, msg );
 	require_noerr( err, exit );
-	FPrintF( stderr, "\thttp://httpbin.org/delay/3 -> %#m\n", err );
+	fprintf( stderr, "\thttp://httpbin.org/delay/3 -> %d\n", (int)err );
 	
 	HTTPClientForget( &client );
 	
@@ -1548,12 +1235,12 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/delay/10", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "httpbin.org" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "httpbin.org" );
 	msg->connectTimeoutSecs	= 0;
 	msg->dataTimeoutSecs	= 0;
 	err = HTTPClientSendMessageSync( client, msg );
 	require_action( err == kTimeoutErr, exit, err = kResponseErr );
-	FPrintF( stderr, "\thttp://httpbin.org/delay/8 -> %#m\n", err );
+	fprintf( stderr, "\thttp://httpbin.org/delay/8 -> %d\n", (int)err );
 	
 	HTTPClientForget( &client );
 	
@@ -1570,7 +1257,7 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	HTTPHeader_InitRequest( &msg->header, "GET", "/", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg->header, kHTTPHeader_Host, "www.apple.com" );
+	HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_Host, "www.apple.com" );
 	msg->connectTimeoutSecs		= 3;
 	msg->dataTimeoutSecs		= 5;
 	msg->userContext1			= client;
@@ -1581,7 +1268,7 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	HTTPHeader_InitRequest( &msg2->header, "GET", "/", "HTTP/1.1" );
-	HTTPHeader_SetField( &msg2->header, kHTTPHeader_Host, "www.apple.com" );
+	HTTPHeader_AddFieldF( &msg2->header, kHTTPHeader_Host, "www.apple.com" );
 	msg2->connectTimeoutSecs	= 3;
 	msg2->dataTimeoutSecs		= 5;
 	msg2->userContext1			= client;
@@ -1592,7 +1279,7 @@ OSStatus	HTTPClientTest( void )
 	require_noerr( err, exit );
 	
 	dispatch_semaphore_wait( sem, DISPATCH_TIME_FOREVER );
-	FPrintF( stderr, "\thttp://www.apple.com (back-to-back)\n" );
+	fprintf( stderr, "\thttp://www.apple.com (back-to-back)\n" );
 	
 	HTTPClientForget( &client );
 	
@@ -1611,116 +1298,11 @@ static void	_HTTPClientTestCompletion( HTTPMessageRef inMsg )
 	HTTPClientRef const		client = (HTTPClientRef) inMsg->userContext1;
 	int						num    = (int)(uintptr_t) inMsg->userContext3;
 	
-	FPrintF( stderr, "\tCompleted %s '%.*s' (%d)\n", client->destination, (int) inMsg->header.urlLen, inMsg->header.urlPtr, num );
+	fprintf( stderr, "\tCompleted %s '%.*s' (%d)\n", client->destination, (int) inMsg->header.urlLen, inMsg->header.urlPtr, num );
 	if( num == 2 )
 	{
 		dispatch_semaphore_signal( (dispatch_semaphore_t) inMsg->userContext2 );
 	}
 }
 
-#if( HTTP_CLIENT_TEST_AUTH )
-//===========================================================================================================================
-//	_HTTPClientTestAuth
-//===========================================================================================================================
-
-static OSStatus	_HTTPClientTestAuth( void )
-{
-	OSStatus				err;
-	HTTPClientRef			client	= NULL;
-	HTTPMessageRef			msg		= NULL;
-	dispatch_queue_t		queue;
-	
-	err = HTTPClientCreate( &client );
-	require_noerr( err, exit );
-	HTTPClientSetLogging( client, &log_category_from_name( HTTPClientTest ) );
-	
-	queue = dispatch_queue_create( "HTTPClientTest", NULL );
-	require_action( queue, exit, err = -1 );
-	HTTPClientSetDispatchQueue( client, queue );
-	dispatch_release( queue );
-	
-	err = HTTPMessageCreate( &msg );
-	require_noerr( err, exit );
-	
-	err = HTTPClientSetDestination( client, "127.0.0.1", 8000 );
-	require_noerr( err, exit );
-	
-	// Password test (no password, no body).
-	
-	HTTPMessageReset( msg );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/none", "HTTP/1.1" );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_action( err == HTTPStatusToOSStatus( kHTTPStatus_Unauthorized ), exit, err = -1 );
-	
-	// Password test (no password, with body).
-	
-	HTTPMessageReset( msg );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/none", "HTTP/1.1" );
-	HTTPMessageSetBody( msg, "text/plain", "abcd", 4 );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_action( err == HTTPStatusToOSStatus( kHTTPStatus_Unauthorized ), exit, err = -1 );
-	
-	// Password test (wrong password, with body).
-	
-	HTTPMessageReset( msg );
-	err = HTTPClientPropertySetUInt64( client, kHTTPClientProperty_AllowedAuthSchemes, kHTTPAuthorizationScheme_Digest );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Password, CFSTR( "password2" ) );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Username, CFSTR( "user" ) );
-	require_noerr( err, exit );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/bad", "HTTP/1.1" );
-	HTTPMessageSetBody( msg, "text/plain", "body123", 7 );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_action( err == HTTPStatusToOSStatus( kHTTPStatus_Unauthorized ), exit, err = -1 );
-	
-	// Password test (wrong password, no body).
-	
-	HTTPMessageReset( msg );
-	err = HTTPClientPropertySetUInt64( client, kHTTPClientProperty_AllowedAuthSchemes, kHTTPAuthorizationScheme_Digest );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Password, CFSTR( "password2" ) );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Username, CFSTR( "user" ) );
-	require_noerr( err, exit );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/bad", "HTTP/1.1" );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_action( err == HTTPStatusToOSStatus( kHTTPStatus_Unauthorized ), exit, err = -1 );
-	
-	// Password test (correct password, with body).
-	
-	HTTPMessageReset( msg );
-	err = HTTPClientPropertySetUInt64( client, kHTTPClientProperty_AllowedAuthSchemes, kHTTPAuthorizationScheme_Digest );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Password, CFSTR( "password" ) );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Username, CFSTR( "user" ) );
-	require_noerr( err, exit );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/good", "HTTP/1.1" );
-	HTTPMessageSetBody( msg, "text/plain", "ABC", 3 );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_noerr( err, exit );
-	require_action( MemEqual( msg->bodyPtr, msg->bodyLen, "/good", 5 ), exit, err = -1 );
-	
-	// Password test (correct password 2, no body).
-	
-	HTTPMessageReset( msg );
-	err = HTTPClientPropertySetUInt64( client, kHTTPClientProperty_AllowedAuthSchemes, kHTTPAuthorizationScheme_Digest );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Password, CFSTR( "password" ) );
-	require_noerr( err, exit );
-	err = HTTPClientPropertySetValue( client, kHTTPClientProperty_Username, CFSTR( "user" ) );
-	require_noerr( err, exit );
-	HTTPHeader_InitRequest( &msg->header, "GET", "/good2", "HTTP/1.1" );
-	err = HTTPClientSendMessageSync( client, msg );
-	require_noerr( err, exit );
-	require_action( MemEqual( msg->bodyPtr, msg->bodyLen, "/good2", 6 ), exit, err = -1 );
-	HTTPMessageReset( msg );
-	
-exit:
-	CFReleaseNullSafe( client );
-	CFReleaseNullSafe( msg );
-	return( err );
-}
-#endif // HTTP_CLIENT_TEST_AUTH
 #endif // !EXCLUDE_UNIT_TESTS

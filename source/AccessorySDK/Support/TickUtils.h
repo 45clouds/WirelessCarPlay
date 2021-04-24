@@ -2,7 +2,7 @@
 	File:    	TickUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 /*!
     @header		Tick API
@@ -207,20 +207,11 @@ uint64_t	MicrosecondsToUpTicks( uint64_t x );
 uint64_t	NanosecondsToUpTicks( uint64_t x );
 uint64_t	NTPtoUpTicks( uint64_t inNTP );
 
-#if( !TARGET_OS_THREADX )
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	UpTicksToTimeValTimeout
-	@abstract	Converts an absolute, UpTicks deadline to a timeval timeout, suitable for passing to APIs like select.
-	@discussion	This handles deadlines that have already expired (immediate timeout) and kUpTicksForever (no timeout).
-*/
-struct timeval *	UpTicksToTimeValTimeout( uint64_t inDeadline, struct timeval *inTimeVal );
-#endif
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TickUtilsTest
 	@abstract	Unit test.
 */
-void	TickUtilsTest( void );
+OSStatus TickUtilsTest( void );
 
 #ifdef __cplusplus
 }

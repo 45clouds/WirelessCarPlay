@@ -2,7 +2,7 @@
 	File:    	HTTPMessage.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__HTTPMessage_h__
@@ -75,29 +75,10 @@ CFTypeID	HTTPMessageGetTypeID( void );
 OSStatus	HTTPMessageCreate( HTTPMessageRef *outMessage );
 void		HTTPMessageReset( HTTPMessageRef inMsg );
 
-OSStatus	HTTPMessageInitRequest( HTTPMessageRef inMsg, const char *inProtocol, const char *inMethod, const char *inFormat, ... );
-OSStatus	HTTPMessageInitResponse( HTTPMessageRef inMsg, const char *inProtocol, int inStatusCode, OSStatus inError );
-
-OSStatus
-	HTTPMessageGetHeaderField( 
-		HTTPMessageRef	inMsg, 
-		const char *	inName, 
-		const char **	outNamePtr, 
-		size_t *		outNameLen, 
-		const char **	outValuePtr, 
-		size_t *		outValueLen );
-OSStatus	HTTPMessageSetHeaderField( HTTPMessageRef inMsg, const char *inName, const char *inFormat, ... );
-
-#define		HTTPMessageReadMessage( SOCK, MSG ) HTTPMessageReadMessageEx( (MSG), _SocketHTTPReader, (void *)(intptr_t)(SOCK) )
-OSStatus	HTTPMessageReadMessageEx( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx );
+OSStatus	HTTPMessageReadMessage( HTTPMessageRef inMsg, NetTransportRead_f inRead_f, void *inRead_ctx );
 OSStatus	HTTPMessageWriteMessage( HTTPMessageRef inMsg, NetTransportWriteV_f inWriteV_f, void *inWriteV_ctx );
-OSStatus	HTTPMessageSetBody( HTTPMessageRef inMsg, const char *inContentType, const void *inData, size_t inLen );
+OSStatus	HTTPMessageSetBodyPtr( HTTPMessageRef inMsg, const char *inContentType, const void *inData, size_t inLen );
 OSStatus	HTTPMessageSetBodyLength( HTTPMessageRef inMsg, size_t inLen );
-
-#if( COMPILER_HAS_BLOCKS )
-	typedef void ( ^HTTPMessageCompletionBlock )( HTTPMessageRef inMsg );
-	void	HTTPMessageSetCompletionBlock( HTTPMessageRef inMsg, HTTPMessageCompletionBlock inBlock );
-#endif
 
 OSStatus
 	HTTPMessageGetOrCopyFormVariable( 
@@ -107,51 +88,6 @@ OSStatus
 		size_t *		outValueLen, 
 		char **			outValueStorage );
 
-#define HTTPMessageIsInterleavedBinary( MSG )		( ( (MSG)->header.len == 4 ) && ( (MSG)->header.buf[ 0 ] == '$' ) )
-#define HTTPMessageIsLastURLSegment( MSG )			( (MSG)->header.url.segmentPtr == (MSG)->header.url.segmentEnd )
-
-OSStatus
-	HTTPMessageScanFFormVariable( 
-		HTTPMessageRef	inConnection, 
-		const char *	inName, 
-		int *			outMatchCount, 
-		const char *	inFormat, 
-		... );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@fn			HTTPMessageSetBodyFileDescriptor
-	@brief		Sets up to send the body of a message from a file descriptor.
-	
-	@param		inMsg				Message to set up.
-	@param		inFD				File descriptor to read from.
-	@param		inByteOffset		Byte offset in the file to start reading from. May be negative to treat as an offset from the end.
-	@param		inByteCount			Byte offset in the file to start reading from. May be -1 to read to the end of the file.
-	@param		inCloseWhenDone		true to close the file descriptor when done.
-*/
-OSStatus
-	HTTPMessageSetBodyFileDescriptor( 
-		HTTPMessageRef	inMsg, 
-		FDRef			inFD, 
-		int64_t			inByteOffset, 
-		int64_t			inByteCount, 
-		Boolean			inCloseWhenDone );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@fn			HTTPMessageSetBodyFilePath
-	@brief		Sets up to send the body of a message from a file path.
-	
-	@param		inMsg				Message to set up.
-	@param		inPath				File path to read from.
-	@param		inByteOffset		Byte offset in the file to start reading from. May be negative to treat as an offset from the end.
-	@param		inByteCount			Byte offset in the file to start reading from. May be -1 to read to the end of the file.
-*/
-OSStatus
-	HTTPMessageSetBodyFilePath( 
-		HTTPMessageRef	inMsg, 
-		const char *	inPath, 
-		int64_t			inByteOffset, 
-		int64_t			inByteCount );
-
 //===========================================================================================================================
 //	Internals
 //===========================================================================================================================
@@ -159,20 +95,11 @@ OSStatus
 #define kHTTPDefaultMaxBodyLen		16000000
 #define kHTTPNoTimeout				UINT64_C( 0xFFFFFFFFFFFFFFFF )
 
-typedef int		HTTPChunkState;
-#define kHTTPChunkState_Invalid				0
-#define kHTTPChunkState_ReadingHeader		1
-#define kHTTPChunkState_ReadingBody			2
-#define kHTTPChunkState_ReadingBodyEnd		3
-#define kHTTPChunkState_ReadingTrailer		4
-#define kHTTPChunkState_Done				5
-
 typedef uint32_t	HTTPMessageFlags;
 #define kHTTPMessageFlags_None		0			// No flags.
 #define kHTTPMessageFlag_NoCopy		( 1 << 0 )	// Don't copy data. Caller must ensure data remains valid.
 
 typedef void ( *HTTPMessageUser_f )( void *inArg );
-typedef void ( *HTTPMessageBinaryCompletion_f )( OSStatus inStatus, void *inContext );
 typedef void ( *HTTPMessageCompletionFunc )( HTTPMessageRef inMsg );
 
 struct HTTPMessagePrivate
@@ -181,13 +108,12 @@ struct HTTPMessagePrivate
 	HTTPMessageRef					next;					// Next message in the list.
 	HTTPHeader						header;					// Header of the message read or written.
 	Boolean							headerRead;				// True if the header has been read.
-	HTTPChunkState					chunkState;				// State of chunk reading or invalid if not chunked.
 	Boolean							closeAfterRequest;		// True if connection should be shutdown after sending request.
 	uint8_t *						bodyPtr;				// Pointer to the body buffer.
 	size_t							bodyLen;				// Total body length.
 	size_t							maxBodyLen;				// Max allowed body length.
 	size_t							bodyOffset;				// Offset into the body that we've read so far.
-	uint8_t							smallBodyBuf[ 32000 ];	// Fixed buffer used for small messages to avoid allocations.
+	uint8_t							smallBodyBuf[ 1024 ];	// Fixed buffer used for small messages to avoid allocations.
 	uint8_t *						bigBodyBuf;				// malloc'd buffer for large bodies.
 	HTTPHeader *					requestHeader;			// Copy of request header when using HTTP auth.
 	uint8_t *						requestBodyPtr;			// Copy of request body when using HTTP auth.
@@ -205,15 +131,7 @@ struct HTTPMessagePrivate
 	void *							userContext2;			// Context pointer for use by user code.
 	void *							userContext3;			// Context pointer for use by user code.
 	void *							userContext4;			// Context pointer for use by user code.
-	HTTPMessageBinaryCompletion_f	binaryCompletion_f;		// Function pointer for binary messages.
 	HTTPMessageCompletionFunc		completion;				// Function to call when a message completes.
-#if( COMPILER_HAS_BLOCKS )
-	__unsafe_unretained
-	HTTPMessageCompletionBlock		completionBlock;		// Block to invoke when a message completes.
-#endif
-	FDRef							fileFD;					// File descriptor for file-based messages.
-	Boolean							closeFD;				// True if we should close the file descriptor when we're done with it.
-	int64_t							fileRemain;				// Remaining bytes to send from the file.
 };
 
 #ifdef __cplusplus

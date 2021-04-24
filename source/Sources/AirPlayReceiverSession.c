@@ -1,14 +1,14 @@
 /*
 	File:    	AirPlayReceiverSession.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2005-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2005-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -64,23 +64,23 @@
 #include "AirPlayReceiverSession.h"
 #include "AirPlayReceiverSessionPriv.h"
 
-#include <CoreUtils/AESUtils.h>
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/HTTPClient.h>
-#include <CoreUtils/HTTPUtils.h>
-#include <CoreUtils/MathUtils.h>
-#include <CoreUtils/NetTransportChaCha20Poly1305.h>
-#include <CoreUtils/NetUtils.h>
-#include <CoreUtils/NTPUtils.h>
-#include <CoreUtils/PrintFUtils.h>
-#include <CoreUtils/RandomNumberUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/SystemUtils.h>
-#include <CoreUtils/TickUtils.h>
-#include <CoreUtils/TimeUtils.h>
-#include <CoreUtils/UUIDUtils.h>
+#include "AudioConverter.h"
+
+#include "AESUtils.h"
+#include "CFUtils.h"
+#include "CFLiteBinaryPlist.h"
+#include "CommonServices.h"
+#include "DebugServices.h"
+#include "HTTPClient.h"
+#include "HTTPUtils.h"
+#include "MathUtils.h"
+#include "NetTransportChaCha20Poly1305.h"
+#include "NetUtils.h"
+#include "RandomNumberUtils.h"
+#include "StringUtils.h"
+#include "TickUtils.h"
+#include "TimeUtils.h"
+#include "UUIDUtils.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -95,13 +95,11 @@
 #include "AirPlayCommon.h"
 #include "AirPlayReceiverServer.h"
 #include "AirPlayReceiverServerPriv.h"
-#include "AirPlaySettings.h"
 #include "AirPlayUtils.h"
 #include "AirTunesClock.h"
 
 #include CF_HEADER
 
-	#include "APSAudioConverter.h"
 #if( TARGET_OS_POSIX )
 	#include <sys/types.h>
 	
@@ -119,7 +117,7 @@
 #if 0
 #pragma mark == Constants ==
 #endif
-#include <glib.h>
+
 //===========================================================================================================================
 //	Constants
 //===========================================================================================================================
@@ -135,6 +133,7 @@
 	check_compile_time( kAirTunesBufferNodeCountUDP	<= kAirTunesDupWindowSize );
 	check_compile_time( kAirTunesRetransmitCount	<= kAirTunesDupWindowSize );
 
+#define kAirPlayEventTimeoutNS	(10ll * kNanosecondsPerSecond) // Timeout in nanosecond for event message
 #if 0
 #pragma mark == Prototypes ==
 #endif
@@ -151,7 +150,6 @@
 		( NODE )->next			= ( SESSION )->freeList;	\
 		( SESSION )->freeList	= ( NODE );					\
 		--( SESSION )->busyNodeCount;						\
-		debug_sub( gAirTunesDebugBusyNodeCount, 1 );		\
 															\
 	}	while( 0 )
 
@@ -162,6 +160,7 @@
 
 static void		_GetTypeID( void *inContext );
 static void		_Finalize( CFTypeRef inCF );
+static void		_EventReplyTimeoutCallback( void *inContext );
 static void		_PerformPeriodTasks( void *inContext );
 	static OSStatus	_SessionLock( AirPlayReceiverSessionRef inSession );
 	static OSStatus	_SessionUnlock( AirPlayReceiverSessionRef inSession );
@@ -216,7 +215,6 @@ static void		_RetransmitsSchedule( AirPlayReceiverSessionRef inSession, uint16_t
 static void		_RetransmitsUpdate( AirPlayReceiverSessionRef inSession, AirTunesBufferNode *inNode, Boolean inIsRetransmit );
 static void		_RetransmitsAbortAll( AirPlayReceiverSessionRef inSession, const char *inReason );
 static void		_RetransmitsAbortOne( AirPlayReceiverSessionRef inSession, uint16_t inSeq, const char *inReason );
-#define 		_RetransmitsDisabled( ME )	( (ME)->redundantAudio || debug_false_conditional( gAirTunesDebugNoRetransmits ) )
 
 // MainAudio
 
@@ -264,12 +262,6 @@ static OSStatus
 static void		_ScreenTearDown( AirPlayReceiverSessionRef inSession );
 static OSStatus	_ScreenStart( AirPlayReceiverSessionRef inSession );
 static void *	_ScreenThread( void *inArg );
-static void
-	_ScreenHandleEvent(
-		AirPlayReceiverSessionScreenRef		inSession,
-		CFStringRef							inEventName,
-		CFDictionaryRef						inEventData,
-		void *								inUserData );
 static uint64_t _ScreenGetSynchronizedNTPTime( void *inContext );
 static uint64_t _ScreenGetUpTicksNearSynchronizedNTPTime( void *inContext, uint64_t inNTPTime );
 
@@ -321,69 +313,6 @@ static void	_UpdateEstimatedRate( AirPlayAudioStreamContext *ctx, uint32_t inSam
 
 // Debugging
 
-#if( DEBUG )
-	#define	airtunes_record_clock_offset( X )																			\
-		do																												\
-		{																												\
-			gAirTunesClockOffsetHistory[ gAirTunesClockOffsetIndex++ ] = ( X );											\
-			if( gAirTunesClockOffsetIndex >= countof( gAirTunesClockOffsetHistory ) ) gAirTunesClockOffsetIndex = 0;	\
-			if( gAirTunesClockOffsetCount < countof( gAirTunesClockOffsetHistory ) ) ++gAirTunesClockOffsetCount;		\
-																														\
-		}	while( 0 )
-#else
-	#define	airtunes_record_clock_offset( X )
-#endif
-
-#if( DEBUG )
-	#define	airtunes_record_clock_rtt( X )																		\
-		do																										\
-		{																										\
-			gAirTunesClockRTTHistory[ gAirTunesClockRTTIndex++ ] = ( X );										\
-			if( gAirTunesClockRTTIndex >= countof( gAirTunesClockRTTHistory ) ) gAirTunesClockRTTIndex = 0;		\
-			if( gAirTunesClockRTTCount < countof( gAirTunesClockRTTHistory ) ) ++gAirTunesClockRTTCount;		\
-																												\
-		}	while( 0 )
-#else
-	#define	airtunes_record_clock_rtt( X )
-#endif
-
-#if( DEBUG )
-	#define	airtunes_record_rtp_offset( X )																			\
-		do																											\
-		{																											\
-			gAirTunesRTPOffsetHistory[ gAirTunesRTPOffsetIndex++ ] = ( X );											\
-			if( gAirTunesRTPOffsetIndex >= countof( gAirTunesRTPOffsetHistory ) ) gAirTunesRTPOffsetIndex = 0;		\
-			if( gAirTunesRTPOffsetCount < countof( gAirTunesRTPOffsetHistory ) ) ++gAirTunesRTPOffsetCount;			\
-																													\
-		}	while( 0 )
-#else
-	#define	airtunes_record_rtp_offset( X )
-#endif
-
-#if( DEBUG )
-	#define	airtunes_record_retransmit( RT_NODE, REASON, FINAL_NANOS )												\
-		do																											\
-		{																											\
-			AirTunesRetransmitHistoryNode *		rthNode;															\
-			size_t								rthI;																\
-																													\
-			rthNode = &gAirTunesRetransmitHistory[ gAirTunesRetransmitIndex++ ];									\
-			rthNode->reason 	= ( REASON );																		\
-			rthNode->seq		= ( RT_NODE )->seq;																	\
-			rthNode->tries		= ( RT_NODE )->tries;																\
-			rthNode->finalNanos	= ( FINAL_NANOS );																	\
-			for( rthI = 0; rthI < countof( rthNode->tryNanos ); ++rthI )											\
-			{																										\
-				rthNode->tryNanos[ rthI ] = ( RT_NODE )->tryNanos[ rthI ];											\
-			}																										\
-			if( gAirTunesRetransmitIndex >= countof( gAirTunesRetransmitHistory ) ) gAirTunesRetransmitIndex = 0;	\
-			if( gAirTunesRetransmitCount < countof( gAirTunesRetransmitHistory ) ) ++gAirTunesRetransmitCount;		\
-																													\
-		}	while( 0 )
-#else
-	#define	airtunes_record_retransmit( RT_NODE, REASON, FINAL_NANOS )
-#endif
-
 ulog_define( AirPlayReceiverCore,		kLogLevelNotice, kLogFlags_Default, "AirPlay",  NULL );
 #define atr_ucat()						&log_category_from_name( AirPlayReceiverCore )
 #define atr_ulog( LEVEL, ... )			ulog( atr_ucat(), (LEVEL), __VA_ARGS__ )
@@ -424,107 +353,6 @@ static int32_t				gAirTunesRelativeTimeOffset		= 0;		// Custom adjustment to the
 
 AirPlayReceiverSessionRef	gAirTunes = NULL;
 AirPlayAudioStats			gAirPlayAudioStats;
-
-// Debugging
-
-#if( DEBUG )
-	FILE *					gAirTunesFile									= NULL;
-	
-	// Control Variables
-	
-	int						gAirTunesDropMinRate							= 0;
-	int						gAirTunesDropMaxRate							= 0;
-	int						gAirTunesDropRemaining							= 0;
-	int						gAirTunesSkipMinRate							= 0;
-	int						gAirTunesSkipMaxRate							= 0;
-	int						gAirTunesSkipRemaining							= 0;
-	int						gAirTunesLateDrop								= 0;
-	int						gAirTunesDebugNoSkewSlew						= 0;
-	int						gAirTunesDebugLogAllSkew						= 0;
-	int						gAirTunesDebugNoRetransmits						= 0;
-	int						gAirTunesDebugPrintPerf							= 0;
-	int						gAirTunesDebugPerfMode							= 0;
-	int						gAirTunesDebugRetransmitTiming					= 1;
-	
-	// Stats
-	
-	unsigned int			gAirTunesDebugBusyNodeCount						= 0;
-	unsigned int			gAirTunesDebugBusyNodeCountLast					= 0;
-	unsigned int			gAirTunesDebugBusyNodeCountMax					= 0;
-	
-	uint64_t				gAirTunesDebugSentByteCount						= 0;
-	uint64_t				gAirTunesDebugRecvByteCount						= 0;
-	uint64_t				gAirTunesDebugRecvRTPOriginalByteCount			= 0;
-	uint64_t				gAirTunesDebugRecvRTPOriginalByteCountLast		= 0;
-	uint64_t				gAirTunesDebugRecvRTPOriginalBytesPerSecAvg		= 0;
-	uint64_t				gAirTunesDebugRecvRTPRetransmitByteCount		= 0;
-	uint64_t				gAirTunesDebugRecvRTPRetransmitByteCountLast	= 0;
-	uint64_t				gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg	= 0;
-	unsigned int			gAirTunesDebugIdleTimeoutCount					= 0;
-	unsigned int			gAirTunesDebugStolenNodeCount					= 0;
-	unsigned int			gAirTunesDebugOldDiscardCount					= 0;
-	unsigned int			gAirTunesDebugConcealedGapCount					= 0;
-	unsigned int			gAirTunesDebugConcealedEndCount					= 0;
-	unsigned int			gAirTunesDebugLateDropCount						= 0;
-	unsigned int			gAirTunesDebugSameTimestampCount				= 0;
-	unsigned int			gAirTunesDebugLossCounts[ 10 ]					= { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-	unsigned int			gAirTunesDebugTotalLossCount					= 0;
-	unsigned int			gAirTunesDebugMaxBurstLoss						= 0;
-	unsigned int			gAirTunesDebugDupCount							= 0;
-	unsigned int			gAirTunesDebugMisorderedCount					= 0;
-	unsigned int			gAirTunesDebugUnrecoveredPacketCount			= 0;
-	unsigned int			gAirTunesDebugUnexpectedRTPOffsetResetCount 	= 0;
-	unsigned int			gAirTunesDebugHugeSkewResetCount				= 0;
-	unsigned int			gAirTunesDebugGlitchCount			 			= 0;
-	unsigned int			gAirTunesDebugTimeSyncHugeRTTCount				= 0;
-	uint64_t				gAirTunesDebugTimeAnnounceMinNanos				= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	uint64_t				gAirTunesDebugTimeAnnounceMaxNanos				= 0;
-	unsigned int			gAirTunesDebugRetransmitActiveCount				= 0;
-	unsigned int			gAirTunesDebugRetransmitActiveMax				= 0;
-	unsigned int			gAirTunesDebugRetransmitSendCount				= 0;
-	unsigned int			gAirTunesDebugRetransmitSendLastCount			= 0;
-	unsigned int			gAirTunesDebugRetransmitSendPerSecAvg			= 0;
-	unsigned int			gAirTunesDebugRetransmitRecvCount				= 0;
-	unsigned int			gAirTunesDebugRetransmitBigLossCount			= 0;
-	unsigned int			gAirTunesDebugRetransmitAbortCount				= 0;
-	unsigned int			gAirTunesDebugRetransmitFutileAbortCount		= 0;
-	unsigned int			gAirTunesDebugRetransmitNoFreeNodesCount		= 0;
-	unsigned int			gAirTunesDebugRetransmitNotFoundCount			= 0;
-	unsigned int			gAirTunesDebugRetransmitPrematureCount			= 0;
-	unsigned int			gAirTunesDebugRetransmitMaxTries				= 0;
-	uint64_t				gAirTunesDebugRetransmitMinNanos				= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	uint64_t				gAirTunesDebugRetransmitMaxNanos				= 0;
-	uint64_t				gAirTunesDebugRetransmitAvgNanos				= 0;
-	uint64_t				gAirTunesDebugRetransmitRetryMinNanos			= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	uint64_t				gAirTunesDebugRetransmitRetryMaxNanos			= 0;
-	
-	double					gAirTunesClockOffsetHistory[ 512 ];
-	unsigned int			gAirTunesClockOffsetIndex 						= 0;
-	unsigned int			gAirTunesClockOffsetCount 						= 0;
-	
-	double					gAirTunesClockRTTHistory[ 512 ];
-	unsigned int			gAirTunesClockRTTIndex 							= 0;
-	unsigned int			gAirTunesClockRTTCount 							= 0;
-	
-	uint32_t				gAirTunesRTPOffsetHistory[ 1024 ];
-	unsigned int			gAirTunesRTPOffsetIndex 						= 0;
-	unsigned int			gAirTunesRTPOffsetCount 						= 0;
-	
-	AirTunesRetransmitHistoryNode	gAirTunesRetransmitHistory[ 1024 ];
-	size_t							gAirTunesRetransmitIndex 				= 0;
-	size_t							gAirTunesRetransmitCount 				= 0;
-	
-	// Transients
-	
-	uint64_t				gAirTunesDebugLastPollTicks						= 0;
-	uint64_t				gAirTunesDebugPollIntervalTicks					= 0;
-	uint64_t				gAirTunesDebugSentByteCountLast					= 0;
-	uint64_t				gAirTunesDebugRecvByteCountLast					= 0;
-	uint16_t				gAirTunesDebugHighestSeqLast					= 0;
-	uint32_t				gAirTunesDebugTotalLossCountLast				= 0;
-	uint32_t				gAirTunesDebugRecvCountLast						= 0;
-	uint32_t				gAirTunesDebugGlitchCountLast					= 0;
-#endif
 
 #if 0
 #pragma mark == General ==
@@ -587,6 +415,7 @@ OSStatus
 	
 	me->sessionTicks			= ticks;
 	me->sessionIdle				= true;
+	me->sessionIdleValid		= false;
 	me->useEvents				= inParams->useEvents;
 	me->eventSock				= kInvalidSocketRef;
 	me->mainAudioCtx.cmdSock	= kInvalidSocketRef;
@@ -603,18 +432,16 @@ OSStatus
 	me->eventQueue = dispatch_queue_create( "AirPlayReceiverSessionEventQueue", NULL );
 	require_action( me->eventQueue, exit, err = kNoMemoryErr );
 	
+	me->eventReplyTimer = dispatch_source_create( DISPATCH_SOURCE_TYPE_TIMER, 0, 0, me->eventQueue );
+	require_action( me->eventReplyTimer, exit, err = kNoMemoryErr );
+
+	dispatch_set_context( me->eventReplyTimer, me );
+	dispatch_source_set_event_handler_f( me->eventReplyTimer, _EventReplyTimeoutCallback );
+	dispatch_source_set_timer( me->eventReplyTimer, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, kNanosecondsPerSecond );
+	dispatch_resume( me->eventReplyTimer );
+
 	err = AirPlayReceiverSessionScreen_Create( &me->screenSession );
 	require_noerr( err, exit );
-	
-	AirPlayReceiverSessionScreen_SetEventHandler( me->screenSession, _ScreenHandleEvent, me, NULL );
-	
-	AirPlayReceiverSessionScreen_SetOverscanOverride( me->screenSession, me->server->overscanOverride );
-	
-	AirPlayReceiverSessionScreen_SetClientIfMACAddr( me->screenSession, (uint8_t *) inParams->clientIfMACAddr, sizeof( inParams->clientIfMACAddr ) );
-	
-	AirPlayReceiverSessionScreen_SetIFName( me->screenSession, (char *) inParams->ifName );
-	
-	AirPlayReceiverSessionScreen_SetTransportType( me->screenSession, me->transportType );
 	
 	// Finish initialization.
 	
@@ -622,8 +449,6 @@ OSStatus
 	require_noerr( err, exit );
 	me->mutexPtr = &me->mutex;
 	
-	me->flushRecentTicks			= SecondsToUpTicks( 5 );
-	me->flushLastTicks				= ticks;
 	me->glitchIntervalTicks			= 1 * kSecondsPerMinute * ticksPerSec;
 	me->glitchNextTicks				= ticks + me->glitchIntervalTicks;
 	
@@ -637,7 +462,6 @@ OSStatus
 	
 	ats->rtcpTIClockRTTMin			= +1000000.0;
 	ats->rtcpTIClockRTTMax			= -1000000.0;
-	ats->rtcpTIClockRTTLeastBad		= +1000000.0;
 	ats->rtcpTIClockOffsetMin		= +1000000.0;
 	ats->rtcpTIClockOffsetMax		= -1000000.0;
 	
@@ -747,7 +571,7 @@ OSStatus
 	
 	else if( session->delegate.control_f && CFEqual( inCommand, CFSTR( kAirPlayCommand_iAPSendMessage ) ) )
 	{
-		atr_ulog( kLogLevelNotice, "iAP Send Message\n" );
+		atr_ulog( kLogLevelTrace, "iAP Send Message\n" );
 		session->delegate.control_f( session, inCommand, inQualifier, inParams, outParams, session->delegate.context );
 	}
 	
@@ -793,12 +617,6 @@ CFTypeRef
 		goto exit;
 	}
 	
-	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_DeviceID ) ) )//Get wifi mac addr
-	{
-		value = CFStringCreateWithBytes( NULL, session->clientIfMACAddr, 6, kCFStringEncodingUTF8, false );
-		err = value ? kNoErr : kNoMemoryErr;
-		goto exit;
-	}
 	// Unknown
 	
 	else
@@ -895,6 +713,38 @@ exit:
 }
 
 //===========================================================================================================================
+//	_EventReplyTimeoutCallback
+//===========================================================================================================================
+
+static void	_EventReplyTimeoutCallback( void *inContext )
+{
+	AirPlayReceiverSessionRef const		me  = (AirPlayReceiverSessionRef) inContext;
+	sockaddr_ip							sip;
+	size_t								len;
+	SocketRef							sock = kInvalidSocketRef;
+	const int							connectTimeoutSec = 20;
+	OSStatus							err;
+
+	require_action_quiet( me->eventPendingMessageCount > 0, exit, err = kNoErr );
+
+	// connect to the sender event socket
+	err = HTTPClientGetPeerAddress( me->eventClient, &sip, sizeof( sip ), &len );
+	require_noerr( err, exit );
+
+	sock = socket( sip.sa.sa_family, SOCK_STREAM, IPPROTO_TCP );
+	require_action( IsValidSocket( sock ), exit, err = kUnknownErr );
+
+	atr_ulog( kLogLevelWarning, "### Waking up device\n" );
+	err = SocketConnect( sock, &sip, connectTimeoutSec );
+	require( ( err == ECONNREFUSED ), exit );
+	err = kNoErr;
+
+exit:
+	check_noerr( err );
+	ForgetSocket( &sock );
+}
+
+//===========================================================================================================================
 //	AirPlayReceiverSessionSendCommand
 //===========================================================================================================================
 
@@ -915,11 +765,13 @@ static void _AirPlayReceiverSessionSendCommand( void * inCtx )
 	SendCommandContext *		context;
 	OSStatus					err;
 	HTTPMessageRef				msg = NULL;
-	CFDataRef					data;
+	const void *				ptr;
+	size_t						len;
 	
 	context = (SendCommandContext*) inCtx;
 	
 	require_action_quiet( context->session->eventClient, exit, err = kUnsupportedErr );
+	require_action_quiet( context->session->eventReplyTimer, exit, err = kStateErr );
 	
 	err = HTTPMessageCreate( &msg );
 	require_noerr( err, exit );
@@ -927,10 +779,9 @@ static void _AirPlayReceiverSessionSendCommand( void * inCtx )
 	err = HTTPHeader_InitRequest( &msg->header, "POST", kAirPlayCommandPath, kAirTunesHTTPVersionStr );
 	require_noerr( err, exit );
 	
-	data = CFPropertyListCreateData( NULL, context->request, kCFPropertyListBinaryFormat_v1_0, 0, NULL );
-	require_action( data, exit, err = kUnknownErr );
-	err = HTTPMessageSetBody( msg, kMIMEType_AppleBinaryPlist, CFDataGetBytePtr( data ), (size_t) CFDataGetLength( data ) );
-	CFRelease( data );
+	ptr = CFBinaryPlistV0Create( context->request, &len, NULL );
+	require_action( ptr, exit, err = kUnknownErr );
+	err = HTTPMessageSetBodyPtr( msg, kMIMEType_AppleBinaryPlist, ptr, len );
 	require_noerr( err, exit );
 	
 	if( context->completion )
@@ -945,7 +796,16 @@ static void _AirPlayReceiverSessionSendCommand( void * inCtx )
 	err = HTTPClientSendMessage( context->session->eventClient, msg );
 	if( err && context->completion ) CFRelease( context->session );
 	require_noerr( err, exit );
-	
+
+	if( context->completion )
+	{
+		if( 0 == context->session->eventPendingMessageCount )
+		{
+			dispatch_source_set_timer( context->session->eventReplyTimer, dispatch_time( DISPATCH_TIME_NOW, kAirPlayEventTimeoutNS ), DISPATCH_TIME_FOREVER, kNanosecondsPerSecond );
+		}
+		context->session->eventPendingMessageCount++;
+	}
+
 exit:
 	CFReleaseNullSafe( msg );
 	context->err = err;
@@ -981,66 +841,34 @@ static void	_AirPlayReceiverSessionSendCommandCompletion( HTTPMessageRef inMsg )
 {
 	AirPlayReceiverSessionRef const							session		= (AirPlayReceiverSessionRef) inMsg->userContext1;
 	AirPlayReceiverSessionCommandCompletionFunc const		completion	= (AirPlayReceiverSessionCommandCompletionFunc)(uintptr_t) inMsg->userContext2;
-	OSStatus												err;
-	CFDictionaryRef											response;
+	OSStatus												err = kNoErr;
+	CFDictionaryRef											response = NULL;
 	
-	response = CFDictionaryCreateWithBytes( inMsg->bodyPtr, inMsg->bodyLen, &err );
-	require_noerr( err, exit );
+	require_action_quiet( session->eventReplyTimer, exit, err = kStateErr );
 	
-	err = (OSStatus) CFDictionaryGetInt64( response, CFSTR( kAirPlayKey_Status ), NULL );
-	require_noerr_quiet( err, exit );
+	session->eventPendingMessageCount--;
+	if( 0 < session->eventPendingMessageCount )
+	{
+		dispatch_source_set_timer( session->eventReplyTimer, dispatch_time( DISPATCH_TIME_NOW, kAirPlayEventTimeoutNS ), DISPATCH_TIME_FOREVER, kNanosecondsPerSecond );
+	}
+	else
+	{
+		dispatch_source_set_timer( session->eventReplyTimer, DISPATCH_TIME_FOREVER, DISPATCH_TIME_FOREVER, kNanosecondsPerSecond );
+	}
+
+	if( inMsg->bodyLen > 0 ) {
+		response = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inMsg->bodyPtr, inMsg->bodyLen, &err );
+		require_noerr( err, exit );
+		require_action( CFGetTypeID( response ) == CFDictionaryGetTypeID(), exit, err = kTypeErr );
+		
+		err = (OSStatus) CFDictionaryGetInt64( response, CFSTR( kAirPlayKey_Status ), NULL );
+	}
 	
 exit:
 	if( completion ) completion( err, err ? NULL : response, inMsg->userContext3 );
 	CFRelease( session );
 	CFReleaseNullSafe( response );
 }
-
-#if( COMPILER_HAS_BLOCKS )
-//===========================================================================================================================
-//	AirPlayReceiverSessionSendCommand_b
-//===========================================================================================================================
-
-static void	_AirPlayReceiverSessionSendCommandCompletion_b( OSStatus inStatus, CFDictionaryRef inResponse, void *inContext );
-
-EXPORT_GLOBAL
-OSStatus
-	AirPlayReceiverSessionSendCommand_b( 
-		AirPlayReceiverSessionRef						inSession, 
-		CFDictionaryRef									inRequest, 
-		AirPlayReceiverSessionCommandCompletionBlock	inCompletion )
-{
-	OSStatus											err;
-	AirPlayReceiverSessionCommandCompletionBlock		completion;
-	
-	if( inCompletion )
-	{
-		completion = Block_copy( inCompletion );
-		require_action( completion, exit, err = kNoMemoryErr );
-		
-		err = AirPlayReceiverSessionSendCommand( inSession, inRequest, 
-			_AirPlayReceiverSessionSendCommandCompletion_b, (void *) completion );
-		if( err ) Block_release( completion );
-		require_noerr( err, exit );
-	}
-	else
-	{
-		err = AirPlayReceiverSessionSendCommand( inSession, inRequest, NULL, NULL );
-		require_noerr( err, exit );
-	}
-	
-exit:
-	return( err );
-}
-
-static void	_AirPlayReceiverSessionSendCommandCompletion_b( OSStatus inStatus, CFDictionaryRef inResponse, void *inContext )
-{
-	AirPlayReceiverSessionCommandCompletionBlock	completion = (AirPlayReceiverSessionCommandCompletionBlock) inContext;
-	
-	completion( inStatus, inResponse );
-	Block_release( completion );
-}
-#endif // COMPILER_HAS_BLOCKS
 
 //===========================================================================================================================
 //	AirPlayReceiverSessionSetup
@@ -1059,7 +887,6 @@ OSStatus
 	CFDictionaryRef				requestStreamDesc;
 	CFIndex						streamIndex, streamCount;
 	char						clientOSBuildVersion[ 32 ], minClientOSBuildVersion[ 32 ];
-	CFStringRef					tempCFStr;
 	AirPlayStreamType			type;
 	
 	atr_ulog( kLogLevelTrace, "Setting up session %llu with %##a %?@\n", 
@@ -1079,25 +906,14 @@ OSStatus
 	CFDictionaryGetCString( inRequestParams, CFSTR( kAirPlayKey_OSBuildVersion ), clientOSBuildVersion, sizeof( clientOSBuildVersion ), &err );
 	if( !err )
 	{
-		strcpy( me->clientOSBuildVersion, clientOSBuildVersion );
-		err = AirPlayGetMinimumClientOSBuildVersion( minClientOSBuildVersion, sizeof( minClientOSBuildVersion ) );
+		strlcpy( me->clientOSBuildVersion, clientOSBuildVersion, sizeof( me->clientOSBuildVersion ) );
+		err = AirPlayGetMinimumClientOSBuildVersion( me->server, minClientOSBuildVersion, sizeof( minClientOSBuildVersion ) );
 		if( !err )
 		{
 			if( _CompareOSBuildVersionStrings( minClientOSBuildVersion, clientOSBuildVersion ) > 0 )
 				require_noerr( err = kVersionErr, exit );
 		}
 	}
-		
-	// Save off client info.
-	
-		tempCFStr = CFDictionaryGetCFString( inRequestParams, CFSTR( kAirPlayKey_ModelCode ), &err );
-		if( tempCFStr ) AirPlayReceiverSessionScreen_SetClientModelCode( me->screenSession, tempCFStr );
-		
-		tempCFStr = CFDictionaryGetCFString( inRequestParams, CFSTR( kAirPlayKey_UDID ), &err );
-		if( tempCFStr ) AirPlayReceiverSessionScreen_SetClientDeviceUDID( me->screenSession, tempCFStr );
-		
-		tempCFStr = CFDictionaryGetCFString( inRequestParams, CFSTR( kAirPlayKey_OSBuildVersion ), &err );
-		if( tempCFStr ) AirPlayReceiverSessionScreen_SetClientOSBuildVersion( me->screenSession, tempCFStr );
 	
 	// Set up each stream.
 	
@@ -1135,7 +951,7 @@ OSStatus
 		}
 	}
 	
-	if( streamCount > 0 )
+	if( streamCount > 0 || !me->sessionIdleValid )
 	{
 		err = _ControlIdleStateTransition( me, responseParams );
 		require_noerr( err, exit );
@@ -1174,16 +990,23 @@ exit:
 }
 
 //===========================================================================================================================
-//	AirPlayReceiverSessionTearDown
+//	_ReplyTimerTearDown
 //===========================================================================================================================
 
-static void
-	_AirPlayReceiverSessionReplaceEventHandlerSynchronouslyOnSessionScreen( void *inArg )
+static void _ForgetReplyTimer( void * inCtx )
 {
-	AirPlayReceiverSessionRef inSession = (AirPlayReceiverSessionRef) inArg;
-	AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously( inSession->screenSession, NULL, NULL, NULL );
-	CFRelease( inSession );
+	AirPlayReceiverSessionRef session = (AirPlayReceiverSessionRef) inCtx;
+	dispatch_source_forget( &session->eventReplyTimer );
 }
+
+static void _ReplyTimerTearDown( AirPlayReceiverSessionRef inSession )
+{
+	dispatch_sync_f( inSession->eventQueue, inSession, _ForgetReplyTimer );
+}
+
+//===========================================================================================================================
+//	AirPlayReceiverSessionTearDown
+//===========================================================================================================================
 
 void
 	AirPlayReceiverSessionTearDown( 
@@ -1228,10 +1051,6 @@ void
 			
 			case kAirPlayStreamType_Screen:
 				_ScreenTearDown( inSession );
-				if( inSession->screenSession != NULL ) {
-					CFRetain( inSession );
-                    dispatch_async_f( dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0 ), inSession, _AirPlayReceiverSessionReplaceEventHandlerSynchronouslyOnSessionScreen );
-                }
 				break;
 			
 			default:
@@ -1251,10 +1070,16 @@ void
 	_LogEnded( inSession, inReason );
 	gAirTunes = NULL;
 	
+	if( inSession->inputRingRef )
+	{
+		MirroredRingBufferFree( inSession->inputRingRef );
+		inSession->inputRingRef = NULL;
+	}
 	dispatch_source_forget( &inSession->periodicTimer );
 	_ScreenTearDown( inSession );
 	_TearDownStream( inSession, &inSession->altAudioCtx, false );
 	_TearDownStream( inSession, &inSession->mainAudioCtx, false );
+	_ReplyTimerTearDown( inSession );
 	_ControlTearDown( inSession );
 	_TimingFinalize( inSession );
 	AirTunesClock_Finalize( inSession->airTunesClock );
@@ -1368,19 +1193,13 @@ OSStatus
 	
 	_SessionLock( inSession );
 	
-	// Tell the platform to flush first so it can quiet the audio immediately.
-	
-	AirPlayReceiverSessionPlatformControl( inSession, kCFObjectFlagDirect, CFSTR( kAirPlayCommand_FlushAudio ), 
-		NULL, NULL, NULL );
-	
 	// Reset state so we don't play until we get post-flush timelines, etc.
 	
 	inSession->flushing				= true;
-	inSession->flushLastTicks		= UpTicks();
 	inSession->flushTimeoutTS		= inFlushUntilTS + ( 3 * ctx->sampleRate ); // 3 seconds.
 	inSession->flushUntilTS			= inFlushUntilTS;
 	inSession->lastPlayedValid		= false;
-	ats->rtcpRTDisable				= _RetransmitsDisabled( inSession );
+	ats->rtcpRTDisable				= inSession->redundantAudio;
 	ats->receiveCount				= 0; // Reset so we don't try to retransmit on the next post-flush packet.
 	
 	// Drop packets in the queue that are earlier than the flush timestamp and abort any pending retransmits.
@@ -1497,22 +1316,18 @@ static size_t _AirPlayReceiver_EncryptAudio(
     }
     return( additionalPayload );
 }
-static void  _AirPlayReceiver_SendAudio(
-        AirPlayAudioStreamContext * const ctx,
-        AirPlayStreamType		   inType,
-        uint32_t                   inSampleTime )
+
+static void  _AirPlayReceiver_SendAudio( AirPlayAudioStreamContext * const ctx )
 {
     RTPSavedPacket							pkt;
     size_t									avail, len;
     size_t									maxPayloadSize;
-    MirroredRingBuffer * const				ring    = &ctx->inputRing;
+    MirroredRingBuffer * const				ring    = ctx->inputRingRef;
     uint16_t								seq		= ctx->inputSeqNum;
     uint32_t								ts		= ctx->inputTimestamp;
     uint32_t								spp;
     ssize_t									n;
     OSStatus								err;
-	
-	(void) inSampleTime;
 	
     if( ctx->inputCryptor.isValid )
     {
@@ -1524,7 +1339,7 @@ static void  _AirPlayReceiver_SendAudio(
     }
 
     pkt.pkt.rtp.header.v_p_x_cc	= RTPHeaderInsertVersion( 0, kRTPVersion );
-    pkt.pkt.rtp.header.m_pt		= RTPHeaderInsertPayloadType( 0, inType );
+    pkt.pkt.rtp.header.m_pt		= RTPHeaderInsertPayloadType( 0, ctx->type );
     pkt.pkt.rtp.header.ssrc		= 0;
     for( ;; )
     {
@@ -1538,9 +1353,10 @@ static void  _AirPlayReceiver_SendAudio(
         
         if( ctx->inputConverter )
         {
-            const uint8_t *		src;
-            UInt32				packetCount;
-            AudioBufferList		outputList;
+			const uint8_t *						src;
+			UInt32								packetCount;
+			AudioBufferList						outputList;
+			AudioStreamPacketDescription		packetDescription;
             
             src = MirroredRingBufferGetReadPtr( ring );
             ctx->inputDataPtr							= src;
@@ -1550,16 +1366,20 @@ static void  _AirPlayReceiver_SendAudio(
             outputList.mBuffers[ 0 ].mNumberChannels	= ctx->channels;
             outputList.mBuffers[ 0 ].mDataByteSize		= (UInt32)maxPayloadSize;
             outputList.mBuffers[ 0 ].mData				= pkt.pkt.rtp.payload;
+			packetDescription.mStartOffset				= 0;
+			packetDescription.mDataByteSize				= 0;
+			packetDescription.mVariableFramesInPacket	= 0;
             
             err = AudioConverterFillComplexBuffer( ctx->inputConverter, _AudioEncoderEncodeCallback, ctx,
-                                                  &packetCount, &outputList, NULL );
+                                                  &packetCount, &outputList, &packetDescription );
             check( err == kNoErr || err == kUnderrunErr );
+            check( packetCount == 0 || packetDescription.mStartOffset == 0 );
             MirroredRingBufferReadAdvance( ring, (size_t)( ctx->inputDataPtr - src ) );
             
             if( packetCount == 0 ) continue; // Skip if a packet wasn't produced.
             
             spp = packetCount * ctx->framesPerPacket;
-            len = kRTPHeaderSize + outputList.mBuffers[ 0 ].mDataByteSize;
+            len = kRTPHeaderSize + packetDescription.mDataByteSize;
 
             check( len <= maxPayloadSize );
         }
@@ -1591,15 +1411,6 @@ static void  _AirPlayReceiver_SendAudio(
 //	AirPlayReceiverSessionWriteAudio
 //===========================================================================================================================
 
-typedef struct SendAudioContext
-{
-	TAILQ_ENTRY( SendAudioContext )	list;
-	AirPlayAudioStreamContext * 	ctx;
-	AirPlayStreamType		   		type;
-	uint32_t                   		sampleTime;
-}
-SendAudioContext;
-
 OSStatus
 	AirPlayReceiverSessionWriteAudio( 
 		AirPlayReceiverSessionRef	inSession, 
@@ -1611,10 +1422,11 @@ OSStatus
 {
 	AirPlayAudioStreamContext * const		ctx					= &inSession->mainAudioCtx;
 	size_t									len;
-	MirroredRingBuffer * const				ring				= &ctx->inputRing;
+	MirroredRingBuffer * const				ring				= ctx->inputRingRef;
 	OSStatus								err 				= kNoErr;
-	SendAudioContext *						sendAudioContext;
 
+	(void) inType;
+	(void) inSampleTime;
 	(void) inHostTime;
 	
 	len = MirroredRingBufferGetBytesFree( ring );
@@ -1622,27 +1434,12 @@ OSStatus
 		atr_ulog( kLogLevelInfo, "### Audio input buffer full: %zu > %zu\n", inLen, len ) );
 	memcpy( MirroredRingBufferGetWritePtr( ring ), inBuffer, inLen );
 	MirroredRingBufferWriteAdvance( ring, inLen );
-    
-	sendAudioContext 				= malloc( sizeof( *sendAudioContext ) );
-	sendAudioContext->ctx 			= ctx;
-	sendAudioContext->type 			= inType;
-	sendAudioContext->sampleTime	= inSampleTime;
 
 	pthread_mutex_lock( ctx->sendAudioMutexPtr );
-	TAILQ_INSERT_TAIL( &ctx->sendAudioList, sendAudioContext, list );
 	pthread_cond_signal( ctx->sendAudioCondPtr );
 	pthread_mutex_unlock( ctx->sendAudioMutexPtr );
 exit:
 	return( err );
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverSessionSetUserVersion
-//===========================================================================================================================
-
-void AirPlayReceiverSessionSetUserVersion( AirPlayReceiverSessionRef inSession, uint32_t userVersion )
-{
-	AirPlayReceiverSessionScreen_SetUserVersion( inSession->screenSession, userVersion );
 }
 
 #if 0
@@ -1671,7 +1468,6 @@ static void	_Finalize( CFTypeRef inCF )
 	
 	atr_ulog( kLogLevelTrace, "Finalize session %llu\n", session->clientSessionID );
 	
-	gAirTunes = NULL;
 	if( session->delegate.finalize_f ) session->delegate.finalize_f( session, session->delegate.context );
 	AirPlayReceiverSessionPlatformFinalize( session );
 	
@@ -1679,6 +1475,7 @@ static void	_Finalize( CFTypeRef inCF )
 	_ScreenTearDown( session );
 	_TearDownStream( session, &session->altAudioCtx, true );
 	_TearDownStream( session, &session->mainAudioCtx, true );
+	_ReplyTimerTearDown( session );
 	_ControlTearDown( session );
 	_TimingFinalize( session );
 	_IdleStateKeepAliveFinalize( session );
@@ -1725,7 +1522,6 @@ static void	_PerformPeriodTasks( void *inContext )
 					|| ( _UsingIdleStateKeepAlive( me ) && me->sessionStarted &&  _UsingScreenOrAudio( me ) ) )
 				)
 		{
-			debug_increment_saturate( gAirTunesDebugIdleTimeoutCount, UINT_MAX );
 			atr_ulog( kLogLevelError, "Idle timeout after %d seconds with no audio\n", me->server->timeoutDataSecs );
 			AirPlayReceiverServerControl( me->server, kCFObjectFlagDirect, CFSTR( kAirPlayCommand_SessionDied ), me, NULL, NULL );
 			goto exit;
@@ -1761,34 +1557,6 @@ static void	_PerformPeriodTasks( void *inContext )
 		}
 		me->glitchNextTicks = ticks + me->glitchIntervalTicks;
 	}
-	
-	// Update stats.
-	
-#if( 1 && DEBUG )
-	if( ( ticks - ats->perSecLastTicks ) >= ats->perSecTicks )
-	{
-		uint64_t		u64;
-		uint32_t		u32;
-	
-		ats->perSecLastTicks = ticks;
-		
-		u32 = gAirTunesDebugRetransmitSendCount - gAirTunesDebugRetransmitSendLastCount;
-		gAirTunesDebugRetransmitSendLastCount += u32;
-		gAirTunesDebugRetransmitSendPerSecAvg = ( ( gAirTunesDebugRetransmitSendPerSecAvg * 7 ) + u32 ) / 8;
-		
-		u64 = gAirTunesDebugRecvRTPOriginalByteCount - gAirTunesDebugRecvRTPOriginalByteCountLast;
-		gAirTunesDebugRecvRTPOriginalByteCountLast += u64;
-		gAirTunesDebugRecvRTPOriginalBytesPerSecAvg = ( ( gAirTunesDebugRecvRTPOriginalBytesPerSecAvg * 15 ) + u64 ) / 16;
-		
-		u64 = gAirTunesDebugRecvRTPRetransmitByteCount - gAirTunesDebugRecvRTPRetransmitByteCountLast;
-		gAirTunesDebugRecvRTPRetransmitByteCountLast += u64;
-		gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg = ( ( gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg * 15 ) + u64 ) / 16;
-	}
-	if( gAirTunesDebugPrintPerf )
-	{
-		AirTunesDebugPerf( -1, me );
-	}
-#endif
 	
 	_LogUpdate( me, ticks, false );
 	
@@ -1871,6 +1639,7 @@ static OSStatus	_UpdateFeedback( AirPlayReceiverSessionRef inSession, CFDictiona
 		{
 			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_StreamConnectionID ), inSession->mainAudioCtx.connectionID );
 			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_Timestamp ), zeroTime.hostTime );
+			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_TimestampRawNs ), zeroTime.hostTimeRaw );
 			CFDictionarySetInt64( stream, CFSTR( kAirPlayKey_SampleTime ), zeroTime.sampleTime );
 		}
 		
@@ -1895,6 +1664,7 @@ static OSStatus	_UpdateFeedback( AirPlayReceiverSessionRef inSession, CFDictiona
 		{
 			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_StreamConnectionID ), inSession->altAudioCtx.connectionID );
 			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_Timestamp ), zeroTime.hostTime );
+			CFDictionarySetUInt64( stream, CFSTR( kAirPlayKey_TimestampRawNs ), zeroTime.hostTimeRaw );
 			CFDictionarySetInt64( stream, CFSTR( kAirPlayKey_SampleTime ), zeroTime.sampleTime );
 		}
 		
@@ -1929,7 +1699,7 @@ static OSStatus _ControlIdleStateTransition( AirPlayReceiverSessionRef inSession
 	Boolean			idle;
 
 	idle = !_UsingScreenOrAudio( inSession );
-	require_action_quiet( idle != inSession->sessionIdle, exit, err = kNoErr );
+	require_action_quiet( ( !inSession->sessionIdleValid || ( idle != inSession->sessionIdle ) ), exit, err = kNoErr );
 
 	atr_ulog( kLogLevelTrace, "mainAudio %c. altAudio %c. screen %c\n",
 			inSession->mainAudioCtx.type != kAirPlayStreamType_Invalid ? 'Y' : 'N',
@@ -1969,6 +1739,7 @@ static OSStatus _ControlIdleStateTransition( AirPlayReceiverSessionRef inSession
 	}
 
 	inSession->sessionIdle = idle;
+	inSession->sessionIdleValid = true;
 	err = kNoErr;
 exit:
 	if( err ) atr_ulog( kLogLevelWarning, "### Control idle state transition failed: %#m\n", err );
@@ -2166,10 +1937,9 @@ static OSStatus
 		ctx->outputCryptor.isValid = true;
 	}
 	
-	check( inStreamType == kAirPlayStreamType_GeneralAudio || inStreamType == kAirPlayStreamType_MainHighAudio );
+	check( inStreamType == kAirPlayStreamType_MainHighAudio );
 	ctx->type = inStreamType;
-	if(		 inStreamType == kAirPlayStreamType_GeneralAudio )		ctx->label = "General";
-	else if( inStreamType == kAirPlayStreamType_MainHighAudio )		ctx->label = "MainHigh";
+	ctx->label = "MainHigh";
 
 	me->compressionType = (AirPlayCompressionType) CFDictionaryGetInt64( inStreamDesc, CFSTR( kAirPlayKey_CompressionType ), NULL );
 	format = (AirPlayAudioFormat) CFDictionaryGetInt64( inStreamDesc, CFSTR( kAirPlayKey_AudioFormat ), NULL );
@@ -2233,7 +2003,7 @@ static OSStatus
 		&me->rtpAudioPort, -kAirTunesRTPSocketBufferSize, &ctx->dataSock );
 	require_noerr( err, exit );
 	
-	if( !me->server->qosDisabled ) SocketSetQoS( ctx->dataSock, me->audioQoS );
+	SocketSetQoS( ctx->dataSock, me->audioQoS );
 	
 	err = OpenSelfConnectedLoopbackSocket( &ctx->cmdSock );
 	require_noerr( err, exit );
@@ -2246,7 +2016,7 @@ static OSStatus
 	require_noerr( err, exit );
 	
 	SocketSetPacketTimestamps( me->rtcpSock, true );
-	if( !me->server->qosDisabled ) SocketSetQoS( me->rtcpSock, me->audioQoS );
+	SocketSetQoS( me->rtcpSock, me->audioQoS );
 	
 	SockAddrSetPort( &sip, me->rtcpPortRemote );
 	me->rtcpRemoteAddr = sip;
@@ -2279,7 +2049,7 @@ static OSStatus
 		ats->rtcpRTMaxRTTNanos			= INT64_MIN;
 		ats->rtcpRTAvgRTTNanos			= 100000000; // Default to 100 ms.
 		ats->rtcpRTTimeoutNanos			= 100000000; // Default to 100 ms.
-		ats->rtcpRTDisable				= _RetransmitsDisabled( me );
+		ats->rtcpRTDisable				= me->redundantAudio;
 		ats->retransmitMinNanos			= UINT64_MAX;
 		ats->retransmitRetryMinNanos	= UINT64_MAX;
 		if( inStreamType == kAirPlayStreamType_MainHighAudio)
@@ -2398,7 +2168,6 @@ exit2:
 static void *	_AudioSenderThread( void *inArg )
 {
 	AirPlayAudioStreamContext * const	ctx					= inArg;
-	SendAudioContext *					sendAudioContext;
 	
 	SetThreadName( "AirPlayAudioSender" );
 	SetCurrentThreadPriority( kAirPlayThreadPriority_AudioSender );
@@ -2407,27 +2176,11 @@ static void *	_AudioSenderThread( void *inArg )
 	while( !ctx->sendAudioDone )
 	{
 		pthread_cond_wait( ctx->sendAudioCondPtr, ctx->sendAudioMutexPtr );
-		
-		while( !TAILQ_EMPTY( &ctx->sendAudioList) )
-		{
-			if( ctx->sendAudioDone )    goto exit;
-			
-			sendAudioContext = TAILQ_FIRST( &ctx->sendAudioList );
-			TAILQ_REMOVE( &ctx->sendAudioList, sendAudioContext, list );
-			pthread_mutex_unlock( ctx->sendAudioMutexPtr );
-			
-			_AirPlayReceiver_SendAudio( sendAudioContext->ctx, sendAudioContext->type, sendAudioContext->sampleTime );
-			free( sendAudioContext );
-			
-			pthread_mutex_lock( ctx->sendAudioMutexPtr );
-		}
+		pthread_mutex_unlock( ctx->sendAudioMutexPtr );
+		_AirPlayReceiver_SendAudio( ctx );
+		pthread_mutex_lock( ctx->sendAudioMutexPtr );
 	}
 	
-exit:
-	TAILQ_FOREACH( sendAudioContext, &ctx->sendAudioList, list)
-	{
-		free( sendAudioContext );
-	}
 	pthread_mutex_unlock( ctx->sendAudioMutexPtr );
 	return( NULL );
 }
@@ -2492,7 +2245,6 @@ static OSStatus	_GeneralAudioReceiveRTCP( AirPlayReceiverSessionRef inSession, S
 	err = SocketRecvFrom( inSock, &pkt, sizeof( pkt ), &len, NULL, 0, NULL, &ticks, NULL, NULL );
 	if( err == EWOULDBLOCK ) goto exit;
 	require_noerr( err, exit );
-	debug_add( gAirTunesDebugRecvByteCount, len );
 	if( len < sizeof( pkt.header ) )
 	{
 		dlogassert( "Bad size: %zu < %zu", sizeof( pkt.header ), len );
@@ -2562,8 +2314,6 @@ static OSStatus	_GeneralAudioReceiveRTP( AirPlayReceiverSessionRef inSession, RT
 			node->prev->next = node->next;
 			--inSession->busyNodeCount;
 			
-			debug_sub( gAirTunesDebugBusyNodeCount, 1 );
-			debug_increment_saturate( gAirTunesDebugStolenNodeCount, UINT_MAX );
 			atr_stats_ulog( kLogLevelVerbose, "### No free buffer nodes. Stealing oldest busy node.\n" );
 		}
 		else
@@ -2590,8 +2340,6 @@ static OSStatus	_GeneralAudioReceiveRTP( AirPlayReceiverSessionRef inSession, RT
 			err = SocketRecvFrom( ctx->dataSock, node->data, inSession->nodeBufferSize, &len, NULL, 0, NULL, NULL, NULL, NULL );
 		if( err == EWOULDBLOCK ) goto exit;
 		require_noerr( err, exit );
-		debug_add( gAirTunesDebugRecvByteCount, len );
-		debug_add( gAirTunesDebugRecvRTPOriginalByteCount, len );
 	}
 	
 	// Process the packet. Warning: this function MUST either queue the node onto the busy queue and return kNoErr or
@@ -2637,36 +2385,6 @@ static OSStatus
 	uint32_t					pktTS;
 	AirTunesBufferNode *		curr;
 	AirTunesBufferNode *		stop;
-	
-	// Simulate packet loss.
-	
-#if( DEBUG )
-	if( !inIsRetransmit && ( gAirTunesDropMinRate > 0 ) )
-	{
-		Boolean		drop;
-		
-		drop = false;
-		if( gAirTunesDropRemaining > 0 )
-		{
-			--gAirTunesDropRemaining;
-			drop = true;
-		}
-		if( gAirTunesDropRemaining == 0 )
-		{
-			if( gAirTunesSkipRemaining  > 0 ) --gAirTunesSkipRemaining;
-			if( gAirTunesSkipRemaining == 0 )
-			{
-				gAirTunesSkipRemaining = RandomRange( gAirTunesSkipMinRate, gAirTunesSkipMaxRate );
-				gAirTunesDropRemaining = RandomRange( gAirTunesDropMinRate, gAirTunesDropMaxRate );
-			}
-		}
-		if( drop )
-		{
-			err = kCanceledErr;
-			goto exit;
-		}
-	}
-#endif
 	
 	// Validate and parse the packet.
 	
@@ -2719,9 +2437,6 @@ static OSStatus
 	inNode->prev->next	= inNode;
 	++inSession->busyNodeCount;
 	err = kNoErr;
-	
-	debug_add( gAirTunesDebugBusyNodeCount, 1 );
-	debug_track_max( gAirTunesDebugBusyNodeCountMax, gAirTunesDebugBusyNodeCount );
 	
 exit:
 	return( err );
@@ -2934,8 +2649,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 	size_t									size;
 	OSStatus								err;
 	
-	debug_perform( gAirTunesDebugBusyNodeCountLast = gAirTunesDebugBusyNodeCount );
-	
 	if( ctx->type == kAirPlayStreamType_MainHighAudio )
 	{
 		// Save the first RTP time value as a zero-offset for all future timestamps
@@ -2963,15 +2676,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 	for( curr = stop->next; curr != stop; curr = next )
 	{
 		next = curr->next;
-		
-		#if( DEBUG )
-			if( ( gAirTunesLateDrop > 0 ) && ( RandomRange( 0, gAirTunesLateDrop ) == 0 ) )
-			{
-				atr_ulog( kLogLevelNotice, "Random late drop seq %u\n", curr->rtp->header.seq );
-				AirTunesFreeBufferNode( inSession, curr );
-				continue;
-			}
-		#endif
 		
 		// Apply the new RTP offset if we have a pending reset and we've reached the time when we should apply it.
 		
@@ -3011,7 +2715,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 		{
 			pktGap = ( pktSeq - inSession->lastPlayedSeq ) - 1;
 			gAirPlayAudioStats.unrecoveredPackets += pktGap;
-			debug_add_saturate( gAirTunesDebugUnrecoveredPacketCount, pktGap, UINT_MAX );
 			atr_stats_ulog( kLogLevelNotice, "### Unrecovered packets: %u-%u (%u) %u total\n", 
 				inSession->lastPlayedSeq + 1, pktSeq, pktGap, gAirPlayAudioStats.unrecoveredPackets );
 		}
@@ -3044,7 +2747,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 		if( Mod32_LE( endTS, nowTS ) )
 		{
 			gAirPlayAudioStats.latePackets += 1;
-			debug_increment_saturate( gAirTunesDebugOldDiscardCount, UINT_MAX );
 			atr_stats_ulog( kLogLevelNotice, "Discarding late packet: seq %u ts %u-%u (%u ms), %u total\n", 
 				pktSeq, nowTS, srcTS, AirTunesSamplesToMs( nowTS - srcTS ), gAirPlayAudioStats.latePackets );
 			
@@ -3058,7 +2760,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 		
 		if( Mod32_LT( nowTS, srcTS ) )
 		{
-			debug_increment_saturate( gAirTunesDebugConcealedGapCount, UINT_MAX );
 			delta = srcTS - nowTS;
 			atr_stats_ulog( kLogLevelVerbose, "Concealed %d unit gap (%u vs %u), curr seq %u\n", delta, nowTS, srcTS, pktSeq );
 			
@@ -3076,7 +2777,6 @@ static void	_GeneralAudioRender( AirPlayReceiverSessionRef inSession, uint32_t i
 		if( Mod32_LT( srcTS, nowTS ) )
 		{
 			gAirPlayAudioStats.latePackets += 1;
-			debug_increment_saturate( gAirTunesDebugLateDropCount, UINT_MAX );
 			atr_stats_ulog( kLogLevelVerbose, "Dropped %d late units (%u vs %u), %u total\n", 
 				Mod32_Diff( nowTS, srcTS ), srcTS, nowTS, gAirPlayAudioStats.latePackets );
 			
@@ -3135,7 +2835,6 @@ exit:
 		nowTS += delta;
 		++glitchCount;
 		
-		debug_increment_saturate( gAirTunesDebugConcealedEndCount, UINT_MAX );
 		atr_ulog( kLogLevelChatty, "Concealed %d units at end (ts=%u)\n", delta, nowTS );
 		
 		if( some ) _RetransmitsAbortOne( inSession, pktSeq, "UNDERRUN" );
@@ -3158,7 +2857,6 @@ exit:
 	inSession->glitchTotal += glitchCount;
 	if( glitchCount > 0 )
 	{
-		debug_increment_saturate( gAirTunesDebugGlitchCount, UINT_MAX );
 		atr_ulog( kLogLevelChatty, "Glitch: %d new, %u session\n", glitchCount, inSession->glitchTotal );
 	}
 	
@@ -3210,7 +2908,6 @@ dup:
 	if( !inSession->redundantAudio )
 	{
 		atr_stats_ulog( kLogLevelInfo, "### Duplicate packet seq %u\n", inSeq );
-		debug_increment_saturate( gAirTunesDebugDupCount, 1 );
 	}
 	return( true );
 }
@@ -3241,18 +2938,6 @@ static void	_GeneralAudioTrackLosses( AirPlayReceiverSessionRef inSession, AirTu
 		{
 			seqLoss = seqCurr - seqNext;
 			gAirPlayAudioStats.lostPackets += seqLoss;
-			if(      seqLoss ==   1 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 0 ], UINT_MAX );
-			else if( seqLoss  <   5 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 1 ], UINT_MAX );
-			else if( seqLoss  <  10 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 2 ], UINT_MAX );
-			else if( seqLoss  <  20 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 3 ], UINT_MAX );
-			else if( seqLoss  <  30 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 4 ], UINT_MAX );
-			else if( seqLoss  <  40 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 5 ], UINT_MAX );
-			else if( seqLoss  <  50 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 6 ], UINT_MAX );
-			else if( seqLoss  < 100 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 7 ], UINT_MAX );
-			else if( seqLoss  < 500 ) debug_increment_saturate( gAirTunesDebugLossCounts[ 8 ], UINT_MAX );
-			else                      debug_increment_saturate( gAirTunesDebugLossCounts[ 9 ], UINT_MAX );
-			debug_add_saturate( gAirTunesDebugTotalLossCount, seqLoss, UINT_MAX );
-			debug_track_max( gAirTunesDebugMaxBurstLoss, seqLoss );
 			if( seqLoss > inSession->source.maxBurstLoss ) inSession->source.maxBurstLoss = seqLoss;
 			if( seqLoss <= inSession->source.retransmitMaxLoss )
 			{
@@ -3264,7 +2949,6 @@ static void	_GeneralAudioTrackLosses( AirPlayReceiverSessionRef inSession, AirTu
 			{
 				atr_ulog( kLogLevelNotice, "### Burst packet loss %u-%u (+%u, %u total)\n", 
 					seqNext, seqCurr, seqLoss, gAirPlayAudioStats.lostPackets );
-				debug_increment_saturate( gAirTunesDebugRetransmitBigLossCount, UINT_MAX );
 				++inSession->source.bigLossCount;
 				_RetransmitsAbortAll( inSession, "BURST" );
 			}
@@ -3281,7 +2965,6 @@ static void	_GeneralAudioTrackLosses( AirPlayReceiverSessionRef inSession, AirTu
 		else
 		{
 			atr_ulog( kLogLevelNotice, "### Misordered packet seq %u -> %u\n", inSession->lastRTPSeq, seqCurr );
-			debug_increment_saturate( gAirTunesDebugMisorderedCount, 1 );
 			updateLast = false;
 		}
 	}
@@ -3298,22 +2981,10 @@ static void	_GeneralAudioTrackLosses( AirPlayReceiverSessionRef inSession, AirTu
 
 static void	_GeneralAudioUpdateLatency( AirPlayReceiverSessionRef inSession )
 {
-	if( inSession->minLatency >= inSession->platformAudioLatency )
-	{
-		inSession->audioLatencyOffset = inSession->minLatency - inSession->platformAudioLatency;
-	}
-	else
-	{
-		if( inSession->minLatency > 0 )
-		{
-			dlogassert( "Min latency (%u) < our latency (%u)\n", inSession->minLatency, inSession->platformAudioLatency );
-		}
-		inSession->audioLatencyOffset = inSession->platformAudioLatency;
-	}
-	inSession->audioLatencyOffset += gAirTunesRelativeTimeOffset;
+	inSession->audioLatencyOffset = inSession->minLatency + gAirTunesRelativeTimeOffset;
 	
-	atr_ulog( kLogLevelVerbose, "Audio Latency Offset %u, Platform %u, Sender %d, Relative %d\n", 
-		inSession->audioLatencyOffset, inSession->platformAudioLatency, inSession->minLatency, gAirTunesRelativeTimeOffset );
+	atr_ulog( kLogLevelVerbose, "Audio Latency Offset %u, Sender %d, Relative %d\n",
+		inSession->audioLatencyOffset, inSession->minLatency, gAirTunesRelativeTimeOffset );
 }
 
 //===========================================================================================================================
@@ -3329,35 +3000,13 @@ static OSStatus	_RetransmitsSendRequest( AirPlayReceiverSessionRef inSession, ui
 	ssize_t							n;
 	size_t							size;
 	
-	if( debug_false_conditional( gAirTunesDebugRetransmitTiming ) )
-	{
-		AirTunesTime		nowAT;
-		uint64_t			nowNS;
-		
-		size = kRTCPRetransmitRequestPacketNTPSize;
-		pkt.v_p			= RTCPHeaderInsertVersion( 0, kRTPVersion );
-		pkt.pt			= kRTCPTypeRetransmitRequest;
-		pkt.length		= htons( (uint16_t)( ( size / 4 ) - 1 ) );
-		pkt.seqStart	= htons( inSeqStart );
-		pkt.seqCount	= htons( inSeqCount );
-		
-		AirTunesClock_GetSynchronizedTime( inSession->airTunesClock, &nowAT );
-		nowNS = AirTunesTime_ToNanoseconds( &nowAT );
-		pkt.length	= htons( (uint16_t)( ( size / 4 ) - 1 ) );
-		pkt.ntpHi	= (uint32_t)( nowNS >> 32 );
-		pkt.ntpLo	= (uint32_t)( nowNS & UINT64_C( 0xFFFFFFFF ) );
-		pkt.ntpHi	= htonl( pkt.ntpHi );
-		pkt.ntpLo	= htonl( pkt.ntpLo );
-	}
-	else
-	{
-		size = kRTCPRetransmitRequestPacketMinSize;
-		pkt.v_p			= RTCPHeaderInsertVersion( 0, kRTPVersion );
-		pkt.pt			= kRTCPTypeRetransmitRequest;
-		pkt.length		= htons( (uint16_t)( ( size / 4 ) - 1 ) );
-		pkt.seqStart	= htons( inSeqStart );
-		pkt.seqCount	= htons( inSeqCount );
-	}
+	size = kRTCPRetransmitRequestPacketMinSize;
+	pkt.v_p			= RTCPHeaderInsertVersion( 0, kRTPVersion );
+	pkt.pt			= kRTCPTypeRetransmitRequest;
+	pkt.length		= htons( (uint16_t)( ( size / 4 ) - 1 ) );
+	pkt.seqStart	= htons( inSeqStart );
+	pkt.seqCount	= htons( inSeqCount );
+
 	if( inSession->rtcpConnected )
 	{
 		n = send( inSession->rtcpSock, (char *) &pkt, size, 0 );
@@ -3368,8 +3017,6 @@ static OSStatus	_RetransmitsSendRequest( AirPlayReceiverSessionRef inSession, ui
 	}
 	err = map_socket_value_errno( inSession->rtcpSock, n == (ssize_t) size, n );
 	require_noerr( err, exit );
-	debug_add( gAirTunesDebugSentByteCount, n );
-	debug_increment_saturate( gAirTunesDebugRetransmitSendCount, UINT_MAX );
 	++inSession->source.retransmitSendCount;
 	
 exit:
@@ -3400,11 +3047,9 @@ static OSStatus	_RetransmitsProcessResponse( AirPlayReceiverSessionRef inSession
 		err = kSizeErr;
 		goto exit;
 	}
-	debug_add( gAirTunesDebugRecvRTPRetransmitByteCount, inSize );
 	
 	err = _GeneralAudioReceiveRTP( inSession, &inPkt->payload.rtp, 
 		inSize - offsetof( RTCPRetransmitResponsePacket, payload ) );
-	debug_increment_saturate( gAirTunesDebugRetransmitRecvCount, UINT_MAX );
 	++inSession->source.retransmitReceiveCount;
 	
 exit:
@@ -3435,7 +3080,6 @@ static void	_RetransmitsSchedule( AirPlayReceiverSessionRef inSession, uint16_t 
 		{
 			atr_stats_ulog( kLogLevelWarning, "### No free retransmit nodes, dropping retransmit of seq %u#%u, %u\n", 
 				inSeqStart, inSeqCount, i );
-			debug_increment_saturate( gAirTunesDebugRetransmitNoFreeNodesCount, UINT_MAX );
 			break;
 		}
 		inSession->source.rtcpRTFreeList = node->next;
@@ -3447,16 +3091,6 @@ static void	_RetransmitsSchedule( AirPlayReceiverSessionRef inSession, uint16_t 
 		node->tries			= 0;
 		node->startNanos	= nowNanos;
 		node->nextNanos		= nowNanos;
-		#if( DEBUG )
-		{
-			size_t		j;
-			
-			for( j = 0; j < countof( node->tryNanos ); ++j )
-			{
-				node->tryNanos[ j ] = 0;
-			}
-		}
-		#endif
 		*next = node;
 		 next = &node->next;
 	}
@@ -3497,17 +3131,6 @@ static void	_RetransmitsUpdate( AirPlayReceiverSessionRef inSession, AirTunesBuf
 			{
 				ats->retransmitAvgNanos = ( ( ats->retransmitAvgNanos * 63 ) + ageNanos ) / 64;
 			}
-			#if( DEBUG )
-				debug_track_min( gAirTunesDebugRetransmitMinNanos, ageNanos );
-				debug_track_max( gAirTunesDebugRetransmitMaxNanos, ageNanos );
-				if( ( ageNanos > gAirTunesDebugRetransmitMinNanos ) && ( ageNanos < gAirTunesDebugRetransmitMaxNanos ) )
-				{
-					gAirTunesDebugRetransmitAvgNanos = ( ( gAirTunesDebugRetransmitAvgNanos * 63 ) + ageNanos ) / 64;
-				}
-				if( curr->tries > 8 ) airtunes_record_retransmit( curr, "found", ageNanos );
-				if( curr->tries > 0 ) --gAirTunesDebugRetransmitActiveCount;
-			#endif
-			
 			// If multiple requests have gone out, this may be a response to an earlier request and not the most
 			// recent one so following Karn's algorithm, only consider the RTT if we've only sent 1 request.
 			
@@ -3534,10 +3157,6 @@ static void	_RetransmitsUpdate( AirPlayReceiverSessionRef inSession, AirTunesBuf
 				}
 			}
 		}
-		else
-		{
-			debug_increment_saturate( gAirTunesDebugRetransmitPrematureCount, UINT_MAX );
-		}
 		
 		*next = curr->next;
 		curr->next = ats->rtcpRTFreeList;
@@ -3546,7 +3165,6 @@ static void	_RetransmitsUpdate( AirPlayReceiverSessionRef inSession, AirTunesBuf
 	else if( inIsRetransmit )
 	{
 		atr_stats_ulog( kLogLevelInfo, "### Retransmit seq %u not found\n", pktSeq );
-		debug_increment_saturate( gAirTunesDebugRetransmitNotFoundCount, UINT_MAX );
 		++ats->retransmitNotFoundCount;
 	}
 	
@@ -3557,25 +3175,11 @@ static void	_RetransmitsUpdate( AirPlayReceiverSessionRef inSession, AirTunesBuf
 	{
 		if( nowNanos < curr->nextNanos ) continue;
 		ageNanos = nowNanos - curr->startNanos;
-		#if( DEBUG )
-			curr->tryNanos[ Min( curr->tries, countof( curr->tryNanos ) - 1 ) ] = (uint32_t) ageNanos;
-			if( curr->tries == 0 ) ++gAirTunesDebugRetransmitActiveCount;
-			debug_track_max( gAirTunesDebugRetransmitActiveMax, gAirTunesDebugRetransmitActiveCount );
-			if( curr->tries++ > 0 )
-			{
-				if( ageNanos < ats->retransmitRetryMinNanos ) ats->retransmitRetryMinNanos = ageNanos;
-				if( ageNanos > ats->retransmitRetryMaxNanos ) ats->retransmitRetryMaxNanos = ageNanos;
-				debug_track_min( gAirTunesDebugRetransmitRetryMinNanos, ageNanos );
-				debug_track_max( gAirTunesDebugRetransmitRetryMaxNanos, ageNanos );
-				debug_track_max( gAirTunesDebugRetransmitMaxTries, curr->tries );
-			}
-		#else
-			if( curr->tries++ > 0 )
-			{
-				if( ageNanos < ats->retransmitRetryMinNanos ) ats->retransmitRetryMinNanos = ageNanos;
-				if( ageNanos > ats->retransmitRetryMaxNanos ) ats->retransmitRetryMaxNanos = ageNanos;
-			}
-		#endif
+		if( curr->tries++ > 0 )
+		{
+			if( ageNanos < ats->retransmitRetryMinNanos ) ats->retransmitRetryMinNanos = ageNanos;
+			if( ageNanos > ats->retransmitRetryMaxNanos ) ats->retransmitRetryMaxNanos = ageNanos;
+		}
 		curr->sentNanos = nowNanos;
 		curr->nextNanos = nowNanos + ats->rtcpRTTimeoutNanos;
 		_RetransmitsSendRequest( inSession, curr->seq, 1 );
@@ -3598,8 +3202,6 @@ static void	_RetransmitsAbortAll( AirPlayReceiverSessionRef inSession, const cha
 	
 	while( ( curr = ats->rtcpRTBusyList ) != NULL )
 	{
-		debug_perform( if( curr->tries > 0 ) --gAirTunesDebugRetransmitActiveCount );
-		
 		ats->rtcpRTBusyList = curr->next;
 		curr->next = ats->rtcpRTFreeList;
 		ats->rtcpRTFreeList = curr;
@@ -3626,11 +3228,8 @@ static void	_RetransmitsAbortOne( AirPlayReceiverSessionRef inSession, uint16_t 
 	{
 		if( Mod16_LE( curr->seq, inSeq ) )
 		{
-			debug_increment_saturate( gAirTunesDebugRetransmitAbortCount, UINT_MAX );
-			airtunes_record_retransmit( curr, inReason, nowNanos - curr->startNanos );
 			atr_ulog( kLogLevelVerbose, "    ### Abort retransmit %5u  T %2u  A %10llu \n", 
 				curr->seq, curr->tries, nowNanos - curr->startNanos  );
-			debug_perform( if( curr->tries > 0 ) --gAirTunesDebugRetransmitActiveCount );
 			
 			*next = curr->next;
 			curr->next = ats->rtcpRTFreeList;
@@ -3743,15 +3342,16 @@ static OSStatus
 	{
 		if( inSession->transportType == kNetTransportType_DirectLink )
 		{
-			bufferMs = CFDictionaryGetInt64( inRequestStreamDesc, CFSTR( kAirPlayPrefKey_AudioBufferMainAltWiredMs ), &err );
-			if( err || ( bufferMs < 0 ) ) bufferMs = kAirPlayAudioBufferMainAltWiredMs;
+			bufferMs = kAirPlayAudioBufferMainAltWiredMs;
 		}
 		else
 		{
-			bufferMs = CFDictionaryGetInt64( inRequestStreamDesc, CFSTR( kAirPlayPrefKey_AudioBufferMainAltWiFiMs ), &err );
-			if( err || ( bufferMs < 0 ) ) bufferMs = kAirPlayAudioBufferMainAltWiFiMs;
+			bufferMs = kAirPlayAudioBufferMainAltWiFiMs;
 		}
 	}
+	
+	if( bufferMs < kAirPlayAudioBufferMinMs )
+		bufferMs = kAirPlayAudioBufferMinMs;
 	
 	ctx->compressionType = AudioFormatIDToAirPlayCompressionType( encodedASBD.mFormatID );
 	require_action( ctx->compressionType != kAirPlayCompressionType_Undefined, exit, err = kUnknownErr );
@@ -3776,7 +3376,7 @@ static OSStatus
 			&receivePort, kSocketBufferSize_DontSet, &ctx->dataSock );
 	require_noerr( err, exit );
 	
-	if( !inSession->server->qosDisabled )	SocketSetQoS( ctx->dataSock, kSocketQoS_Voice );
+	SocketSetQoS( ctx->dataSock, kSocketQoS_Voice );
 	
 	CFDictionarySetInt64( responseStreamDesc, CFSTR( kAirPlayKey_Type ), inType );
 	CFDictionarySetInt64( responseStreamDesc, CFSTR( kAirPlayKey_StreamConnectionID ), ctx->connectionID );
@@ -3816,10 +3416,17 @@ static OSStatus
 				memcpy( ctx->inputCryptor.key, inputKey, 32 );
 				ctx->inputCryptor.isValid = true;
 			}
-			err = MirroredRingBufferInit( &ctx->inputRing, kAirPlayInputRingSize, true );
-			require_noerr( err, exit );
-			
-			TAILQ_INIT( &ctx->sendAudioList );
+			if( !inSession->inputRingRef )
+			{
+				err = MirroredRingBufferInit( &inSession->inputRing, kAirPlayInputRingSize, true );
+				require_noerr( err, exit );
+				inSession->inputRingRef = &inSession->inputRing;
+			}
+			else
+			{
+				MirroredRingBufferReset( inSession->inputRingRef );
+			}
+			ctx->inputRingRef = inSession->inputRingRef;
 			ctx->sendAudioDone = 0;
 			
 			err = pthread_mutex_init( &ctx->sendAudioMutex, NULL );
@@ -4011,7 +3618,7 @@ static OSStatus	_IdleStateKeepAliveInitialize( AirPlayReceiverSessionRef inSessi
 			&inSession->keepAlivePortLocal, kSocketBufferSize_DontSet, &inSession->keepAliveSock );
 	require_noerr( err, exit );
 
-	if( !inSession->server->qosDisabled ) SocketSetQoS( inSession->keepAliveSock, kSocketQoS_Background );
+	SocketSetQoS( inSession->keepAliveSock, kSocketQoS_Background );
 
 	atr_ulog( kLogLevelTrace, "KeepAlive set up on port %d\n", inSession->keepAlivePortLocal );
 
@@ -4158,7 +3765,7 @@ static void *	_IdleStateKeepAliveThread( void *inArg )
 		if( FD_ISSET( sock,    &readSet ) ) _IdleStateKeepAliveReceiveBeacon( session, sock );
 		if( FD_ISSET( cmdSock, &readSet ) ) break; // The only event is quit so break if anything is pending.
 	}
-	atr_ulog( kLogLevelTrace, "Timing thread exit\n" );
+	atr_ulog( kLogLevelTrace, "Keep alive thread exit\n" );
 	return( NULL );
 }
 
@@ -4166,18 +3773,27 @@ static void *	_IdleStateKeepAliveThread( void *inArg )
 //	_IdleStateKeepAliveReceiveBeacon
 //===========================================================================================================================
 
+#define	kLowPowerKeepAliveVersion								0
+#define	LowPowerKeepAliveHeaderExtractVersion( FIELDS )			( ( ( FIELDS ) >> 6 ) & 0x03 )
+#define	LowPowerKeepAliveHeaderExtractSleep( FIELDS )			( ( ( FIELDS ) >> 5 ) & 0x01 )
+
 static OSStatus	_IdleStateKeepAliveReceiveBeacon( AirPlayReceiverSessionRef inSession, SocketRef inSock )
 {
 	OSStatus			err;
 	char				pkt[32];
 	size_t				len;
 
-	(void) inSession;	// Unused
-
 	err = SocketRecvFrom( inSock, &pkt, sizeof( pkt ), &len, NULL, 0, NULL, NULL, NULL, NULL );
 	if( err == EWOULDBLOCK ) goto exit;
 	require_noerr( err, exit );
 
+	if( ( len > 0 )
+		&& ( kLowPowerKeepAliveVersion == LowPowerKeepAliveHeaderExtractVersion( pkt[0] ) )
+		&& LowPowerKeepAliveHeaderExtractSleep( pkt[0] )
+		&& inSession->eventQueue )
+	{
+		dispatch_async_f( inSession->eventQueue, inSession, _EventReplyTimeoutCallback );
+	}
 
 exit:
 	atr_ulog( kLogLevelInfo, "err %#m RCV UDP len %d. %02x%02x %02x%02x\n", err, len, (unsigned char)pkt[0], (unsigned char)pkt[1], (unsigned char)pkt[2], (unsigned char)pkt[3] );
@@ -4206,7 +3822,7 @@ static OSStatus	_TimingInitialize( AirPlayReceiverSessionRef inSession )
 	require_noerr( err, exit );
 	
 	SocketSetPacketTimestamps( inSession->timingSock, true );
-	if( !inSession->server->qosDisabled ) SocketSetQoS( inSession->timingSock, kSocketQoS_NTP );
+	SocketSetQoS( inSession->timingSock, kSocketQoS_NTP );
 	
 	// Connect to the server address to avoid the IP stack doing a temporary connect on each send. 
 	// Using connect also allows us to receive ICMP errors if the server goes away.
@@ -4287,7 +3903,10 @@ static OSStatus	_TimingNegotiate( AirPlayReceiverSessionRef inSession )
 	struct timeval		timeout;
 	
 	require_action( inSession->timingThreadPtr == NULL, exit, err = kAlreadyInitializedErr );
+	require_action( inSession->airTunesClock, exit, err = kStateErr );
 	
+	inSession->source.rtcpTIResponseCount = 0;
+	inSession->source.rtcpTIForceStep = true;
 	nFailure		= 0;
 	nSuccess		= 0;
 	nTimeouts		= 0;
@@ -4324,7 +3943,7 @@ static OSStatus	_TimingNegotiate( AirPlayReceiverSessionRef inSession )
 		{
 			FD_SET( timingSock, &readSet );
 			timeout.tv_sec  = 0;
-			timeout.tv_usec = 500 * 1000;
+			timeout.tv_usec = 100 * 1000;
 			n = select( timingSock + 1, &readSet, NULL, NULL, &timeout );
 			err = select_errno( n );
 			if( err )
@@ -4346,6 +3965,9 @@ static OSStatus	_TimingNegotiate( AirPlayReceiverSessionRef inSession )
 			err = _TimingReceiveResponse( inSession, timingSock );
 			if( err )
 			{
+				if( err == kDuplicateErr ) {
+					continue;
+				}
 				if( err == ECONNREFUSED )
 				{
 					goto exit;
@@ -4369,7 +3991,7 @@ static OSStatus	_TimingNegotiate( AirPlayReceiverSessionRef inSession )
 			}
 			break;
 		}
-		if( nSuccess >= 3 ) break;
+		if( nSuccess >= 5 ) break;
 		if( nFailure >= 64 )
 		{
 			atr_ulog( kLogLevelError, "Too many time negotiate failures: G=%d B=%d R=%d T=%d\n", 
@@ -4378,6 +4000,15 @@ static OSStatus	_TimingNegotiate( AirPlayReceiverSessionRef inSession )
 			goto exit;
 		}
 	}
+	inSession->source.rtcpTIForceStep = false;
+	// Because these were all done back to back during negotiate, there is no need to keep anything other than the best.
+	// The rest can just cause the best measurement to be prematurely evicted from the shift register.
+	if (inSession->source.rctpTIClockUsedIndex > 0) {
+		inSession->source.rtcpTIClockDelayArray[ 0 ] = inSession->source.rtcpTIClockDelayArray[ inSession->source.rctpTIClockUsedIndex ];
+		inSession->source.rtcpTIClockOffsetArray[ 0 ] = inSession->source.rtcpTIClockOffsetArray[ inSession->source.rctpTIClockUsedIndex ];
+		inSession->source.rctpTIClockUsedIndex = 0;
+	}
+	inSession->source.rtcpTIClockIndex = 1;
 	
 	// Start the timing thread to keep our clock sync'd.
 	
@@ -4478,7 +4109,6 @@ static OSStatus	_TimingSendRequest( AirPlayReceiverSessionRef inSession )
 	}
 	err = map_socket_value_errno( inSession->timingSock, n == (ssize_t) sizeof( pkt ), n );
 	require_noerr_quiet( err, exit );
-	debug_add( gAirTunesDebugSentByteCount, n );
 	increment_wrap( src->rtcpTISendCount, 1 );
 	
 exit:
@@ -4502,7 +4132,6 @@ static OSStatus	_TimingReceiveResponse( AirPlayReceiverSessionRef inSession, Soc
 	err = SocketRecvFrom( inSock, &pkt, sizeof( pkt ), &len, NULL, 0, NULL, &ticks, NULL, NULL );
 	if( err == EWOULDBLOCK ) goto exit;
 	require_noerr( err, exit );
-	debug_add( gAirTunesDebugRecvByteCount, len );
 	if( len < sizeof( pkt.header ) )
 	{
 		dlogassert( "Bad size: %zu < %zu", sizeof( pkt.header ), len );
@@ -4549,10 +4178,9 @@ static OSStatus	_TimingProcessResponse( AirPlayReceiverSessionRef inSession, RTC
 	uint64_t				t4;
 	double					offset;
 	double					rtt;
-	double					rttAbs;
 	unsigned int			i;
-	double					median;
-	Boolean					forceStep;
+	Boolean					useMeasurement;
+	Boolean					clockStepped;
 	
 	inPkt->rtpTimestamp		= ntohl( inPkt->rtpTimestamp );
 	inPkt->ntpOriginateHi	= ntohl( inPkt->ntpOriginateHi );
@@ -4595,84 +4223,70 @@ static OSStatus	_TimingProcessResponse( AirPlayReceiverSessionRef inSession, RTC
 					 ( ( (double)( (int64_t)( t3 - t4 ) ) ) * kNTPFraction ) );
 	rtt = ( ( (double)( (int64_t)( t4 - t1 ) ) ) * kNTPFraction ) - 
 		  ( ( (double)( (int64_t)( t3 - t2 ) ) ) * kNTPFraction );
-	airtunes_record_clock_offset( offset );
-	airtunes_record_clock_rtt( rtt );
 	
-	// Update round trip time stats. If the RTT is > 70 ms, it's probably a spurious error.
-	// If we're not getting any good RTT's, use the best one we've received in the last 5 tries.
-	// This avoids the initial time sync negotiate from failing entirely if RTT's are really high.
-	// It also avoids time sync from drifting too much if RTT's become really high later.
+	// Update round trip time stats.
 	
 	if( rtt < src->rtcpTIClockRTTMin ) src->rtcpTIClockRTTMin = rtt;
 	if( rtt > src->rtcpTIClockRTTMax ) src->rtcpTIClockRTTMax = rtt;
-	rttAbs = fabs( rtt );
-	if( rttAbs > 0.070 )
-	{
-		++src->rtcpTIClockRTTOutliers;
-		debug_increment_saturate( gAirTunesDebugTimeSyncHugeRTTCount, UINT_MAX );
-		atr_ulog( kLogLevelVerbose, "### Large clock sync RTT %f, Avg %f, Min %f, Max %f, Offset %f\n", 
-			rtt, src->rtcpTIClockRTTAvg, src->rtcpTIClockRTTMin, src->rtcpTIClockRTTMax, offset );
-		
-		if( rttAbs < fabs( src->rtcpTIClockRTTLeastBad ) )
-		{
-			src->rtcpTIClockRTTLeastBad		= rtt;
-			src->rtcpTIClockOffsetLeastBad	= offset;
-		}
-		if( ++src->rtcpTIClockRTTBadCount < 5 )
-		{
-			err = kRangeErr;
-			goto exit;
-		}
-		rtt		= src->rtcpTIClockRTTLeastBad;
-		offset	= src->rtcpTIClockOffsetLeastBad;
-		
-		atr_ulog( kLogLevelInfo, "Replaced large clock sync RTT with %f, offset %f\n", rtt, offset );
-	}
 	if( src->rtcpTIResponseCount == 0 ) src->rtcpTIClockRTTAvg = rtt;
 	src->rtcpTIClockRTTAvg			= ( ( 15.0 * src->rtcpTIClockRTTAvg ) + rtt ) * ( 1.0 / 16.0 );
-	src->rtcpTIClockRTTBadCount		= 0;
-	src->rtcpTIClockRTTLeastBad		= +1000000.0;
-	src->rtcpTIClockOffsetLeastBad	= 0.0;
 	
 	// Update clock offset stats. If this is first time ever or the first time after a clock step, reset the stats.
 	
-	if( src->rtcpTIResetStats || ( src->rtcpTIResponseCount == 0 ) )
+	if( src->rtcpTIResponseCount == 0 )
 	{
 		for( i = 0; i < countof( src->rtcpTIClockOffsetArray ); ++i )
 		{
-			src->rtcpTIClockOffsetArray[ i ] = offset;
+			src->rtcpTIClockDelayArray[ i ] = 1000.0;
+			src->rtcpTIClockOffsetArray[ i ] = 0.0;
 		}
-		src->rtcpTIClockOffsetIndex = 0;
-		src->rtcpTIClockOffsetAvg = offset;
+		src->rtcpTIClockIndex = 0;
+		src->rctpTIClockUsedIndex = 0;
+		src->rtcpTIClockOffsetAvg = 0.0;
 		src->rtcpTIClockOffsetMin = offset;
 		src->rtcpTIClockOffsetMax = offset;
-		median = offset;
 	}
-	else
+	
+	//Only use measurements with a short RTT (delay)
+	//Typical NTP 8 stage shift register as per https://www.eecis.udel.edu/~mills/ntp/html/filter.html
+
+	useMeasurement = true;
+	for( i = 0; i < countof( src->rtcpTIClockDelayArray ); ++i )
 	{
-		src->rtcpTIClockOffsetArray[ src->rtcpTIClockOffsetIndex++ ] = offset;
-		if( src->rtcpTIClockOffsetIndex >= countof( src->rtcpTIClockOffsetArray ) )
+		if( rtt > src->rtcpTIClockDelayArray[ i ])
 		{
-			src->rtcpTIClockOffsetIndex = 0;
+			useMeasurement = false;
+			break;
 		}
-		
-		check_compile_time_code( countof( src->rtcpTIClockOffsetArray ) == 3 );
-		median = median_of_3( src->rtcpTIClockOffsetArray[ 0 ], 
-							  src->rtcpTIClockOffsetArray[ 1 ], 
-							  src->rtcpTIClockOffsetArray[ 2 ] );
-		
-		src->rtcpTIClockOffsetAvg = ( ( 15.0 * src->rtcpTIClockOffsetAvg ) + offset ) * ( 1.0 / 16.0 );
-		if( offset < src->rtcpTIClockOffsetMin ) src->rtcpTIClockOffsetMin = offset;
-		if( offset > src->rtcpTIClockOffsetMax ) src->rtcpTIClockOffsetMax = offset;
+	}
+
+	src->rtcpTIClockDelayArray[ src->rtcpTIClockIndex ] = rtt;
+	src->rtcpTIClockOffsetArray[ src->rtcpTIClockIndex ] = offset;
+	if (useMeasurement) {
+		src->rctpTIClockUsedIndex = src->rtcpTIClockIndex;
+	}
+	src->rtcpTIClockIndex++;
+	if( src->rtcpTIClockIndex >= countof( src->rtcpTIClockOffsetArray ) )
+	{
+		src->rtcpTIClockIndex = 0;
 	}
 	
-	// Sync our local clock to the server's clock. Use median to reject outliers. If this is the first sync, always step.
-	
-	forceStep = ( src->rtcpTIResponseCount == 0 );
-	src->rtcpTIResetStats = AirTunesClock_Adjust( inSession->airTunesClock, (int64_t)( median * 1E9 ), forceStep );
-	if( src->rtcpTIResetStats && !forceStep ) ++src->rtcpTIStepCount;
-	++src->rtcpTIResponseCount;
+	src->rtcpTIClockOffsetAvg = ( ( 15.0 * src->rtcpTIClockOffsetAvg ) + offset ) * ( 1.0 / 16.0 );
+	if( offset < src->rtcpTIClockOffsetMin ) src->rtcpTIClockOffsetMin = offset;
+	if( offset > src->rtcpTIClockOffsetMax ) src->rtcpTIClockOffsetMax = offset;
+
 	err = kNoErr;
+	if (useMeasurement)
+	{
+		// Sync our local clock to the server's clock. If this is the first sync, always step.
+		
+		clockStepped = AirTunesClock_Adjust( inSession->airTunesClock, (int64_t)( offset * 1E9 ), src->rtcpTIForceStep );
+		if( clockStepped && !src->rtcpTIForceStep ) {
+			++src->rtcpTIStepCount;
+			err = kRangeErr;
+		}
+		++src->rtcpTIResponseCount;
+	}
 	
 exit:
 	return( err );
@@ -4748,7 +4362,7 @@ static OSStatus
 		&receivePort, -kAirPlayScreenReceiver_SocketBufferSize, &inSession->screenSock );
 	require_noerr( err, exit );
 	
-	if( !inSession->server->qosDisabled )	SocketSetQoS( inSession->screenSock, kSocketQoS_AirPlayScreenVideo );
+	SocketSetQoS( inSession->screenSock, kSocketQoS_AirPlayScreenVideo );
 	
 	CFDictionarySetInt64( responseStreamDesc, CFSTR( kAirPlayKey_Type ), kAirPlayStreamType_Screen );
 	CFDictionarySetInt64( responseStreamDesc, CFSTR( kAirPlayKey_Port_Data ), receivePort );
@@ -4848,9 +4462,6 @@ static void *	_ScreenThread( void *inArg )
 	
 	atr_ulog( kLogLevelTrace, "screen receiver started\n" );
 
-	AirPlayReceiverSessionScreen_SetSessionUUID( session->screenSession, session->sessionUUID );
-	AirPlayReceiverSessionScreen_SetClientDeviceID( session->screenSession, session->clientDeviceID );
-
 	err = NetSocket_CreateWithNative( &netSock, newSock );
 	require_noerr( err, exit );
 	
@@ -4862,84 +4473,22 @@ static void *	_ScreenThread( void *inArg )
 
 	AirPlayReceiverSessionScreen_SetTimeSynchronizer( session->screenSession, &timeSynchronizer );
 	
-	AirPlayReceiverSessionScreen_SetReceiveEndTime( session->screenSession, CFAbsoluteTimeGetCurrent() );
-	AirPlayReceiverSessionScreen_SetAuthEndTime( session->screenSession, CFAbsoluteTimeGetCurrent() );
-	AirPlayReceiverSessionScreen_SetNTPEndTime( session->screenSession, CFAbsoluteTimeGetCurrent() );
-
-	err = AirPlayReceiverSessionScreen_StartSession( session->screenSession, session->server->screenStreamOptions );
+	err = AirPlayReceiverSessionScreen_StartSession( session->screenSession, session->delegate.context );
 	require_noerr( err, exit );
 	
 	params = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 	require_action( params, exit, err = kNoMemoryErr );
 	
-	AirPlayReceiverSessionScreen_LogStarted( session->screenSession, params, session->transportType );
-	
 	err = AirPlayReceiverSessionScreen_ProcessFrames( session->screenSession, netSock, session->server->timeoutDataSecs );
 	require_noerr( err, exit );
 	
 exit:
-	AirPlayReceiverSessionScreen_LogEnded( session->screenSession, err );
 	AirPlayReceiverSessionScreen_StopSession( session->screenSession );
 	NetSocket_Forget( &netSock );
 	ForgetSocket( &newSock );
 	CFReleaseNullSafe( params );
     atr_ulog( kLogLevelTrace, "Screen thread exit\n" );
 	return( NULL );
-}
-
-//===========================================================================================================================
-//	_ScreenHandleEvent
-//===========================================================================================================================
-static void
-	_ScreenHandleEvent(
-		AirPlayReceiverSessionScreenRef		inSession,
-		CFStringRef							inEventName,
-		CFDictionaryRef						inEventData,
-		void *								inUserData )
-{
-	AirPlayReceiverSessionRef const		me = (AirPlayReceiverSessionRef) inUserData;
-	OSStatus							err;
-	uint32_t							frameCount;
-	CFArrayRef							metrics;
-	CFMutableDictionaryRef				request;
-	
-	(void) inSession;
-	
-	if( 0 ) {} // Empty if to simplify else if's below.
-	
-	// ForceKeyFrame
-	
-	else if( CFEqual( inEventName, CFSTR( kAirPlayReceiverSessionScreenEvent_ForceKeyFrameNeeded ) ) )
-	{
-		request = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-		require( request, exit );
-		CFDictionarySetValue( request, CFSTR( kAirPlayKey_Type ), CFSTR( kAirPlayCommand_ForceKeyFrame ) );
-		err = AirPlayReceiverSessionSendCommand( me, request, NULL, NULL );
-		CFRelease( request );
-		require_noerr( err, exit );
-	}
-	
-	// TimestampsUpdated
-	
-	else if( CFEqual( inEventName, CFSTR( kAirPlayReceiverSessionScreenEvent_TimestampsUpdated ) ) )
-	{
-		frameCount = (uint32_t) CFDictionaryGetInt64( inEventData, CFSTR( "frameCount" ), NULL );
-		metrics = CFDictionaryGetCFArray( inEventData, CFSTR( "metrics" ), NULL );
-		if( metrics )
-		{
-			AirPlayReceiverServerControlAsyncF( me->server, CFSTR( kAirPlayCommand_UpdateTimestamps ), NULL,
-				NULL, NULL, NULL, 
-				"{"
-					"%kO=%i"
-					"%kO=%O"
-				"}", 
-				CFSTR( "frameCount" ),	frameCount, 
-				CFSTR( "metrics" ),		metrics );
-		}
-	}
-	
-exit:
-	return;
 }
 
 //===========================================================================================================================
@@ -5183,7 +4732,7 @@ static OSStatus
 	
 	require_action( inSession->pairVerifySession, exit, err = kStateErr );
 
-	streamKeySaltLen = ASPrintF( &streamKeySaltPtr, "%s%llu", kAirPlayPairingDataStreamKeySaltPtr, streamConnectionID );
+	streamKeySaltLen = asprintf( &streamKeySaltPtr, "%s%llu", kAirPlayPairingDataStreamKeySaltPtr, streamConnectionID );
  
 	if( outOutputKey )
 	{
@@ -5251,7 +4800,7 @@ static void	_LogEnded( AirPlayReceiverSessionRef inSession, OSStatus inReason )
 	uint32_t const						ntpRTTAvg				= (uint32_t)( 1000 * ats->rtcpTIClockRTTAvg );
 	
 	DataBuffer_Init( &db, buf, sizeof( buf ), 10000 );
-	DataBuffer_AppendF( &db, "AirPlay session ended: Dur=%{dur} Reason=%#m\n", durationSecs, inReason );
+	DataBuffer_AppendF( &db, "AirPlay session ended: Dur=%u seconds Reason=%#m\n", durationSecs, inReason );
 	DataBuffer_AppendF( &db, "Glitches:    %d%%, %d total, %d glitchy minute(s)\n", 
 		( inSession->glitchTotalPeriods > 0 ) ? ( ( inSession->glitchyPeriods * 100 ) / inSession->glitchTotalPeriods ) : 0,
 		inSession->glitchTotal, inSession->glitchyPeriods );
@@ -5263,12 +4812,11 @@ static void	_LogEnded( AirPlayReceiverSessionRef inSession, OSStatus inReason )
 		gAirPlayAudioStats.lostPackets, gAirPlayAudioStats.unrecoveredPackets, gAirPlayAudioStats.latePackets, 
 		ats->maxBurstLoss, ats->bigLossCount, inSession->compressionPercentAvg / 100 );
 	DataBuffer_AppendF( &db, "Time Sync:   "
-		"%u/%u/%u ms min/max/avg RTT, %d/%d/%d µS min/max/avg offset, %u outlier(s), %u step(s), %d max skew, %u skew reset(s)\n", 
+		"%u/%u/%u ms min/max/avg RTT, %d/%d/%d µS min/max/avg offset, %u step(s)\n",
 		ntpRTTMin, ntpRTTMax, ntpRTTAvg, 
 		(int32_t)(  1000000 * ats->rtcpTIClockOffsetMin ), 
 		(int32_t)(  1000000 * ats->rtcpTIClockOffsetMax ), 
-		(int32_t)(  1000000 * ats->rtcpTIClockOffsetAvg ), 
-		ats->rtcpTIClockRTTOutliers, ats->rtcpTIStepCount, ats->rtpOffsetMaxSkew, ats->rtpOffsetSkewResetCount );
+		(int32_t)(  1000000 * ats->rtcpTIClockOffsetAvg ), ats->rtcpTIStepCount );
 	atr_ulog( kLogLevelNotice, "%.*s\n", (int) DataBuffer_GetLen( &db ), DataBuffer_GetPtr( &db ) );
 	DataBuffer_Free( &db );
 	
@@ -5323,10 +4871,11 @@ static void	_TearDownStream( AirPlayReceiverSessionRef inSession, AirPlayAudioSt
 	ForgetSocket( &ctx->dataSock );
 	RTPJitterBufferFree( &ctx->jitterBuffer );
 	AudioConverterForget( &ctx->inputConverter );
-	MirroredRingBufferFree( &ctx->inputRing );
+	ctx->inputRingRef = NULL;
 	
 	if( ctx == &inSession->mainAudioCtx )
 	{
+		inSession->flushing	= false;
 		inSession->rtpAudioPort = 0;
 		ForgetSocket( &inSession->rtcpSock );
 		ForgetMem( &inSession->source.rtcpRTListStorage );
@@ -5369,6 +4918,7 @@ static void	_UpdateEstimatedRate( AirPlayAudioStreamContext *ctx, uint32_t inSam
 		AirTunesClock_GetSynchronizedTimeNearUpTicks( airTunesClock, &atTime, inHostTime );
 		newSample				= &ctx->rateUpdateSamples[ oldNdx ];
 		newSample->hostTime		= AirTunesTime_ToNTP( &atTime );
+		newSample->hostTimeRaw	= UpTicksToNanoseconds( inHostTime );
 		newSample->sampleTime	= inSampleTime;
 		
 		pthread_mutex_lock( ctx->zeroTimeLockPtr );
@@ -5378,7 +4928,7 @@ static void	_UpdateEstimatedRate( AirPlayAudioStreamContext *ctx, uint32_t inSam
 		if( newCount >= 8 )
 		{
 			oldSample = &ctx->rateUpdateSamples[ newCount % Min( newCount, countof( ctx->rateUpdateSamples ) ) ];
-			scale = ( newSample->hostTime - oldSample->hostTime ) * kNTPUnits_FP;
+			scale = ( newSample->hostTime - oldSample->hostTime ) * kNTPFraction;
 			if( scale > 0 )
 			{
 				rate = ( newSample->sampleTime - oldSample->sampleTime ) / scale;
@@ -5451,8 +5001,8 @@ OSStatus
 	
 	AirPlayModeChangesInit( &changes );
 	if( inSpeechMode != kAirPlaySpeechMode_NotApplicable )	changes.speech		= inSpeechMode;
-	if( inPhoneCall  != kAirPlaySpeechMode_NotApplicable )	changes.phoneCall	= inPhoneCall;
-	if( inTurnByTurn != kAirPlaySpeechMode_NotApplicable )	changes.turnByTurn	= inTurnByTurn;
+	if( inPhoneCall  != kAirPlayTriState_NotApplicable )	changes.phoneCall	= inPhoneCall;
+	if( inTurnByTurn != kAirPlayTriState_NotApplicable )	changes.turnByTurn	= inTurnByTurn;
 	
 	err = AirPlayReceiverSessionChangeModes( inSession, &changes, inReason, inCompletion, inContext );
 	require_noerr( err, exit );
@@ -5525,7 +5075,6 @@ OSStatus
 	CFArrayRef			array;
 	CFIndex				i, n;
 	CFDictionaryRef		dict;
-	CFStringRef			cfstr;
 	int					x;
 	
 	(void) inSession;
@@ -5541,37 +5090,27 @@ OSStatus
 		dict = CFArrayGetCFDictionaryAtIndex( array, i, &err );
 		require_noerr( err, exit );
 		
-		cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_AppStateID ), NULL );
-		if( cfstr )	x = AirPlayAppStateIDFromCFString( cfstr );
-		else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_AppStateID ), NULL );
+		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_AppStateID ), NULL );
 		switch( x )
 		{
 			case kAirPlayAppStateID_PhoneCall:
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_Entity ), &err );
-				if( cfstr )	x = AirPlayEntityFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
 				require_noerr( err, exit );
 				outModes->phoneCall = x;
 				break;
 			
 			case kAirPlayAppStateID_Speech:
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_Entity ), &err );
-				if( cfstr )	x = AirPlayEntityFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
 				require_noerr( err, exit );
 				outModes->speech.entity = x;
 				
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_SpeechMode ), &err );
-				if( cfstr )	x = AirPlaySpeechModeFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_SpeechMode ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_SpeechMode ), &err );
 				require_noerr( err, exit );
 				outModes->speech.mode = x;
 				break;
 			
 			case kAirPlayAppStateID_TurnByTurn:
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_Entity ), &err );
-				if( cfstr )	x = AirPlayEntityFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
 				require_noerr( err, exit );
 				outModes->turnByTurn = x;
 				break;
@@ -5594,23 +5133,17 @@ OSStatus
 		dict = CFArrayGetCFDictionaryAtIndex( array, i, &err );
 		require_noerr( err, exit );
 		
-		cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_ResourceID ), NULL );
-		if( cfstr )	x = AirPlayResourceIDFromCFString( cfstr );
-		else		x = (AirPlayAppStateID) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_ResourceID ), NULL );
+		x = (AirPlayAppStateID) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_ResourceID ), NULL );
 		switch( x )
 		{
 			case kAirPlayResourceID_MainScreen:
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_Entity ), &err );
-				if( cfstr )	x = AirPlayEntityFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
 				require_noerr( err, exit );
 				outModes->screen = x;
 				break;
 			
 			case kAirPlayResourceID_MainAudio:
-				cfstr = CFDictionaryGetCFString( dict, CFSTR( kAirPlayKey_Entity ), &err );
-				if( cfstr )	x = AirPlayEntityFromCFString( cfstr );
-				else		x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
+				x = (int) CFDictionaryGetInt64( dict, CFSTR( kAirPlayKey_Entity ), &err );
 				require_noerr( err, exit );
 				outModes->mainAudio = x;
 				break;
@@ -5863,788 +5396,237 @@ exit:
 	return( err );
 }
 
-#if 0
-#pragma mark -
-#pragma mark == Debugging ==
-#endif
-
 //===========================================================================================================================
-//	AirTunesDebugControl
+//	AirPlayReceiverSessionSendHIDReport
 //===========================================================================================================================
 
-#if( DEBUG )
-
-void	AirTunesDebugControl_Tweak( DataBuffer *inDB, const char *inCmd );
-
-OSStatus	AirTunesDebugControl( const char *inCmd, CFStringRef *outOutput )
+OSStatus
+AirPlayReceiverSessionSendHIDReport(
+	AirPlayReceiverSessionRef					inSession,
+	uint32_t									inDeviceUID,
+	const uint8_t *								inPtr,
+	size_t										inLen )
 {
-	OSStatus			err;
-	DataBuffer			db;
-	const char *		key;
-	size_t				keyLen;
-	const char *		value;
-	int					n;
+	OSStatus					err;
+	CFMutableDictionaryRef		request;
+	CFStringRef					uid;
 	
-	DataBuffer_Init( &db, NULL, 0, SIZE_MAX );
+	uid = CFStringCreateWithFormat( kCFAllocatorDefault, NULL, CFSTR( "%X" ), inDeviceUID );
+	require_action( uid, exit, err = kNoMemoryErr );
 	
-	if( *inCmd == '\0' ) inCmd = "help";
-	key = inCmd;
-	for( value = inCmd; ( *value != '\0' ) && ( *value != '=' ); ++value ) {}
-	keyLen = (size_t)( value - key );
-	if( *value != '\0' ) ++value;
+	request = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( request, exit, err = kNoMemoryErr );
+	CFDictionarySetValue( request, CFSTR( kAirPlayKey_Type ), CFSTR( kAirPlayCommand_HIDSendReport ) );
+	CFDictionarySetValue( request, CFSTR( kAirPlayKey_UUID ), uid );
+	CFRelease(uid);
+	CFDictionarySetData( request, CFSTR( kAirPlayKey_HIDReport ), inPtr, inLen );
 	
-	// aro -- Adjust the relative RTP offset.
-	
-	if( strncmpx( key, keyLen, "aro" ) == 0 )
-	{
-		int32_t		oldValue, newValue;
-		
-		newValue = atoi( value );
-		oldValue = gAirTunesRelativeTimeOffset;
-		gAirTunesRelativeTimeOffset = newValue;
-		
-		if( gAirTunes ) _GeneralAudioUpdateLatency( gAirTunes );
-		else			DataBuffer_AppendF( &db, "Changed relative latency: %d -> %d\n", oldValue, newValue );
-	}
-	
-	// drop -- simulate dropped packets.
-	
-	else if( strncmpx( key, keyLen, "drop" ) == 0 )
-	{
-		int		minDropRate, maxDropRate, minSkipRate, maxSkipRate;
-		
-		n = sscanf( value, "%d,%d,%d,%d", &minDropRate, &maxDropRate, &minSkipRate, &maxSkipRate );
-		if( n == 4 )
-		{
-			gAirTunesDropMinRate = minDropRate;
-			gAirTunesDropMaxRate = maxDropRate;
-			gAirTunesSkipMinRate = minSkipRate;
-			gAirTunesSkipMaxRate = maxSkipRate;
-			gAirTunesDropRemaining = 0;
-			gAirTunesSkipRemaining = 0;
-			
-			DataBuffer_AppendF( &db, "Starting simulated packet loss: drop %d-%d packets every %d-%d packets\n", 
-				minDropRate, maxDropRate, minSkipRate, maxSkipRate );
-		}
-		else
-		{
-			gAirTunesDropMinRate = 0;
-			DataBuffer_AppendF( &db, "Stopped simulated packet loss\n" );
-		}
-	}
-	else if( strncmpx( key, keyLen, "latedrop" ) == 0 )
-	{
-		gAirTunesLateDrop = 0;
-		sscanf( value, "%d", &gAirTunesLateDrop );
-		if( gAirTunesLateDrop > 0 ) DataBuffer_AppendF( &db, "Late dropping every %d packets\n", gAirTunesLateDrop );
-		else						DataBuffer_AppendF( &db, "Disabling late drop\n" );
-	}
-	
-	// rs -- Resets all debug stats.
-	
-	else if( strncmpx( key, keyLen, "rs" ) == 0 )
-	{
-		AirTunesDebugControl_ResetDebugStats();
-		DataBuffer_AppendF( &db, "Reset debug stats\n" );
-	}
-	
-	// file -- Save audio to a file.
-	
-#if( TARGET_HAS_C_LIB_IO )
-	else if( strncmpx( key, keyLen, "file" ) == 0 )
-	{
-		char		path[ PATH_MAX + 1 ];
-		
-		if( gAirTunesFile )
-		{
-			fclose( gAirTunesFile );
-			gAirTunesFile = NULL;
-		}
-		
-		if( *value != '\0' )
-		{
-			snprintf( path, sizeof( path ), "%s", value );
-			gAirTunesFile = fopen( path, "wb" );
-			err = map_global_value_errno( gAirTunesFile, gAirTunesFile );
-			require_noerr( err, exit );
-			
-			DataBuffer_AppendF( &db, "starting record of audio at file \"%s\"\n", value );
-		}
-	}
-#endif
-	
-	// perf -- Start performance monitoring
-	
-	else if( strncmpx( key, keyLen, "perf" ) == 0 )
-	{
-		int		interval;
-		
-		interval = atoi( value );
-		if( interval > 0 )
-		{
-			DataBuffer_AppendF( &db, "started performance monitoring every %d seconds\n", interval );
-			AirTunesDebugPerf( interval, NULL );
-		}
-		else
-		{
-			AirTunesDebugPerf( interval, NULL );
-			DataBuffer_AppendF( &db, "stopped performance monitoring\n" );
-		}
-	}
-	
-	// perfMode -- Set performance monitoring mode
-	
-	else if( strncmpx( key, keyLen, "perfMode" ) == 0 )
-	{
-		gAirTunesDebugPerfMode = atoi( value );
-		DataBuffer_AppendF( &db, "set performance monitoring mode to %d\n", gAirTunesDebugPerfMode );
-	}
-	
-	// tweak -- Tweak variables.
-	
-	else if( strncmpx( key, keyLen, "tweak" ) == 0 )
-	{
-		AirTunesDebugControl_Tweak( &db, value );
-	}
-	
-	// Help
-	
-	else if( strncmpx( key, keyLen, "help" ) == 0 )
-	{
-		DataBuffer_AppendF( &db, "-- AirTunes Debug Control Commands --\n" );
-		DataBuffer_AppendF( &db, "    aro                    -- Adjust relative RTP offset.\n" );
-		DataBuffer_AppendF( &db, "    rs                     -- Reset all debug stats.\n" );
-		DataBuffer_AppendF( &db, "    perf                   -- Start/stop performance monitoring.\n" );
-		DataBuffer_AppendF( &db, "    perfMode               -- Set performance monitoring mode.\n" );
-		DataBuffer_AppendF( &db, "    hwskew <force>,<skew>  -- Set performance monitoring mode.\n" );
-		DataBuffer_AppendF( &db, "\n" );
-	}
-	
-	// Unknown
-	
-	else
-	{
-		DataBuffer_AppendF( &db, "### unknown command: '%s'\n", inCmd );
-		goto exitOutput;
-	}
-	
-exitOutput:
-		
-	// Return as a CFString.
-	
-	if( outOutput )
-	{
-		CFStringRef		output;
-		
-		output = CFStringCreateWithBytes( NULL, db.bufferPtr, (CFIndex) db.bufferLen, kCFStringEncodingUTF8, false );
-		require_action( output, exit, err = kNoMemoryErr );
-		*outOutput = output;
-	}
-	else
-	{
-		dlog( kLogLevelMax, "%.*s", (int) db.bufferLen, db.bufferPtr );
-	}
-	err = kNoErr;
-	
-exit:
-	DataBuffer_Free( &db );
-	return( err );
-}
-#endif
-
-//===========================================================================================================================
-//	AirTunesDebugControl_ResetDebugStats
-//===========================================================================================================================
-
-#if( DEBUG )
-void	AirTunesDebugControl_ResetDebugStats( void )
-{
-	gAirTunesDebugBusyNodeCountMax					= 0;
-	
-	gAirTunesDebugSentByteCount						= 0;
-	gAirTunesDebugRecvByteCount						= 0;
-	gAirTunesDebugRecvRTPOriginalByteCount			= 0;
-	gAirTunesDebugRecvRTPOriginalByteCountLast		= 0;
-	gAirTunesDebugRecvRTPOriginalBytesPerSecAvg		= 0;
-	gAirTunesDebugRecvRTPRetransmitByteCount		= 0;
-	gAirTunesDebugRecvRTPRetransmitByteCountLast	= 0;
-	gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg	= 0;
-	gAirTunesDebugIdleTimeoutCount					= 0;
-	gAirTunesDebugStolenNodeCount					= 0;
-	gAirTunesDebugOldDiscardCount					= 0;
-	gAirTunesDebugConcealedGapCount					= 0;
-	gAirTunesDebugConcealedEndCount					= 0;
-	gAirTunesDebugLateDropCount						= 0;
-	gAirTunesDebugSameTimestampCount				= 0;
-	memset( gAirTunesDebugLossCounts, 0, sizeof( gAirTunesDebugLossCounts ) );
-	gAirTunesDebugTotalLossCount					= 0;
-	gAirTunesDebugMaxBurstLoss						= 0;
-	gAirTunesDebugDupCount							= 0;
-	gAirTunesDebugMisorderedCount					= 0;
-	gAirTunesDebugUnrecoveredPacketCount			= 0;
-	gAirTunesDebugUnexpectedRTPOffsetResetCount 	= 0;
-	gAirTunesDebugHugeSkewResetCount				= 0;
-	gAirTunesDebugGlitchCount						= 0;
-	gAirTunesDebugTimeSyncHugeRTTCount				= 0;
-	gAirTunesDebugTimeAnnounceMinNanos				= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	gAirTunesDebugTimeAnnounceMaxNanos				= 0;
-	gAirTunesDebugRetransmitActiveCount				= 0;
-	gAirTunesDebugRetransmitActiveMax				= 0;
-	gAirTunesDebugRetransmitSendCount				= 0;
-	gAirTunesDebugRetransmitSendLastCount			= 0;
-	gAirTunesDebugRetransmitSendPerSecAvg			= 0;
-	gAirTunesDebugRetransmitRecvCount				= 0;
-	gAirTunesDebugRetransmitBigLossCount			= 0;
-	gAirTunesDebugRetransmitAbortCount				= 0;
-	gAirTunesDebugRetransmitFutileAbortCount		= 0;
-	gAirTunesDebugRetransmitNoFreeNodesCount		= 0;
-	gAirTunesDebugRetransmitNotFoundCount			= 0;
-	gAirTunesDebugRetransmitPrematureCount			= 0;
-	gAirTunesDebugRetransmitMaxTries				= 0;
-	gAirTunesDebugRetransmitMinNanos				= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	gAirTunesDebugRetransmitMaxNanos				= 0;
-	gAirTunesDebugRetransmitAvgNanos				= 0;
-	gAirTunesDebugRetransmitRetryMinNanos			= UINT64_C( 0xFFFFFFFFFFFFFFFF );
-	gAirTunesDebugRetransmitRetryMaxNanos			= 0;
-	
-	gAirTunesClockOffsetIndex 						= 0;
-	gAirTunesClockOffsetCount 						= 0;
-	
-	gAirTunesClockRTTIndex 							= 0;
-	gAirTunesClockRTTCount 							= 0;
-	
-	gAirTunesRTPOffsetIndex 						= 0;
-	gAirTunesRTPOffsetCount 						= 0;
-	
-	dlog( kLogLevelMax, "AirPlay debugging stats reset\n" );
-}
-#endif
-
-//===========================================================================================================================
-//	AirTunesDebugControl_Tweak
-//===========================================================================================================================
-
-#if( DEBUG )
-void	AirTunesDebugControl_Tweak( DataBuffer *inDB, const char *inCmd )
-{
-	const char *		name;
-	size_t				nameLen;
-	const char *		value;
-	
-	name = inCmd;
-	for( value = inCmd; ( *value != '\0' ) && ( *value != '=' ); ++value ) {}
-	if( *value != '=' )
-	{
-		DataBuffer_AppendF( inDB, "### malformed tweak: '%s'\n", inCmd );
-		goto exit;
-	}
-	nameLen = (size_t)( value - name );
-	++value;
-	
-	if( 0 ) {}
-	else if( strncmpx( name, nameLen, "pid" ) == 0 )
-	{
-		double		pGain, iGain, dGain, dPole, iMin, iMax;
-		int			n;
-		
-		if( !gAirTunes )
-		{
-			DataBuffer_AppendF( inDB, "error: AirTunes not running\n", value );
-			goto exit;
-		}
-		
-		n = sscanf( value, "%lf,%lf,%lf,%lf,%lf,%lf", &pGain, &iGain, &dGain, &dPole, &iMin, &iMax );
-		if( n != 6 )
-		{
-			DataBuffer_AppendF( inDB, "error: bad PID value '%s'. Must be <pGain>,<iGain>,<dGain>,<dPole>,<iMin>,<iMax>\n", value );
-			goto exit;
-		}
-	}
-	else
-	{
-		(void) nameLen;
-		DataBuffer_AppendF( inDB, "### unknown tweak: '%s'\n", inCmd );
-	}
-	
-exit:
-	return;
-}
-#endif
-
-//===========================================================================================================================
-//	AirTunesDebugShow - Console show routine.
-//===========================================================================================================================
-
-OSStatus	AirTunesDebugShow( const char *inCmd, CFStringRef *outOutput )
-{
-	OSStatus		err;
-	DataBuffer		dataBuf;
-	CFStringRef		output;
-	
-	DataBuffer_Init( &dataBuf, NULL, 0, SIZE_MAX );
-	
-	err = AirTunesDebugAppendShowData( inCmd, &dataBuf );
+	err = AirPlayReceiverSessionSendCommand( inSession, request, NULL, NULL );
+	CFRelease( request );
 	require_noerr( err, exit );
-		
-	if( outOutput )
-	{
-		output = CFStringCreateWithBytes( NULL, dataBuf.bufferPtr, (CFIndex) dataBuf.bufferLen, kCFStringEncodingUTF8, false );
-		require_action( output, exit, err = kNoMemoryErr );
-		*outOutput = output;
-	}
-	else
-	{
-		dlog( kLogLevelMax, "%.*s", (int) dataBuf.bufferLen, dataBuf.bufferPtr );
-	}
 	
 exit:
-	DataBuffer_Free( &dataBuf );
 	return( err );
 }
 
 //===========================================================================================================================
-//	AirTunesDebugAppendShowData - Console show routine.
+// AirPlayInfoArrayAddHIDDevice
 //===========================================================================================================================
 
-OSStatus	AirTunesDebugAppendShowData( const char *inCmd, DataBuffer *inDB )
+OSStatus
+AirPlayInfoArrayAddHIDDevice(
+	CFArrayRef *			inArray,
+	uint32_t				inDeviceUID,
+	const char *			inName,
+	uint16_t				inVendorID,
+	uint16_t				inProductID,
+	uint16_t				inCountryCode,
+	const uint8_t *			inDescPtr,
+	size_t					inDescLen,
+	CFStringRef				inDisplayUUID )
+{
+	OSStatus					err;
+	CFMutableArrayRef			dictArray;
+	CFMutableDictionaryRef		dict = NULL;
+	CFStringRef					uidStr;
+	CFDataRef					descData;
+	CFStringRef					nameStr = NULL;
+
+	if( *inArray == NULL )
+	{
+		*inArray = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
+		require_action( *inArray, exit, err = kNoMemoryErr );
+	}
+	dictArray = (CFMutableArrayRef)*inArray;
+
+	dict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( dict, exit, err = kNoMemoryErr );
+
+	uidStr = CFStringCreateF( &err, "%X", inDeviceUID );
+	require_action( uidStr, exit, err = kNoMemoryErr );
+	CFDictionarySetValue( dict, CFSTR( kAirPlayKey_UUID ), uidStr );
+	CFRelease( uidStr );
+
+	nameStr = CFStringCreateWithCString( kCFAllocatorDefault, inName, kCFStringEncodingUTF8 );
+	require_action( dict, exit, err = kNoMemoryErr );
+	CFDictionarySetValue( dict, CFSTR( kAirPlayKey_Name ), nameStr );
+	CFRelease( nameStr );
+
+	CFDictionarySetValue( dict, CFSTR( kAirPlayKey_DisplayUUID ), inDisplayUUID );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_HIDProductID ), inProductID );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_HIDVendorID ), inVendorID );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_HIDCountryCode ), inCountryCode );
+	
+	descData = CFDataCreate( NULL, inDescPtr, inDescLen );
+	require_action( descData, exit, err = kNoMemoryErr );
+	CFDictionarySetValue( dict, CFSTR( kAirPlayKey_HIDDescriptor ), descData );
+	CFRelease( descData );
+	
+	CFArrayAppendValue( dictArray, dict );
+	err = kNoErr;
+
+exit:
+	CFReleaseNullSafe( dict );
+	return( err );
+}
+
+//===========================================================================================================================
+//	AirPlayInfoArrayAddAudioLatency
+//===========================================================================================================================
+
+OSStatus
+AirPlayInfoArrayAddAudioLatency(
+	CFArrayRef *			inArray,
+	AudioStreamType			inStreamType,
+	CFStringRef				inAudioType,
+	uint32_t				inSampleRate,
+	uint32_t				inSampleSize,
+	uint32_t				inChannels,
+	uint32_t				inInputLatency,
+	uint32_t				inOutputLatency )
 {
 	OSStatus				err;
-	uint32_t				runningSecs;
-	AirTunesSource *		src;
-#if( DEBUG )
-	unsigned int			i;
-#endif
-	Boolean					b;
-	
-	// globals -- Show globals.
-	
-	if( !inCmd || ( *inCmd == '\0' ) || ( strcmp( inCmd, "globals" ) == 0 ) )
+	CFMutableArrayRef		dictArray;
+	CFMutableDictionaryRef	dict = NULL;
+
+	if( *inArray == NULL )
 	{
-		DataBuffer_AppendF( inDB, "\n" );
-		DataBuffer_AppendF( inDB, "+-+ AirPlay Audio Statistics +-+\n" );
-		if( gAirTunes )
-		{
-			b = (Boolean)( gAirTunes->compressionType != kAirPlayCompressionType_PCM );
-			DataBuffer_AppendF( inDB, "    Encoding Mode            = %s\n", 
-				( gAirTunes->decryptor && b )	? "EC"	:
-				  gAirTunes->decryptor			? "Ec"	:
-				  b								? "eC"	:
-												  "ec" );
-			runningSecs = (uint32_t) UpTicksToSeconds( UpTicks() - gAirTunes->sessionTicks );
-			DataBuffer_AppendF( inDB, "    Running Time             = %u seconds (%{dur})\n", runningSecs, runningSecs );
-			DataBuffer_AppendF( inDB, "    rtp                      = sock %d, local port %d\n", 
-				gAirTunes->mainAudioCtx.dataSock, gAirTunes->rtpAudioPort );
-			DataBuffer_AppendF( inDB, "    rtcp                     = sock %d, local port %d, remote port %d\n", 
-				gAirTunes->rtcpSock, gAirTunes->rtcpPortLocal, gAirTunes->rtcpPortRemote );
-			DataBuffer_AppendF( inDB, "    timing                   = sock %d, local port %d, remote port %d\n", 
-				gAirTunes->timingSock, gAirTunes->timingPortLocal, gAirTunes->timingPortRemote );
-			src = &gAirTunes->source;
-			DataBuffer_AppendF( inDB, "    receiveCount             = %u\n", src->receiveCount );
-			DataBuffer_AppendF( inDB, "    lastRTPSeq/lastRTPTS     = %hu/%u\n", gAirTunes->lastRTPSeq, (int) gAirTunes->lastRTPTS );
-			DataBuffer_AppendF( inDB, "    glitches                 = %d total, %d glitchy period(s) of %d total period(s) (%d%%)\n", 
-				gAirTunes->glitchTotal, gAirTunes->glitchyPeriods, gAirTunes->glitchTotalPeriods, 
-				( gAirTunes->glitchTotalPeriods > 0 ) ? ( ( gAirTunes->glitchyPeriods * 100 ) / gAirTunes->glitchTotalPeriods ) : 0 );
-			DataBuffer_AppendF( inDB, "    rtcpTIStepCount          = %u\n", src->rtcpTIStepCount );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockRTTOutliers   = %u\n", src->rtcpTIClockRTTOutliers );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockRTTAvg        = %f\n", src->rtcpTIClockRTTAvg );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockRTTMin        = %f\n", src->rtcpTIClockRTTMin );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockRTTMax        = %f\n", src->rtcpTIClockRTTMax );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockOffsetArray   = [%f, %f, %f]\n", 
-				src->rtcpTIClockOffsetArray[ 0 ], src->rtcpTIClockOffsetArray[ 1 ], src->rtcpTIClockOffsetArray[ 2 ] );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockOffsetAvg     = %f\n", src->rtcpTIClockOffsetAvg );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockOffsetMin     = %f\n", src->rtcpTIClockOffsetMin );
-			DataBuffer_AppendF( inDB, "    rtcpTIClockOffsetMax     = %f\n", src->rtcpTIClockOffsetMax );
-			DataBuffer_AppendF( inDB, "    rtpOffsetActive          = %u (%+d avg)\n", 
-				(int) src->rtpOffsetActive, (int)( src->rtpOffsetActive - src->rtpOffsetAvg ) );
-			DataBuffer_AppendF( inDB, "    rtpOffset                = %u (%+d avg)\n", 
-				(int) src->rtpOffset, (int)( src->rtpOffset - src->rtpOffsetAvg ) );
-			DataBuffer_AppendF( inDB, "    rtpOffsetApplyTimestamp  = %u (%s)\n", 
-				(int) src->rtpOffsetApplyTimestamp, src->rtpOffsetApply ? "YES" : "NO" );
-			DataBuffer_AppendF( inDB, "    rtpOffsetLast            = %u\n", src->rtpOffsetLast );
-			DataBuffer_AppendF( inDB, "    rtpOffsetAvg             = %u\n", src->rtpOffsetAvg );
-			DataBuffer_AppendF( inDB, "    rtpOffsetMaxDelta        = %u\n", src->rtpOffsetMaxDelta );
-			DataBuffer_AppendF( inDB, "    rtpOffsetMaxSkew         = %u\n", src->rtpOffsetMaxSkew );
-			DataBuffer_AppendF( inDB, "    rtpOffsetSkewResetCount  = %u\n", src->rtpOffsetSkewResetCount );
-			DataBuffer_AppendF( inDB, "    rtcpRTDisable            = %d\n", src->rtcpRTDisable );
-			DataBuffer_AppendF( inDB, "    rtcpRTMinRTTNanos        = %lld\n", src->rtcpRTMinRTTNanos );
-			DataBuffer_AppendF( inDB, "    rtcpRTMaxRTTNanos        = %lld\n", src->rtcpRTMaxRTTNanos );
-			DataBuffer_AppendF( inDB, "    rtcpRTAvgRTTNanos        = %lld\n", src->rtcpRTAvgRTTNanos );
-			DataBuffer_AppendF( inDB, "    rtcpRTDevRTTNanos        = %lld\n", src->rtcpRTDevRTTNanos );
-			DataBuffer_AppendF( inDB, "    rtcpRTTimeoutNanos       = %lld\n", src->rtcpRTTimeoutNanos );
-			DataBuffer_AppendF( inDB, "    retransmitSendCount      = %u\n", src->retransmitSendCount );
-			DataBuffer_AppendF( inDB, "    retransmitReceiveCount   = %u\n", src->retransmitReceiveCount );
-			DataBuffer_AppendF( inDB, "    retransmitFutileCount    = %u\n", src->retransmitFutileCount );
-			DataBuffer_AppendF( inDB, "    retransmitNotFoundCount  = %u\n", src->retransmitNotFoundCount );
-			DataBuffer_AppendF( inDB, "    retransmitMinNanos       = %llu\n", src->retransmitMinNanos );
-			DataBuffer_AppendF( inDB, "    retransmitMaxNanos       = %llu\n", src->retransmitMaxNanos );
-			DataBuffer_AppendF( inDB, "    retransmitAvgNanos       = %llu\n", src->retransmitAvgNanos );
-			DataBuffer_AppendF( inDB, "    retransmitRetryMinNanos  = %llu\n", src->retransmitRetryMinNanos );
-			DataBuffer_AppendF( inDB, "    retransmitRetryMaxNanos  = %llu\n", src->retransmitRetryMaxNanos );
-			DataBuffer_AppendF( inDB, "    maxBurstLoss             = %u\n", src->maxBurstLoss );
-			DataBuffer_AppendF( inDB, "    bigLossCount             = %u\n", src->bigLossCount );
-			DataBuffer_AppendF( inDB, "\n" );
-		}
+		*inArray = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
+		require_action( *inArray, exit, err = kNoMemoryErr );
 	}
+	dictArray = (CFMutableArrayRef)*inArray;
 	
-	// stats -- Show persistent stats.
-	
-	else if( strcmp( inCmd, "stats" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Persistent Stats +-+\n" );
-		
-		if( gAirTunes )
-		{
-			DataBuffer_AppendF( inDB, "    Busy Nodes                                    = current %u free, last %u free, min %u free of %u (%u%% busy)\n", 
-				gAirTunes->nodeCount - gAirTunesDebugBusyNodeCount, 
-				gAirTunes->nodeCount - gAirTunesDebugBusyNodeCountLast, 
-				gAirTunes->nodeCount - gAirTunesDebugBusyNodeCountMax, gAirTunes->nodeCount, 
-				( gAirTunesDebugBusyNodeCount * 100 ) / gAirTunes->nodeCount );
-		}
-		DataBuffer_AppendF( inDB, "    gAirTunesRelativeTimeOffset                   = %d\n", gAirTunesRelativeTimeOffset );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugSentByteCount                   = %llu\n", gAirTunesDebugSentByteCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRecvByteCount                   = %llu\n", gAirTunesDebugRecvByteCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRecvRTPOriginalByteCount        = %llu\n", gAirTunesDebugRecvRTPOriginalByteCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRecvRTPOriginalBytesPerSecAvg   = %llu\n", gAirTunesDebugRecvRTPOriginalBytesPerSecAvg );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRecvRTPRetransmitByteCount      = %llu\n", gAirTunesDebugRecvRTPRetransmitByteCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg = %llu (%llu%%)\n", 
-			gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg, 
-			( gAirTunesDebugRecvRTPOriginalBytesPerSecAvg > 0 ) ? 
-				( gAirTunesDebugRecvRTPRetransmitBytesPerSecAvg * 100 ) / gAirTunesDebugRecvRTPOriginalBytesPerSecAvg : 0 );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugIdleTimeoutCount                = %u\n", gAirTunesDebugIdleTimeoutCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugStolenNodeCount                 = %u\n", gAirTunesDebugStolenNodeCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugOldDiscardCount                 = %u\n", gAirTunesDebugOldDiscardCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugConcealedGapCount               = %u\n", gAirTunesDebugConcealedGapCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugConcealedEndCount               = %u\n", gAirTunesDebugConcealedEndCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLateDropCount                   = %u\n", gAirTunesDebugLateDropCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugSameTimestampCount              = %u\n", gAirTunesDebugSameTimestampCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts ==   1               = %u\n", gAirTunesDebugLossCounts[ 0 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <   5               = %u\n", gAirTunesDebugLossCounts[ 1 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <  10               = %u\n", gAirTunesDebugLossCounts[ 2 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <  20               = %u\n", gAirTunesDebugLossCounts[ 3 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <  30               = %u\n", gAirTunesDebugLossCounts[ 4 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <  40               = %u\n", gAirTunesDebugLossCounts[ 5 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  <  50               = %u\n", gAirTunesDebugLossCounts[ 6 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  < 100               = %u\n", gAirTunesDebugLossCounts[ 7 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts  < 500               = %u\n", gAirTunesDebugLossCounts[ 8 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLossCounts >= 500               = %u\n", gAirTunesDebugLossCounts[ 9 ] );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugTotalLossCount                  = %u\n", gAirTunesDebugTotalLossCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugMaxBurstLoss                    = %u\n", gAirTunesDebugMaxBurstLoss );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugDupCount                        = %u\n", gAirTunesDebugDupCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugMisorderedCount                 = %u\n", gAirTunesDebugMisorderedCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugUnrecoveredPacketCount          = %u\n", gAirTunesDebugUnrecoveredPacketCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugUnexpectedRTPOffsetResetCount   = %u\n", gAirTunesDebugUnexpectedRTPOffsetResetCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugHugeSkewResetCount              = %u\n", gAirTunesDebugHugeSkewResetCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugGlitchCount                     = %u\n", gAirTunesDebugGlitchCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugTimeSyncHugeRTTCount            = %u\n", gAirTunesDebugTimeSyncHugeRTTCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugTimeAnnounceMinNanos            = %llu\n", gAirTunesDebugTimeAnnounceMinNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugTimeAnnounceMaxNanos            = %llu\n", gAirTunesDebugTimeAnnounceMaxNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitActiveCount           = %u\n", gAirTunesDebugRetransmitActiveCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitActiveMax             = %u\n", gAirTunesDebugRetransmitActiveMax );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitSendCount             = %u\n", gAirTunesDebugRetransmitSendCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitSendPerSecAvg         = %u\n", gAirTunesDebugRetransmitSendPerSecAvg );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitRecvCount             = %u\n", gAirTunesDebugRetransmitRecvCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitBigLossCount          = %u\n", gAirTunesDebugRetransmitBigLossCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitAbortCount            = %u\n", gAirTunesDebugRetransmitAbortCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitFutileAbortCount      = %u\n", gAirTunesDebugRetransmitFutileAbortCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitNoFreeNodesCount      = %u\n", gAirTunesDebugRetransmitNoFreeNodesCount);	
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitNotFoundCount         = %u\n", gAirTunesDebugRetransmitNotFoundCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitPrematureCount        = %u\n", gAirTunesDebugRetransmitPrematureCount );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitMaxTries              = %u\n", gAirTunesDebugRetransmitMaxTries );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitMinNanos              = %llu\n", gAirTunesDebugRetransmitMinNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitMaxNanos              = %llu\n", gAirTunesDebugRetransmitMaxNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitAvgNanos              = %llu\n", gAirTunesDebugRetransmitAvgNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitRetryMinNanos         = %llu\n", gAirTunesDebugRetransmitRetryMinNanos );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitRetryMaxNanos         = %llu\n", gAirTunesDebugRetransmitRetryMaxNanos );
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// tweak -- Show tweakable values.
-	
-	else if( strcmp( inCmd, "tweak" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Tweakables Values +-+\n" );
-		DataBuffer_AppendF( inDB, "    gAirTunesDropMinRate                 = %d\n", gAirTunesDropMinRate );
-		DataBuffer_AppendF( inDB, "    gAirTunesDropMaxRate                 = %d\n", gAirTunesDropMaxRate );
-		DataBuffer_AppendF( inDB, "    gAirTunesSkipMinRate                 = %d\n", gAirTunesSkipMinRate );
-		DataBuffer_AppendF( inDB, "    gAirTunesSkipMaxRate                 = %d\n", gAirTunesSkipMaxRate );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugNoSkewSlew             = %s\n", gAirTunesDebugNoSkewSlew ? "PREVENT SLEW" : "ALLOW SLEW" );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugLogAllSkew             = %s\n", gAirTunesDebugLogAllSkew ? "YES" : "NO" );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugNoRetransmits          = %d\n", gAirTunesDebugNoRetransmits );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugPrintPerf              = %d\n", gAirTunesDebugPrintPerf );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugPerfMode               = %d\n", gAirTunesDebugPerfMode );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugRetransmitTiming       = %d\n", gAirTunesDebugRetransmitTiming );
-		DataBuffer_AppendF( inDB, "    gAirTunesDebugPollIntervalTicks      = %llu\n", gAirTunesDebugPollIntervalTicks );
-		DataBuffer_AppendF( inDB, "    kAirTunesBufferNodeCountUDP          = %u\n", kAirTunesBufferNodeCountUDP );
-		DataBuffer_AppendF( inDB, "    kAirTunesRetransmitMaxLoss           = %u\n", kAirTunesRetransmitMaxLoss );
-		DataBuffer_AppendF( inDB, "    kAirTunesRetransmitCount             = %u\n", kAirTunesRetransmitCount );
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// mem -- Show memory usage.
-	
-	else if( strcmp( inCmd, "mem" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Memory Usage +-+\n" );
-		DataBuffer_AppendF( inDB, "sizeof( AirPlayReceiverSession ) = %zu\n", sizeof( struct AirPlayReceiverSessionPrivate ) );
-		DataBuffer_AppendF( inDB, "Packet Buffer Nodes (UDP)        = %6zu bytes per node * %3d nodes = %7zu bytes total\n", 
-			sizeof( AirTunesBufferNode ) + kAirTunesMaxPacketSizeUDP, kAirTunesBufferNodeCountUDP, 
-			( sizeof( AirTunesBufferNode ) + kAirTunesMaxPacketSizeUDP ) * kAirTunesBufferNodeCountUDP );
-		DataBuffer_AppendF( inDB, "RTP socket buffer size            = %d\n", kAirTunesRTPSocketBufferSize );
-		if( gAirTunes ) 
-		DataBuffer_AppendF( inDB, "Decode Buffer Size                = %zu\n", gAirTunes->decodeBufferSize );
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// clockOffsets -- Show clock offset history.
-	
-	else if( strcmp( inCmd, "clockOffsets" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Clock Offset History (%u total) +-+\n", gAirTunesClockOffsetCount );
-		for( i = 0; i < gAirTunesClockOffsetCount; ++i )
-		{
-			if( i == 0 )
-			{
-				DataBuffer_AppendF( inDB, "%+f\n", gAirTunesClockOffsetHistory[ i ] );
-			}
-			else
-			{
-				DataBuffer_AppendF( inDB, "%+f\t%+f\n", gAirTunesClockOffsetHistory[ i ], 
-					gAirTunesClockOffsetHistory[ i ] - gAirTunesClockOffsetHistory[ i - 1 ] );
-			}
-		}
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// rtt -- Show RTT history.
-	
-	else if( strcmp( inCmd, "rtt" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Clock RTT History (%u total) +-+\n", gAirTunesClockRTTCount );
-		for( i = 0; i < gAirTunesClockRTTCount; ++i )
-		{
-			if( i == 0 )
-			{
-				DataBuffer_AppendF( inDB, "%+f\n", gAirTunesClockRTTHistory[ i ] );
-			}
-			else
-			{
-				DataBuffer_AppendF( inDB, "%+f\t%+f\n", gAirTunesClockRTTHistory[ i ], 
-					gAirTunesClockRTTHistory[ i ] - gAirTunesClockRTTHistory[ i - 1 ] );
-			}
-		}
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// rtpOffsets -- Show RTP offset history.
-	
-	else if( strcmp( inCmd, "rtpOffsets" ) == 0 )
-	{
-	#if( DEBUG )
-		uint32_t		prev;
-		uint32_t		curr;
-		
-		DataBuffer_AppendF( inDB, "+-+ AirTunes RTP Offset History (%u total) +-+\n", gAirTunesRTPOffsetCount );
-		prev = gAirTunesRTPOffsetHistory[ 0 ];
-		for( i = 0; i < gAirTunesRTPOffsetCount; ++i )
-		{
-			curr = gAirTunesRTPOffsetHistory[ i ];
-			DataBuffer_AppendF( inDB, "%u %+d\n", curr, (int)( curr - prev ) );
-			prev = curr;
-		}
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// retrans -- Show retransmit history.
-	
-	else if( strcmp( inCmd, "retrans" ) == 0 )
-	{
-	#if( DEBUG )
-		AirTunesRetransmitNode *		node;
-		int								n;
-		uint64_t						nowNanos;
-		
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Retransmit History (%u total) +-+\n", gAirTunesRetransmitCount );
-		
-		if( !gAirTunes )
-		{
-			DataBuffer_AppendF( inDB, "### ERROR: AirTunes not running\n" );
-			goto exitWithOutput;
-		}
-		
-		nowNanos = UpNanoseconds();
-		_SessionLock( gAirTunes );
-		n = 0;
-		for( node = gAirTunes->source.rtcpRTBusyList; node; node = node->next )
-		{
-			DataBuffer_AppendF( inDB, "%3d: retransmit for seq %5hu  T %2hu  start %10llu  next %10lld\n", 
-				n, node->seq, node->tries, nowNanos - node->startNanos, 
-				( node->nextNanos > 0 ) ? node->nextNanos - nowNanos : UINT64_C( 0 ) );
-			++n;
-		}
-		_SessionUnlock( gAirTunes );
-		if( n == 0 ) DataBuffer_AppendF( inDB, "no outstanding retransmits\n" );
-		else		 DataBuffer_AppendF( inDB, "\n" );
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// retransDone -- Show retransmit done history.
-	
-	else if( strcmp( inCmd, "retransDone" ) == 0 )
-	{
-	#if( DEBUG )
-		AirTunesRetransmitHistoryNode *		node;
-		uint64_t							minNanos, maxNanos, sumNanos;
-		unsigned int						j;
-		
-		minNanos = ULLONG_MAX;
-		maxNanos = 0;
-		sumNanos = 0;
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Retransmit Done History (%u total) +-+\n", gAirTunesRetransmitCount );
-		for( i = 0; i < gAirTunesRetransmitCount; ++i )
-		{
-			node = &gAirTunesRetransmitHistory[ i ];
-			if( node->finalNanos < minNanos ) minNanos = node->finalNanos;
-			if( node->finalNanos > maxNanos ) maxNanos = node->finalNanos;
-			sumNanos += node->finalNanos;
-			
-			DataBuffer_AppendF( inDB, "%5u: T %2u  F %10llu  %-9s  ", node->seq, node->tries, node->finalNanos, node->reason );
-			for( j = 0; j < countof( node->tryNanos ); ++j )
-			{
-				DataBuffer_AppendF( inDB, "%10u ", node->tryNanos[ j ] );
-			}
-			DataBuffer_AppendF( inDB, "\n" );
-		}
-		if( gAirTunesRetransmitCount > 0 )
-		{
-			DataBuffer_AppendF( inDB, "Min, Max, Avg Final Nanos: %10llu, %10llu, %10llu\n", minNanos, maxNanos, 
-				sumNanos / gAirTunesRetransmitCount );
-		}
-		else
-		{
-			DataBuffer_AppendF( inDB, "no retransmits\n" );
-		}
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// Help
-	
-	else if( strcmp( inCmd, "help" ) == 0 )
-	{
-	#if( DEBUG )
-		DataBuffer_AppendF( inDB, "+-+ AirTunes Debug Show Commands +-+\n" );
-		DataBuffer_AppendF( inDB, "    globals       -- Show globals.\n" );
-		DataBuffer_AppendF( inDB, "    stats         -- Show persistent stats.\n" );
-		DataBuffer_AppendF( inDB, "    tweak         -- Show tweakable values.\n" );
-		DataBuffer_AppendF( inDB, "    mem           -- Show memory usage.\n" );
-		DataBuffer_AppendF( inDB, "    clockOffsets  -- Show clock offset history.\n" );
-		DataBuffer_AppendF( inDB, "    rtt           -- Show round-trip-time (RTT) history.\n" );
-		DataBuffer_AppendF( inDB, "    rtpOffsets    -- Show RTP offset history.\n" );
-		DataBuffer_AppendF( inDB, "    retrans       -- Show retransmit history.\n" );
-		DataBuffer_AppendF( inDB, "    retransDone   -- Show retransmit done history.\n" );
-		DataBuffer_AppendF( inDB, "\n" );
-	#endif
-	}
-	
-	// Unknown
-	
-	else
-	{
-		dlog( kLogLevelError, "### Unknown command: \"%s\"\n", inCmd );
-		err = kUnsupportedErr;
-		goto exit;
-	}
-	goto exitWithOutput;
-	
-exitWithOutput:
+	dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( dict, exit, err = kNoMemoryErr );
+
+	if( inStreamType != kAudioStreamType_Invalid )
+		CFDictionarySetInt64( dict, kAudioSessionKey_Type, inStreamType );
+	if( inAudioType )
+		CFDictionarySetValue( dict, kAudioSessionKey_AudioType, inAudioType );
+	if( inSampleRate )
+		CFDictionarySetInt64( dict, kAudioSessionKey_SampleRate, inSampleRate );
+	if( inSampleSize )
+		CFDictionarySetInt64( dict, kAudioSessionKey_SampleSize, inSampleSize );
+	if( inChannels )
+		CFDictionarySetInt64( dict, kAudioSessionKey_Channels, inChannels );
+	CFDictionarySetInt64( dict, kAudioSessionKey_InputLatencyMicros, inInputLatency );
+	CFDictionarySetInt64( dict, kAudioSessionKey_OutputLatencyMicros, inOutputLatency );
+
+	CFArrayAppendValue( dictArray, dict );
 	err = kNoErr;
-	
+
 exit:
+	CFReleaseNullSafe( dict );
 	return( err );
 }
 
-#if( 1 && DEBUG )
 //===========================================================================================================================
-//	AirTunesDebugPerf
+//	AirPlayInfoArrayAddAudioFormat
 //===========================================================================================================================
 
-OSStatus	AirTunesDebugPerf( int inPollIntervalSeconds, AirPlayReceiverSessionRef inSession )
+OSStatus
+AirPlayInfoArrayAddAudioFormat(
+	CFArrayRef *			inArray,
+	AudioStreamType			inStreamType,
+	CFStringRef				inAudioType,
+	AirPlayAudioFormat		inInputFormats,
+	AirPlayAudioFormat		inOutputFormats )
 {
-	uint64_t		ticks;
-	
-	ticks = UpTicks();
-	if( !inSession )
-	{
-		inSession = gAirTunes;
-		if( !inSession ) goto exit;
-	}
-	else if( ( ticks - gAirTunesDebugLastPollTicks ) < gAirTunesDebugPollIntervalTicks )
-	{
-		goto exit;
-	}
-	gAirTunesDebugLastPollTicks = ticks;
-	
-	if( gAirTunesDebugPerfMode == 0 ) // Packet Info
-	{
-		uint64_t		sentDiff;
-		uint64_t		recvDiff;
-		uint16_t		seqDiff;
-		uint32_t		lossDiff;
-		uint32_t		recvCountDiff;
-		uint32_t		glitchDiff;
-		double			lossPercent;
-		double			deltaTime;
-		AirTunesTime	nowAT;
-		double			nowFP;
-		
-		sentDiff = gAirTunesDebugSentByteCount - gAirTunesDebugSentByteCountLast;
-		gAirTunesDebugSentByteCountLast += sentDiff;
-		
-		recvDiff = gAirTunesDebugRecvByteCount - gAirTunesDebugRecvByteCountLast;
-		gAirTunesDebugRecvByteCountLast += recvDiff;
-		
-		if( gAirTunesDebugHighestSeqLast == 0 ) gAirTunesDebugHighestSeqLast = inSession->lastRTPSeq;
-		seqDiff = inSession->lastRTPSeq - gAirTunesDebugHighestSeqLast;
-		gAirTunesDebugHighestSeqLast += seqDiff;
-		
-		lossDiff = gAirTunesDebugTotalLossCount - gAirTunesDebugTotalLossCountLast;
-		gAirTunesDebugTotalLossCountLast += lossDiff;
-		if( seqDiff != 0 )	lossPercent = ( ( (double) lossDiff ) / ( (double) seqDiff ) ) * 100.0;
-		else				lossPercent = 0;
-		
-		recvCountDiff = inSession->source.receiveCount - gAirTunesDebugRecvCountLast;
-		gAirTunesDebugRecvCountLast += recvCountDiff;
-					
-		glitchDiff = gAirTunesDebugGlitchCount - gAirTunesDebugGlitchCountLast;
-		gAirTunesDebugGlitchCountLast += glitchDiff;
-		
-		deltaTime = ( (double)( ticks - gAirTunesDebugLastPollTicks ) ) / ( (double) UpTicksPerSecond() );
-		AirTunesClock_GetSynchronizedTime( inSession->airTunesClock, &nowAT );
-		nowFP = AirTunesTime_ToFP( &nowAT );
-		
-		dlog( kLogLevelMax, "S %3llu bytes, R %6llu bytes, R %4u pkts, E %4hu pkts, L %2u pkts, L %5.2f%%, G %3u, D %.0f secs, T %.0f secs\n", 
-			sentDiff, recvDiff, (int) recvCountDiff, seqDiff, (int) lossDiff, lossPercent, (int) glitchDiff, deltaTime, nowFP );
-	}
-	
-exit:
-	if( inPollIntervalSeconds >= 0 )
-	{
-		gAirTunesDebugPollIntervalTicks = inPollIntervalSeconds * UpTicksPerSecond();
-		gAirTunesDebugPrintPerf			= ( inPollIntervalSeconds > 0 );
-	}
-	return( kNoErr );
-}
-#endif // 1 && DEBUG
+	OSStatus				err;
+	CFMutableArrayRef		dictArray;
+	CFMutableDictionaryRef	dict = NULL;
 
+	if( *inArray == NULL )
+	{
+		*inArray = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
+		require_action( *inArray, exit, err = kNoMemoryErr );
+	}
+	dictArray = (CFMutableArrayRef)*inArray;
+	
+	dict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( dict, exit, err = kNoMemoryErr );
+
+	if( inStreamType != kAudioStreamType_Invalid )
+		CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_Type ), inStreamType );
+	if( inAudioType )
+		CFDictionarySetValue( dict, CFSTR( kAirPlayKey_AudioType ), inAudioType );
+	if( inInputFormats )
+		CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioInputFormats ), inInputFormats );
+	if( inOutputFormats )
+		CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_AudioOutputFormats ), inOutputFormats );
+
+	CFArrayAppendValue( dictArray, dict );
+	err = kNoErr;
+
+exit:
+	CFReleaseNullSafe( dict );
+	return( err );
+}
+
+//===========================================================================================================================
+//	AirPlayInfoArrayAddScreenDisplay
+//===========================================================================================================================
+
+OSStatus
+AirPlayInfoArrayAddScreenDisplay(
+	CFArrayRef *						inArray,
+	CFStringRef							inUUID,
+	AirPlayDisplayFeatures				inFeatures,
+	AirPlayDisplayPrimaryInputDevice	inPrimaryDevice,
+	uint32_t							inMaxFPS,
+	uint32_t							inWidthPixels,
+	uint32_t							inHeightPixels,
+	uint32_t							inWidthPhysical,
+	uint32_t							inHeightPhysical )
+{
+	OSStatus				err;
+	CFMutableArrayRef		dictArray;
+	CFMutableDictionaryRef	dict = NULL;
+
+	if( *inArray == NULL )
+	{
+		*inArray = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
+		require_action( *inArray, exit, err = kNoMemoryErr );
+	}
+	dictArray = (CFMutableArrayRef)*inArray;
+	
+	dict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( dict, exit, err = kNoMemoryErr );
+
+	CFDictionarySetValue( dict, CFSTR( kAirPlayKey_UUID ), inUUID );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_DisplayFeatures ), inFeatures );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_PrimaryInputDevice ), inPrimaryDevice );
+	if( inMaxFPS )
+		CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_MaxFPS ), inMaxFPS );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_WidthPixels ), inWidthPixels );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_HeightPixels ), inHeightPixels );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_WidthPhysical ), inWidthPhysical );
+	CFDictionarySetInt64( dict, CFSTR( kAirPlayKey_HeightPhysical ), inHeightPhysical );
+
+	CFArrayAppendValue( dictArray, dict );
+	err = kNoErr;
+
+exit:
+	CFReleaseNullSafe( dict );
+	return( err );
+}

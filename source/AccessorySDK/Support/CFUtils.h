@@ -2,7 +2,7 @@
 	File:    	CFUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2000-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2000-2014 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef __CFUtils_h__
@@ -135,13 +135,6 @@ CFTypeRef	CFCreateV( OSStatus *outErr, const char *inFormat, va_list inArgs );
 
 OSStatus	CFPropertyListCreateFormatted( CFAllocatorRef inAllocator, void *outObj, const char *inFormat, ... );
 OSStatus	CFPropertyListCreateFormattedVAList( CFAllocatorRef inAllocator, void *outObj, const char *inFormat, va_list inArgs );
-OSStatus	CFPropertyListAppendFormatted( CFAllocatorRef inAllocator, CFTypeRef inParent, const char *inFormat, ... );
-OSStatus
-	CFPropertyListAppendFormattedVAList( 
-		CFAllocatorRef	inAllocator, 
-		CFTypeRef 		inParent, 
-		const char *	inFormat, 
-		va_list 		inArgs );
 OSStatus
 	CFPropertyListBuildFormatted( 
 		CFAllocatorRef	inAllocator, 
@@ -151,112 +144,8 @@ OSStatus
 		va_list 		inArgs );
 
 #if 0
-#pragma mark == Formatted Extracting and Validation ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFPropertyListExtractFormatted
-	@abstract	Extracts an object using a format string path (e.g. "key 1.%ks.[1]").
-	
-	@param		inObj		Object to extract from.
-	@param		outResult	Receives found object.
-	@param		inFormat	Format string made up of the format specifiers specified below.
-	
-		<pre><code>
-		
-		Spec	Purpose									Parameters
-		-------	---------------------------------------	----------
-		<key>	Lookup inline key in dictionary			none
-		%kC		Lookup FourCharCode key in dictionary	uint32_t code (e.g. 'APPL'/0x4150504C).
-		%ki		Lookup string-based integer key			uint64_t integerKey
-		%ks		Lookup c-string key in dictionary		const char *key
-		%kt		Lookup text key in dictionary			const char *key, int keySize
-		%kO		Lookup object key in dictionary			CFStringRef key
-		[n]		Lookup inline index n in array			none
-		[*]		Lookup variable index n in array		int index
-		
-		Conversion Types	Purpose								Parameter				Comment
-		-------------------	-----------------------------------	-----------------------	-------
-		bool				CFBoolean to Boolean				Boolean *outBool
-		code				CFString to OSType					uint32_t *outCode
-		data*				CFData to const void *				void **outPtr			Last va_arg is size_t expected size.
-		err					CFNumber or CFString to OSStatus	OSStatus *outErr
-		int					CFNumber or CFString to int			int *outValue
-		int8				CFNumber or CFString to int8		int8_t *outValue
-		int16				CFNumber or CFString to int16_t		int16_t *outValue
-		int64				CFNumber or CFString to int64_t		int64_t *outValue
-		int*				CFNumber or CFString to integer		void *outValue			Last va_arg is size_t sizeof( integer ).
-		ipv4				CFString to IPv4 address			uint32_t *outIPv4		Returned in host byte order.
-		mac					CFData or CFString MAC address		uint8_t outMAC[ 6 ]		outMAC must be at least 6 bytes.
-		macStr				CFData or CFString MAC address		char outMACStr[ 18 ]	outMACStr must be at least 18 bytes.
-		obj					Retained CF object					CFTypeRef *outObj		Caller must CFRelease on success.
-		utf8				CFString to malloc'd UTF-8			char **outString		Caller must free on success.
-		*utf8				CFString to fixed-size UTF-8		char *inBuffer			Last va_arg is size_t inBufferSize.
-		vers				CFString to 32-bit NumVersion		uint32_t *outVersion
-		svers				CFString to 32-bit Source Version	uint32_t *outVersion
-		uuid				CFData or CFString to 16-bytes		uint8_t outUUID[ 16 ]	Returns a big endian UUID.
-		<n>					CFData to n-bytes of data			uint8_t outData[ n ]	outData must be at least n bytes.
-		
-		</code></pre>
-		
-	param		ARGS		Variable number of arguments based on the format string.
-	
-	@result		An error code indicating failure reason or kNoErr (0) if successful.
-*/
-OSStatus	CFPropertyListExtractFormatted( CFPropertyListRef inObj, void *outResult, const char *inFormat, ... );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFPropertyListExtractFormattedVAList
-	@abstract	va_list version of CFPropertyListExtractFormatted. See CFPropertyListExtractFormatted for details.
-*/
-OSStatus	CFPropertyListExtractFormattedVAList( CFPropertyListRef inObj, void *outResult, const char *inFormat, va_list inArgs );
-
-#if 0
 #pragma mark == Serialization ==
 #endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFCreateWithPlistBytes
-	@abstract	Creates a CF object from the bytes of a binary/XML plist and optionally checks its type.
-*/
-CF_RETURNS_RETAINED
-CFTypeRef	CFCreateWithPlistBytes( const void *inPtr, size_t inLen, uint32_t inFlags, CFTypeID inType, OSStatus *outErr );
-
-#define CFDictionaryCreateWithBytes( PTR, LEN, OUT_ERR ) \
-	( (CFDictionaryRef) CFCreateWithPlistBytes( (PTR), (LEN), kCFPropertyListImmutable, CFDictionaryGetTypeID(), (OUT_ERR ) ) )
-
-#define CFDictionaryCreateMutableWithBytes( PTR, LEN, OUT_ERR ) \
-	( (CFMutableDictionaryRef) CFCreateWithPlistBytes( (PTR), (LEN), kCFPropertyListMutableContainers, CFDictionaryGetTypeID(), (OUT_ERR ) ) )
-
-#define CFArrayCreateWithBytes( PTR, LEN, OUT_ERR ) \
-	( (CFArrayRef) CFCreateWithPlistBytes( (PTR), (LEN), kCFPropertyListImmutable, CFArrayGetTypeID(), (OUT_ERR ) ) )
-
-#define CFArrayCreateMutableWithBytes( PTR, LEN, OUT_ERR ) \
-	( (CFMutableArrayRef) CFCreateWithPlistBytes( (PTR), (LEN), kCFPropertyListMutableContainers, CFArrayGetTypeID(), (OUT_ERR ) ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFCreateObjectFromString
-	@abstract	Creates a CF object by parsing the string and trying to figure out what type of object to create.
-	@discussion
-	
-	Here's the guidelines it follows to determine the object type:
-	
-		Case insensitive "true"  / "yes" / "y" / "on"  are turned into kCFBooleanTrue.
-		Case insensitive "false" / "no"	 / "n" / "off" are turned into kCFBooleanFalse.
-		Binary (e.g. 0b01101000), decimal (e.g. 10), hex (e.g. 0x10), or octal (e.g. 0177) strings are turned into CFNumber.
-		"[]" is turned into an empty array.
-		"{}" is turned into an empty dictionary.
-		Anything else is treated as a simple string.
-		
-		Type can be --bool for booleans.
-		Type can be --integer for integers.
-		Type can be --hex for hex data to convert to CFData.
-		Type can be --txt to convert space separated name=value pairs into a CFData DNS TXT record.
-		Type can be --array for arrays.
-		Type can be --dict for dictionaries.
-*/
-OSStatus	CFCreateObjectFromString( const char *inStr, CFTypeRef *outObj );
-OSStatus	CFCreateObjectFromStringEx( const char *inStr, const char *inType, CFTypeRef *outObj );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryCreateWithINIBytes
@@ -306,24 +195,6 @@ CFTypeRef	CFPropertyListCreateFromFilePath( const char *inPath, CFOptionFlags in
 OSStatus	CFPropertyListWriteToFilePath( CFPropertyListRef inPlist, const char *inFormat, const char *inPath );
 OSStatus	CFPropertyListWriteToANSIFile( CFPropertyListRef inPlist, const char *inFormat, FILE *inFile );
 
-#if 0
-#pragma mark == IOKit ==
-#endif
-
-//===========================================================================================================================
-//	CFIOKitObject -- CF wrapper around io_object_t to allow tracking in CF collections.
-//===========================================================================================================================
-
-#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
-
-typedef struct CFIOKitObjectPrivate *	CFIOKitObjectRef;
-
-CFTypeID	CFIOKitObjectGetTypeID( void );
-OSStatus	CFIOKitObjectCreate( CFIOKitObjectRef *outObj, io_object_t inIOKitObject );
-io_object_t	CFIOKitObjectGetIOKitObject( CFIOKitObjectRef inObj );
-
-#endif
-
 #if( GCD_ENABLED )
 //===========================================================================================================================
 //	Object Accessors
@@ -368,73 +239,6 @@ OSStatus
 		dispatch_queue_t			inResponseQueue, 
 		CFObjectControlResponseFunc	inResponseFunc, 
 		void *						inResponseContext );
-
-OSStatus
-	CFObjectControlAsyncF( 
-		CFTypeRef					inObject,
-		dispatch_queue_t			inQueue, 
-		CFObjectControlFunc			inFunc, 
-		CFObjectFlags				inFlags, 
-		CFStringRef					inCommand, 
-		CFTypeRef					inQualifier, 
-		dispatch_queue_t			inResponseQueue, 
-		CFObjectControlResponseFunc	inResponseFunc, 
-		void *						inResponseContext, 
-		const char *				inFormat, 
-		... );
-
-OSStatus
-	CFObjectControlAsyncV( 
-		CFTypeRef					inObject,
-		dispatch_queue_t			inQueue, 
-		CFObjectControlFunc			inFunc, 
-		CFObjectFlags				inFlags, 
-		CFStringRef					inCommand, 
-		CFTypeRef					inQualifier, 
-		dispatch_queue_t			inResponseQueue, 
-		CFObjectControlResponseFunc	inResponseFunc, 
-		void *						inResponseContext, 
-		const char *				inFormat, 
-		va_list						inArgs );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		CFObjectControlSync
-	@abstract	Synchronously performs commands on an object.
-*/
-OSStatus
-	CFObjectControlSync( 
-		CFTypeRef				inObject, 
-		dispatch_queue_t		inQueue, 
-		CFObjectControlFunc		inFunc, 
-		CFObjectFlags			inFlags, 
-		CFStringRef				inCommand, 
-		CFTypeRef				inQualifier, 
-		CFDictionaryRef			inParams, 
-		CFDictionaryRef *		outResponse );
-
-OSStatus
-	CFObjectControlSyncF( 
-		CFTypeRef				inObject, 
-		dispatch_queue_t		inQueue, 
-		CFObjectControlFunc		inFunc, 
-		CFObjectFlags			inFlags, 
-		CFStringRef				inCommand, 
-		CFTypeRef				inQualifier, 
-		CFDictionaryRef *		outResponse, 
-		const char *			inFormat, 
-		... );
-
-OSStatus
-	CFObjectControlSyncV( 
-		CFTypeRef				inObject, 
-		dispatch_queue_t		inQueue, 
-		CFObjectControlFunc		inFunc, 
-		CFObjectFlags			inFlags, 
-		CFStringRef				inCommand, 
-		CFTypeRef				inQualifier, 
-		CFDictionaryRef *		outResponse, 
-		const char *			inFormat, 
-		va_list					inArgs );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@group		CFObjectCopyProperty
@@ -746,9 +550,6 @@ CF_RETURNS_RETAINED STATIC_INLINE CFBooleanRef	PREFIX##CopyCFBoolean( TYPE_NAME 
 CF_RETURNS_RETAINED STATIC_INLINE CFDataRef	PREFIX##CopyCFData( TYPE_NAME inObj, CFStringRef inKey, OSStatus *outErr ) \
 { return( CFObjectCopyCFData( inObj, (GETTER), inKey, outErr ) ); } \
 \
-CF_RETURNS_RETAINED STATIC_INLINE CFDateRef	PREFIX##CopyCFDate( TYPE_NAME inObj, CFStringRef inKey, OSStatus *outErr ) \
-{ return( CFObjectCopyCFDate( inObj, (GETTER), inKey, outErr ) ); } \
-\
 CF_RETURNS_RETAINED STATIC_INLINE CFDictionaryRef	PREFIX##CopyCFDictionary( TYPE_NAME inObj, CFStringRef inKey, OSStatus *outErr ) \
 { return( CFObjectCopyCFDictionary( inObj, (GETTER), inKey, outErr ) ); } \
 \
@@ -843,21 +644,18 @@ STATIC_INLINE OSStatus	PREFIX##SetMACAddress( TYPE_NAME inObj, CFStringRef inKey
 	@discussion	See conversion rules for CFGetInt64. Any non-zero value is mapped to true. 0 is mapped to false.
 */
 #define CFGetBoolean( OBJ, OUT_ERR )	( ( CFGetInt64( (OBJ), (OUT_ERR ) ) != 0 ) ? true : false )
-#define NSGetBoolean( OBJ, OUT_ERR )	( ( NSGetInt64( (OBJ), (OUT_ERR ) ) != 0 ) ? true : false )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFCopyCString
 	@abstract	Copies a C string representation of a CF object.
 */
 char *	CFCopyCString( CFTypeRef inObj, OSStatus *outErr );
-#define NSCopyCString( OBJ, OUT_ERR )	CFCopyCString( (__bridge CFTypeRef)(OBJ), (OUT_ERR) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFGetCString
 	@abstract	Gets a C string representation from a CF object.
 */
 char *	CFGetCString( CFTypeRef inObj, char *inBuf, size_t inMaxLen );
-#define NSGetCString( OBJ, BUF, MAX_LEN )	CFGetCString( (__bridge CFTypeRef)(OBJ), (BUF), (MAX_LEN) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFCopyData
@@ -872,7 +670,6 @@ CF_RETURNS_RETAINED
 CFDataRef	CFCopyCFData( CFTypeRef inObj, size_t *outLen, OSStatus *outErr );
 
 uint8_t *	CFCopyData( CFTypeRef inObj, size_t *outLen, OSStatus *outErr );
-#define		NSCopyBytes( OBJ, OUT_LEN, OUT_ERR )	CFCopyData( (__bridge CFTypeRef)(OBJ), (OUT_LEN), (OUT_ERR) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFGetData
@@ -884,8 +681,6 @@ uint8_t *	CFCopyData( CFTypeRef inObj, size_t *outLen, OSStatus *outErr );
 	Other:		Unsupported.
 */
 uint8_t *	CFGetData( CFTypeRef inObj, void *inBuf, size_t inMaxLen, size_t *outLen, OSStatus *outErr );
-#define		NSGetBytes( OBJ, BUF, MAX_LEN, OUT_LEN, OUT_ERR ) \
-	CFGetData( (__bridge CFTypeRef)(OBJ), (BUF), (MAX_LEN), (OUT_LEN), (OUT_ERR) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFGetDouble
@@ -905,7 +700,6 @@ uint8_t *	CFGetData( CFTypeRef inObj, void *inBuf, size_t inMaxLen, size_t *outL
 	CFData:				Converts big endian integer value to integer. Error if > 8 bytes.
 */
 double	CFGetDouble( CFTypeRef inObj, OSStatus *outErr );
-#define NSGetDouble( OBJ, OUT_ERR )		CFGetDouble( (__bridge CFTypeRef)(OBJ), (OUT_ERR) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFGetHardwareAddress
@@ -917,11 +711,8 @@ double	CFGetDouble( CFTypeRef inObj, OSStatus *outErr );
 	CFData:		Converts big endian bytes to 48-bit or 64-bit scalar. Returns raw bytes if output buffer is provided.
 */
 uint64_t	CFGetHardwareAddress( CFTypeRef inObj, uint8_t *inBuf, size_t inLen, OSStatus *outErr );
-#define		NSGetHardwareAddress( OBJ, BUF, LEN, OUT_ERR ) \
-	CFGetHardwareAddress( (__bridge CFTypeRef)(OBJ), (BUF), (LEN), (OUT_ERR) )
 
 #define		CFGetMACAddress( OBJ, BUF, OUT_ERR )	CFGetHardwareAddress( (OBJ), (BUF), 6, (OUT_ERR) )
-#define		NSGetMACAddress( OBJ, BUF, OUT_ERR )	NSGetHardwareAddress( (OBJ), (BUF), 6, (OUT_ERR) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFGetInt64
@@ -942,8 +733,6 @@ uint64_t	CFGetHardwareAddress( CFTypeRef inObj, uint8_t *inBuf, size_t inLen, OS
 */
 int64_t	CFGetInt64( CFTypeRef inObj, OSStatus *outErr );
 #define CFGetUInt64( OBJ, OUT_ERR )		( (uint64_t) CFGetInt64( (OBJ), (OUT_ERR) ) )
-#define NSGetInt64( OBJ, OUT_ERR )		CFGetInt64( (__bridge CFTypeRef)(OBJ), (OUT_ERR) )
-#define NSGetUInt64( OBJ, OUT_ERR )		( (uint64_t) NSGetInt64( (OBJ), (OUT_ERR) ) )
 
 int64_t	CFGetInt64Ranged( CFTypeRef inObj, int64_t inMin, int64_t inMax, OSStatus *outErr );
 #define CFGetSInt8( OBJ, OUT_ERR )		( (int8_t)   CFGetInt64Ranged( (OBJ), INT8_MIN, INT8_MAX, OUT_ERR ) )
@@ -952,15 +741,6 @@ int64_t	CFGetInt64Ranged( CFTypeRef inObj, int64_t inMin, int64_t inMax, OSStatu
 #define CFGetUInt16( OBJ, OUT_ERR )		( (uint16_t) CFGetInt64Ranged( (OBJ), 0, UINT16_MAX, OUT_ERR ) )
 #define CFGetSInt32( OBJ, OUT_ERR )		( (int32_t)  CFGetInt64Ranged( (OBJ), INT32_MIN, INT32_MAX, OUT_ERR ) )
 #define CFGetUInt32( OBJ, OUT_ERR )		( (uint32_t) CFGetInt64Ranged( (OBJ), 0, UINT32_MAX, OUT_ERR ) )
-
-#define NSGetInt64Ranged( OBJ, MIN, MAX, OUT_ERR ) \
-		CFGetInt64Ranged( (__bridge CFTypeRef)(OBJ), (MIN), (MAX), (OUT_ERR) )
-#define NSGetSInt8( OBJ, OUT_ERR )		( (int8_t)   NSGetInt64Ranged( (OBJ), INT8_MIN, INT8_MAX, OUT_ERR ) )
-#define NSGetUInt8( OBJ, OUT_ERR )		( (uint8_t)  NSGetInt64Ranged( (OBJ), 0, UINT8_MAX, OUT_ERR ) )
-#define NSGetSInt16( OBJ, OUT_ERR )		( (int16_t)  NSGetInt64Ranged( (OBJ), INT16_MIN, INT16_MAX, OUT_ERR ) )
-#define NSGetUInt16( OBJ, OUT_ERR )		( (uint16_t) NSGetInt64Ranged( (OBJ), 0, UINT16_MAX, OUT_ERR ) )
-#define NSGetSInt32( OBJ, OUT_ERR )		( (int32_t)  NSGetInt64Ranged( (OBJ), INT32_MIN, INT32_MAX, OUT_ERR ) )
-#define NSGetUInt32( OBJ, OUT_ERR )		( (uint32_t) NSGetInt64Ranged( (OBJ), 0, UINT32_MAX, OUT_ERR ) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFCreateUUIDString
@@ -985,33 +765,12 @@ CFStringRef	CFCreateUUIDString( const void *inUUID, size_t inSize, const void *i
 */
 OSStatus	CFGetUUID( CFTypeRef inObj, uint8_t outUUID[ 16 ] );
 #define		CFGetUUID( OBJ, OUT_UUID )			CFGetUUIDEx( (OBJ), NULL, (OUT_UUID) )
-#define		NSGetUUID( OBJ, BASE, OUT_UUID )	CFGetUUIDEx( (__bridge CFTypeRef)(OBJ), (BASE), (OUT_UUID) )
 
 OSStatus	CFGetUUIDEx( CFTypeRef inObj, const uint8_t *inBaseUUID, uint8_t outUUID[ 16 ] );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFSetObjectAtPath
-	@abstract	Sets a CF object a path inside of a plist.
-	@discussion
-	
-	This lets you dig into a plist using a dot-separated path of object keys or array indexes and set a value.
-	
-	CFSetObjectAtPath( plist, "key1.key2.[2].key4", CFSTR( "newValue" ) );
-*/
-OSStatus	CFSetObjectAtPath( CFTypeRef inPlist, const char *inPath, CFTypeRef inObj );
 
 #if 0
 #pragma mark -
 #pragma mark == Type-specific Utilities ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFArrayApplyBlock
-	@abstract	Block-based versions of the CF collection iteration functions.
-*/
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-	typedef void ( ^CFArrayApplierBlock )( const void *inValue );
-	void	CFArrayApplyBlock( CFArrayRef inArray, CFRange inRange, CFArrayApplierBlock inBlock );
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
@@ -1028,13 +787,6 @@ OSStatus	CFArrayAppendInt64( CFMutableArrayRef inArray, int64_t inValue );
 	@param		inLen	Number of bytes in string. May be kSizeCString if the string is NUL terminated.
 */
 OSStatus	CFArrayAppendCString( CFMutableArrayRef inArray, const char *inStr, size_t inLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFArrayCreateSortedByKeyPath	
-	@abstract	Sorts an array into a new array using the key path to sort.
-*/
-CF_RETURNS_RETAINED
-CFArrayRef			CFArrayCreateSortedByKeyPath( CFArrayRef inArray, const char *inKeyPath );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFArrayEnsureCreatedAndAppend
@@ -1119,44 +871,11 @@ OSStatus
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFDictionaryApplyBlock
-	@abstract	Block-based versions of the CF collection iteration functions.
-*/
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-	typedef void ( ^CFDictionaryApplierBlock )( const void *inKey, const void *inValue );
-	void	CFDictionaryApplyBlock( CFDictionaryRef inSet, CFDictionaryApplierBlock inBlock );
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryCopyKeys
 	@abstract	Copies all the keys of a dictionary into an array.
 */
 CF_RETURNS_RETAINED
 CFArrayRef	CFDictionaryCopyKeys( CFDictionaryRef inDict, OSStatus *outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFDictionaryCreateFromNameTypeValueArgList
-	@abstract	Creates a dictionary key/value pairs from an arg list of strings of the form "name:type:value" where type 
-				must be one of the following:
-				
-				b (Boolean):		Value must be case insensitive "true", "false", "yes", "no", "y", "n", "1", or "0".
-				i (Integer):		Value must be a decimal, hex (0x), or octal (0) integer string.
-				m (MAC address):	Value must be a MAC address string (e.g. "00:11:22:33:44:55").
-				s (String):			Value is any UTF-8 compatible string.
-				u (UUID):			Value must be a big-endian UUID string (e.g. "069E4F7B-06E9-4BDE-8BB5-C902F0D1FF8E").
-				h (Hex):			Value must be a hex-encoding string (e.g. "00112233AABB").
-				{} (dictionary):	Value must be empty or a comma-separated (backslash-escaped) list of name=value pairs.
-				[] (array):			Value must be empty.
-				s[] (string array):	Value must be empty or a comma-separated (backslash-escaped) list of strings.
-*/
-OSStatus	CFDictionaryCreateFromNameTypeValueArgList( CFDictionaryRef *outDict, int inArgI, int inArgC, const char *inArgV[] );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFDictionaryCreateWithCFStringArray
-	@abstract	Creates a dictionary of key/boolean pairs with the key's coming from a CFArray of CFString's.
-*/
-OSStatus	CFDictionaryCreateWithCFStringArray( CFArrayRef inArray, CFMutableDictionaryRef *outDict );
-OSStatus	CFDictionaryCreateWithFourCharCodeArray( const uint32_t inArray[], size_t inCount, CFMutableDictionaryRef *outDict );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryMergeDictionary
@@ -1170,16 +889,10 @@ OSStatus	CFDictionaryMergeDictionary( CFMutableDictionaryRef inDestinationDict, 
 	@discussion	Note: inLen may be kSizeCString if it's a null-terminated string.
 */
 char *		CFDictionaryCopyCString( CFDictionaryRef inDict, const void *inKey, OSStatus *outErr );
-#define		NSDictionaryCopyCString( DICT, KEY, OUT_ERR ) \
-			CFDictionaryCopyCString( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) )
 
 char *		CFDictionaryGetCString( CFDictionaryRef inDict, const void *inKey, char *inBuf, size_t inMaxLen, OSStatus *outErr );
-#define		NSDictionaryGetCString( DICT, KEY, BUF, MAX_LEN, OUT_ERR ) \
-			CFDictionaryGetCString( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (BUF), (MAX_LEN), (OUT_ERR) )
 	
 OSStatus	CFDictionarySetCString( CFMutableDictionaryRef inDict, const void *inKey, const void *inStr, size_t inLen );
-#define		NSDictionarySetCString( DICT, KEY, STR, LEN ) \
-			CFDictionarySetCString( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (STR), (LEN) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryGetData
@@ -1198,8 +911,6 @@ uint8_t *
 		const void *	inKey, 
 		size_t *		outLen, 
 		OSStatus *		outErr );
-#define NSDictionaryCopyBytes( DICT, KEY, LEN, OUT_ERR ) \
-		CFDictionaryCopyData( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (LEN), (OUT_ERR) )
 
 uint8_t *
 	CFDictionaryGetData( 
@@ -1209,33 +920,21 @@ uint8_t *
 		size_t			inMaxLen, 
 		size_t *		outLen, 
 		OSStatus *		outErr );
-#define NSDictionaryGetBytes( DICT, KEY, BUF, MAX_LEN, OUT_LEN, OUT_ERR ) \
-		CFDictionaryGetData( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (BUF), (MAX_LEN), (OUT_LEN), (OUT_ERR) )
 
 OSStatus	CFDictionarySetData( CFMutableDictionaryRef inDict, const void *inKey, const void *inData, size_t inLen );
-#define		NSDictionarySetBytes( DICT, KEY, PTR, LEN ) \
-			CFDictionarySetData( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (PTR), (LEN) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryGetBoolean / CFDictionaryGetDouble / CFDictionaryGetInt64 / CFDictionarySetNumber
 	@abstract	Gets or sets a CFDictionary key to/from a CFNumber value to/from a boolean/double/int/float/etc value.
 */
 #define		CFDictionaryGetBoolean( DICT, KEY, OUT_ERR )	( ( CFDictionaryGetInt64( (DICT), (KEY), (OUT_ERR ) ) != 0 ) ? true : false )
-#define		NSDictionaryGetBoolean( DICT, KEY, OUT_ERR ) \
-			CFDictionaryGetBoolean( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) )
 
 #define		CFDictionarySetBoolean( DICT, KEY, X ) \
 			CFDictionarySetValue( (DICT), (KEY), (X) ? kCFBooleanTrue : kCFBooleanFalse )
-#define		NSDictionarySetBoolean( DICT, KEY, X ) \
-			CFDictionarySetBoolean( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (X) )
 
 double		CFDictionaryGetDouble( CFDictionaryRef inDict, const void *inKey, OSStatus *outErr );
-#define		NSDictionaryGetDouble( DICT, KEY, OUT_ERR ) \
-			CFDictionaryGetDouble( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) )
 
 OSStatus	CFDictionarySetDouble( CFMutableDictionaryRef inDict, const void *inKey, double x );
-#define		NSDictionarySetDouble( DICT, KEY, X ) \
-			CFDictionarySetDouble( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (X) )
 
 uint64_t
 	CFDictionaryGetHardwareAddress( 
@@ -1244,28 +943,16 @@ uint64_t
 		uint8_t *		inBuf, 
 		size_t			inLen, 
 		OSStatus *		outErr );
-#define		NSDictionaryGetHardwareAddress( DICT, KEY, BUF, LEN, OUT_ERR ) \
-			CFDictionaryGetHardwareAddress( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (BUF), (LEN), (OUT_ERR) )
 
 #define		CFDictionaryGetMACAddress( DICT, KEY, BUF, OUT_ERR ) \
 			CFDictionaryGetHardwareAddress( (DICT), (KEY), (BUF), 6, (OUT_ERR) )
-#define		NSDictionaryGetMACAddress( DICT, KEY, BUF, OUT_ERR ) \
-			CFDictionaryGetMACAddress( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (BUF), (OUT_ERR) )
 
 OSStatus	CFDictionarySetHardwareAddress( CFMutableDictionaryRef inDict, const void *inKey, const void *inAddr, size_t inLen );
-#define		NSDictionarySetHardwareAddress( DICT, KEY, ADDR, LEN ) \
-			CFDictionarySetHardwareAddress( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (ADDR), (LEN) )
 
 #define		CFDictionarySetMACAddress( DICT, KEY, ADDR )	CFDictionarySetHardwareAddress( (DICT), (KEY), (ADDR), 6 )
-#define		NSDictionarySetMACAddress( DICT, KEY, ADDR ) \
-			CFDictionarySetMACAddress( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (ADDR) )
 
 int64_t		CFDictionaryGetInt64( CFDictionaryRef inDict, const void *inKey, OSStatus *outErr );
 #define		CFDictionaryGetUInt64( DICT, KEY, OUT_ERR )		( (uint64_t) CFDictionaryGetInt64( (DICT), (KEY), (OUT_ERR) ) )
-
-#define		NSDictionaryGetInt64( DICT, KEY, OUT_ERR ) \
-			CFDictionaryGetInt64( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) )
-#define		NSDictionaryGetUInt64( DICT, KEY, OUT_ERR )		( (uint64_t) NSDictionaryGetInt64( (DICT), (KEY), (OUT_ERR) ) )
 
 int64_t		CFDictionaryGetInt64Ranged( CFDictionaryRef inDict, const void *inKey, int64_t inMin, int64_t inMax, OSStatus *outErr );
 #define		CFDictionaryGetSInt8( DICT, KEY, OUT_ERR )		( (int8_t)   CFDictionaryGetInt64Ranged( (DICT), (KEY), INT8_MIN, INT8_MAX, OUT_ERR ) )
@@ -1275,28 +962,13 @@ int64_t		CFDictionaryGetInt64Ranged( CFDictionaryRef inDict, const void *inKey, 
 #define		CFDictionaryGetSInt32( DICT, KEY, OUT_ERR )		( (int32_t)  CFDictionaryGetInt64Ranged( (DICT), (KEY), INT32_MIN, INT32_MAX, OUT_ERR ) )
 #define		CFDictionaryGetUInt32( DICT, KEY, OUT_ERR )		( (uint32_t) CFDictionaryGetInt64Ranged( (DICT), (KEY), 0, UINT32_MAX, OUT_ERR ) )
 
-#define		NSDictionaryGetInt64Ranged( DICT, KEY, MIN, MAX, OUT_ERR) \
-			CFDictionaryGetInt64Ranged( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (MIN), (MAX), (OUT_ERR) )
-#define		NSDictionaryGetSInt8( DICT, KEY, OUT_ERR )		( (int8_t)   NSDictionaryGetInt64Ranged( (DICT), (KEY), INT8_MIN, INT8_MAX, OUT_ERR ) )
-#define		NSDictionaryGetUInt8( DICT, KEY, OUT_ERR )		( (uint8_t)  NSDictionaryGetInt64Ranged( (DICT), (KEY), 0, UINT8_MAX, OUT_ERR ) )
-#define		NSDictionaryGetSInt16( DICT, KEY, OUT_ERR )		( (int16_t)  NSDictionaryGetInt64Ranged( (DICT), (KEY), INT16_MIN, INT16_MAX, OUT_ERR ) )
-#define		NSDictionaryGetUInt16( DICT, KEY, OUT_ERR )		( (uint16_t) NSDictionaryGetInt64Ranged( (DICT), (KEY), 0, UINT16_MAX, OUT_ERR ) )
-#define		NSDictionaryGetSInt32( DICT, KEY, OUT_ERR )		( (int32_t)  NSDictionaryGetInt64Ranged( (DICT), (KEY), INT32_MIN, INT32_MAX, OUT_ERR ) )
-#define		NSDictionaryGetUInt32( DICT, KEY, OUT_ERR )		( (uint32_t) NSDictionaryGetInt64Ranged( (DICT), (KEY), 0, UINT32_MAX, OUT_ERR ) )
-
 OSStatus	CFDictionarySetInt64( CFMutableDictionaryRef inDict, const void *inKey, int64_t x );
 #define		CFDictionarySetUInt64( DICT, KEY, VALUE )		CFDictionarySetInt64( (DICT), (KEY), (int64_t)(VALUE) )
-#define		NSDictionarySetInt64( DICT, KEY, X ) \
-			CFDictionarySetInt64( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (X) )
-#define		NSDictionarySetUInt64( DICT, KEY, X ) \
-			CFDictionarySetUInt64( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (X) )
 
 OSStatus	CFDictionarySetNumber( CFMutableDictionaryRef inDict, const void *inKey, CFNumberType inType, void *inValue );
 
 #define		CFDictionaryGetUUID( DICT, KEY, OUT_UUID )	CFDictionaryGetUUIDEx( (DICT), (KEY), NULL, (OUT_UUID) )
 OSStatus	CFDictionaryGetUUIDEx( CFDictionaryRef inDict, const void *inKey, const uint8_t *inBaseUUID, uint8_t outUUID[ 16 ] );
-#define		NSDictionaryGetUUID( DICT, KEY, BASE, OUT_UUID ) \
-			CFDictionaryGetUUIDEx( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (BASE), (OUT_UUID) )
 
 OSStatus
 	CFDictionarySetUUIDString( 
@@ -1306,8 +978,6 @@ OSStatus
 		size_t					inSize, 
 		const void *			inBaseUUID, 
 		uint32_t				inFlags );
-#define NSDictionarySetUUIDString( DICT, KEY, UUID, SIZE, BASE, FLAGS ) \
-	CFDictionarySetUUIDString( (__bridge CFMutableDictionaryRef)(DICT), (__bridge const void *)(KEY), (UUID), (SIZE), (BASE), (FLAGS) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFDictionaryGetNestedValue
@@ -1329,19 +999,6 @@ CFTypeRef	CFDictionaryGetTypedValue( CFDictionaryRef inDict, const void *inKey, 
 #define		CFDictionaryGetCFDictionary( DICT, KEY, OUT_ERR )	( (CFDictionaryRef)	CFDictionaryGetTypedValue( (DICT), (KEY), CFDictionaryGetTypeID(),	(OUT_ERR ) ) )
 #define		CFDictionaryGetCFNumber( DICT, KEY, OUT_ERR )		( (CFNumberRef)		CFDictionaryGetTypedValue( (DICT), (KEY), CFNumberGetTypeID(),		(OUT_ERR ) ) )
 #define		CFDictionaryGetCFString( DICT, KEY, OUT_ERR )		( (CFStringRef)		CFDictionaryGetTypedValue( (DICT), (KEY), CFStringGetTypeID(),		(OUT_ERR ) ) )
-
-#define		NSDictionaryGetNSArray( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSArray *) CFDictionaryGetCFArray( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
-#define		NSDictionaryGetNSData( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSData *) CFDictionaryGetCFData( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
-#define		NSDictionaryGetNSDate( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSDate *) CFDictionaryGetCFDate( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
-#define		NSDictionaryGetNSDictionary( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSDictionary *) CFDictionaryGetCFDictionary( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
-#define		NSDictionaryGetNSNumber( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSNumber *) CFDictionaryGetCFNumber( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
-#define		NSDictionaryGetNSString( DICT, KEY, OUT_ERR ) \
-			( (__bridge NSString *) CFDictionaryGetCFString( (__bridge CFDictionaryRef)(DICT), (__bridge const void *)(KEY), (OUT_ERR) ) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFNumberCreateInt64
@@ -1366,15 +1023,6 @@ STATIC_INLINE CFNumberRef	CFNumberCreateUInt64( uint64_t x )
 CFNumberRef	CFNumberGetObject( uint32_t inValue );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFSetApplyBlock
-	@abstract	Block-based versions of the CF collection iteration functions.
-*/	
-#if( COMPILER_HAS_BLOCKS && !COMMON_SERVICES_NO_CORE_SERVICES )
-	typedef void ( ^CFSetApplierBlock )( const void *inValue );
-	void	CFSetApplyBlock( CFSetRef inSet, CFSetApplierBlock inBlock );
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFStringCreateComponentsSeparatedByString
 	@abstract	Returns an array containing substrings from the receiver that have been divided by a given separator.
 	
@@ -1394,12 +1042,8 @@ CFArrayRef	CFStringCreateComponentsSeparatedByString( CFStringRef inString, CFSt
 	@discussion	This supports the format specifiers from PrintFUtils.h.
 */
 CFStringRef	CFStringCreateF( OSStatus *outErr, const char *inFormat, ... );
-#define		NSStringCreateF( OUT_ERR, ... ) \
-			( (NSString *) CFBridgingTransfer( CFStringCreateF( (OUT_ERR), __VA_ARGS__ ) ) )
 
 CFStringRef	CFStringCreateV( OSStatus *outErr, const char *inFormat, va_list inArgs );
-#define		NSStringCreateV( OUT_ERR, FORMAT, ARGS ) \
-			( (NSString *) CFBridgingTransfer( CFStringCreateV( (OUT_ERR), (FORMAT), (ARGS) ) ) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFStringAppendF / CFStringAppendV
@@ -1407,12 +1051,8 @@ CFStringRef	CFStringCreateV( OSStatus *outErr, const char *inFormat, va_list inA
 	@discussion	This supports the format specifiers from PrintFUtils.h.
 */
 OSStatus	CFStringAppendF( CFMutableStringRef inStr, const char *inFormat, ... );
-#define		NSStringAppendF( STR, ... ) \
-			CFStringAppendF( (__bridge CFMutableStringRef)(STR), __VA_ARGS__ )
 
 OSStatus	CFStringAppendV( CFMutableStringRef inStr, const char *inFormat, va_list inArgs );
-#define		NSStringAppendV( STR, FORMAT, ARGS ) \
-			CFStringAppendF( (__bridge CFMutableStringRef)(STR), (FORMAT), (ARGS) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFStringCopyUTF8CString
@@ -1457,9 +1097,6 @@ OSStatus	CFStringGetOrCopyCStringUTF8( CFStringRef inString, const char **outUTF
 #pragma mark == Misc ==
 #endif
 
-CFComparisonResult	CFSortCompareKeyPath( const void *inLeft, const void *inRight, void *inContext );
-CFComparisonResult	CFSortLocalizedStandardCompare( const void *inLeft, const void *inRight, void *inContext );
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	MapCFStringToValue
 	@abstract	Maps CFString to a value using a variable argument list of string/integer pairs, terminated by a single NULL.
@@ -1478,48 +1115,6 @@ CFComparisonResult	CFSortLocalizedStandardCompare( const void *inLeft, const voi
 int	MapCFStringToValue( CFStringRef inString, int inDefaultValue, ... );
 CF_RETURNS_NOT_RETAINED
 CFStringRef	MapValueToCFString( int inValue, CFStringRef inDefaultStr, ... );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	StringToRangeArray/RangeArrayToString
-	@abstract	Convert number list string (e.g. "1-5" or "1,2,3-7" or "3,2,1") <-> CFArray of begin/end number CFDictionary's.
-	
-	@discussion
-	
-	Commas or spaces may separate each number or number range. Ranges are specified using x-y. The result is a CFArray
-	of CFDictionary's with each CFDictionary containing "begin" and "end" CFNumber values. For example, the string:
-	
-		"1, 2, 3-7"
-	
-	would turn into the following object (using the CFUtil plist format syntax):
-	
-		[
-			{
-				begin=1
-				end=1
-			}
-			{
-				begin=2
-				end=2
-			}
-			{
-				begin=3
-				end=7
-			}
-		]
-	
-	Validating two range array strings checks that the two have the same general structure and begin/end deltas, but may 
-	have different actual values. For example, if you wanted to map TCP ports "1000-2000, 3003" to "5000-6000, 7003", 
-	those strings would be compatible, but if you tried to map "1000-2000, 3003" to "5000, 7003", they wouldn't be.
-	
-	Conflicting range arrays check for any overlapping values between the two. For example, you wouldn't want to have two 
-	port mappings that overlapped. The first of the two functions compares strings and the second one compares a string to 
-	an existing range array which might occurn if someone is entering new data and wants to compare against existing.
-*/
-OSStatus	StringToRangeArray( const char *inStr, CFArrayRef *outArray );
-OSStatus	RangeArrayToString( CFArrayRef inArray, CFStringRef *outString );
-OSStatus	ValidateRangeArrayStrings( const char *inStr1, const char *inStr2 );
-OSStatus	ConflictingRangeArrayStrings( const char *inStr1, const char *inStr2 );
-OSStatus	ConflictingRangeArrayStringAndRangeArray( const char *inStr, CFArrayRef inArray );
 
 #if 0
 #pragma mark == Debugging ==

@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverSessionScreen.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,15 +48,15 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayReceiverSessionScreen_h_
 #define	__AirPlayReceiverSessionScreen_h_
 
 #include "AirPlayCommon.h"
-#include <CoreUtils/DataBufferUtils.h>
-#include <CoreUtils/NetUtils.h>
+#include "DataBufferUtils.h"
+#include "NetUtils.h"
 
 #if( TARGET_OS_POSIX )
 	#include <net/if.h>
@@ -78,32 +78,6 @@ OSStatus	AirPlayReceiverSessionScreen_Create( AirPlayReceiverSessionScreenRef *o
 void		AirPlayReceiverSessionScreen_Delete( AirPlayReceiverSessionScreenRef inSession );
 #define 	AirPlayReceiverSessionScreen_Forget( X )		do { if( *(X) ) { AirPlayReceiverSessionScreen_Delete( *(X) ); *(X) = NULL; } } while( 0 )
 
-#define kAirPlayReceiverSessionScreenEvent_ForceKeyFrameNeeded	"forceKeyFrameNeeded"
-#define kAirPlayReceiverSessionScreenEvent_TimestampsUpdated	"timestampsUpdated"
-
-typedef void
-	( *AirPlayReceiverSessionScreenEventHandlerFunc )(
-		AirPlayReceiverSessionScreenRef		inSession,
-		CFStringRef							inEventName,
-		CFDictionaryRef						inEventData,
-		void *								inUserData );
-
-void
-	AirPlayReceiverSessionScreen_SetEventHandler(
-		AirPlayReceiverSessionScreenRef					inSession,
-		AirPlayReceiverSessionScreenEventHandlerFunc	inHandler,
-		void *											inUserData,
-		dispatch_queue_t								inQueue );
-
-// Synchronously replaces the event handler on the designated event handler queue. This ensures that the swap is safe, but will deadlock
-// if called from the event handler queue.
-void
-	AirPlayReceiverSessionScreen_ReplaceEventHandlerSynchronously(
-		AirPlayReceiverSessionScreenRef					inSession,
-		AirPlayReceiverSessionScreenEventHandlerFunc	inHandler,
-		void *											inUserData,
-		dispatch_queue_t								inQueue );
-
 typedef uint64_t ( *AirPlayReceiverSessionScreen_GetSynchronizedNTPTimeFunc )( void *inContext );
 typedef uint64_t ( *AirPlayReceiverSessionScreen_GetUpTicksNearSynchronizedNTPTimeFunc )( void *inContext, uint64_t inNTPTime );
 typedef struct
@@ -118,21 +92,13 @@ void
 		AirPlayReceiverSessionScreenRef								inSession,
 		const AirPlayReceiverSessionScreenTimeSynchronizer *		inTimeSynchronizer );
 
-void		AirPlayReceiverSessionScreen_SetUserVersion( AirPlayReceiverSessionScreenRef inSession, uint32_t inUserVersion );
-void		AirPlayReceiverSessionScreen_SetOverscanOverride( AirPlayReceiverSessionScreenRef inSession, int inOverscanOverride );
-void		AirPlayReceiverSessionScreen_SetSessionUUID( AirPlayReceiverSessionScreenRef inSession, uint8_t inUUID[ 16 ] );
-void		AirPlayReceiverSessionScreen_SetClientDeviceID( AirPlayReceiverSessionScreenRef inSession, uint64_t inDeviceID );
-void		AirPlayReceiverSessionScreen_SetClientDeviceUDID( AirPlayReceiverSessionScreenRef inSession, CFStringRef inDeviceUDID );
-void		AirPlayReceiverSessionScreen_SetClientIfMACAddr( AirPlayReceiverSessionScreenRef inSession, uint8_t * inIfMACAddr, size_t inIfMACAddrLen );
-void		AirPlayReceiverSessionScreen_SetClientModelCode( AirPlayReceiverSessionScreenRef inSession, CFStringRef inModelCode );
-void		AirPlayReceiverSessionScreen_SetClientOSBuildVersion( AirPlayReceiverSessionScreenRef inSession, CFStringRef inOSBuildVersion );
-void		AirPlayReceiverSessionScreen_SetIFName( AirPlayReceiverSessionScreenRef inSession, char inIfName[ IF_NAMESIZE + 1 ] );
-void		AirPlayReceiverSessionScreen_SetTransportType( AirPlayReceiverSessionScreenRef inSession, NetTransportType inTransportType );
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 CFMutableDictionaryRef
 	AirPlayReceiverSessionScreen_CopyDisplaysInfo(
 		AirPlayReceiverSessionScreenRef		inSession,
 		OSStatus *							outErr );
-CFStringRef	AirPlayReceiverSessionScreen_CopyDisplayUUID( AirPlayReceiverSessionScreenRef inSession, OSStatus *outErr );
+#endif
+
 CFArrayRef AirPlayReceiverSessionScreen_CopyTimestampInfo( AirPlayReceiverSessionScreenRef inSession, OSStatus *outErr );
 OSStatus
 	AirPlayReceiverSessionScreen_SetChaChaSecurityInfo(
@@ -154,13 +120,10 @@ OSStatus
 		AirPlayReceiverSessionScreenRef		inSession,
 		NetSocketRef						inNetSock,
 		int									inTimeoutDataSecs );
-OSStatus	AirPlayReceiverSessionScreen_StartSession( AirPlayReceiverSessionScreenRef inSession, CFDictionaryRef inScreenStreamOptions );
+OSStatus	AirPlayReceiverSessionScreen_StartSession( AirPlayReceiverSessionScreenRef inSession, void* context );
 void		AirPlayReceiverSessionScreen_StopSession( AirPlayReceiverSessionScreenRef inSession );
 
-#define kAirPlayReceiverSessionScreenCommand_ForceKeyFrame	'f'
 #define kAirPlayReceiverSessionScreenCommand_Quit			'q'
-#define kAirPlayReceiverSessionScreenCommand_ServerDied		'd'
-#define kAirPlayReceiverSessionScreenCommand_Stop			's' // 32-bit session ID to stop follows command byte.
 
 OSStatus
 	AirPlayReceiverSessionScreen_SendCommand(
@@ -168,19 +131,6 @@ OSStatus
 		char								inCommand,
 		const void *						inExtraPtr,
 		size_t								inExtraLen );
-
-void		AirPlayReceiverSessionScreen_SetReceiveEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime );
-void		AirPlayReceiverSessionScreen_SetAuthEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime );
-void		AirPlayReceiverSessionScreen_SetNTPEndTime( AirPlayReceiverSessionScreenRef inSession, CFAbsoluteTime inTime );
-void
-	AirPlayReceiverSessionScreen_LogStarted(
-		AirPlayReceiverSessionScreenRef		inSession,
-		CFDictionaryRef						inParams,
-		NetTransportType					inTransportType );
-void		AirPlayReceiverSessionScreen_LogEnded( AirPlayReceiverSessionScreenRef inSession, OSStatus inReason );
-void		AirPlayReceiverSessionScreen_ClearStats( void );
-void		AirPlayReceiverSessionScreen_MarkStats( const char *inCommentPtr, size_t inCommentLen );
-OSStatus	AirPlayReceiverSessionScreen_PrintStats( DataBuffer *inDB );
 
 #ifdef __cplusplus
 }

@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverSession.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayReceiverSession_h__
@@ -56,11 +56,12 @@
 
 #include "AirPlayCommon.h"
 #include "AirPlayReceiverServer.h"
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/NetUtils.h>
-#include <CoreUtils/PairingUtils.h>
+#include "AudioUtils.h"
+#include "CommonServices.h"
+#include "DebugServices.h"
+#include "CFUtils.h"
+#include "NetUtils.h"
+#include "PairingUtils.h"
 
 #include CF_HEADER
 #include LIBDISPATCH_HEADER
@@ -178,7 +179,6 @@ typedef void
 typedef struct
 {
 	void *									context;		// Context pointer for the delegate to use.
-	void *									context2;		// Extra context pointer for the delegate to use.
 	AirPlayReceiverSessionInitialize_f		initialize_f;
 	AirPlayReceiverSessionFinalize_f		finalize_f;
 	AirPlayReceiverSessionStarted_f			started_f;
@@ -213,16 +213,6 @@ OSStatus
 		CFTypeRef			inQualifier, 
 		CFDictionaryRef		inParams, 
 		CFDictionaryRef *	outParams );
-
-// Convenience helpers.
-
-#define AirPlayReceiverSessionControlF( SESSION, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ... ) \
-	CFObjectControlSyncF( (SESSION), NULL, AirPlayReceiverSessionControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), __VA_ARGS__ )
-
-#define AirPlayReceiverSessionControlV( SESSION, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ARGS ) \
-	CFObjectControlSyncF( (SESSION), NULL, AirPlayReceiverSessionControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), (ARGS) )
 
 #if 0
 #pragma mark -
@@ -349,16 +339,6 @@ OSStatus
 		AirPlayReceiverSessionCommandCompletionFunc	inCompletion, 
 		void *										inContext );
 
-#if( COMPILER_HAS_BLOCKS )
-	typedef void ( ^AirPlayReceiverSessionCommandCompletionBlock )( OSStatus inStatus, CFDictionaryRef inResponse );
-
-	OSStatus
-		AirPlayReceiverSessionSendCommand_b( 
-			AirPlayReceiverSessionRef						inSession, 
-			CFDictionaryRef									inRequest, 
-			AirPlayReceiverSessionCommandCompletionBlock	inCompletion );
-#endif
-
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	AirPlayReceiverSessionFlushAudio
 	@abstract	Flush any queued audio until the specified timestamp or sequence number.
@@ -461,16 +441,6 @@ OSStatus
 		CFTypeRef			inQualifier, 
 		CFDictionaryRef		inParams, 
 		CFDictionaryRef *	outParams );
-
-// Convenience accessors.
-
-#define AirPlayReceiverSessionPlatformControlF( SESSION, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ... ) \
-	CFObjectControlSyncF( (SESSION), NULL, AirPlayReceiverSessionPlatformControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), __VA_ARGS__ )
-
-#define AirPlayReceiverSessionPlatformControlV( SESSION, COMMAND, QUALIFIER, OUT_PARAMS, FORMAT, ARGS ) \
-	CFObjectControlSyncF( (SESSION), NULL, AirPlayReceiverSessionPlatformControl, kCFObjectFlagDirect, \
-		(COMMAND), (QUALIFIER), (OUT_PARAMS), (FORMAT), (ARGS) )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	AirPlayReceiverSessionPlatformCopyProperty
@@ -673,7 +643,7 @@ OSStatus
 /*!	@function	AirPlayReceiverSessionRequestSiriAction
 	@abstract	Builds and sends Siri action command to the controller.
 	
-	@param		inSession		Session to request a mode change on.
+	@param		inSession		Session to request a Siri action command on.
 	@param		inAction		Action to be performed (see kAirPlaySiriAction_*).
 */
 OSStatus
@@ -687,7 +657,7 @@ OSStatus
 /*!	@function	AirPlayReceiverSessionRequestUI
 	@abstract	Builds and sends request UI command to the controller.
 	
-	@param		inSession		Session to request a mode change on.
+	@param		inSession		Session to request request UI command on.
 	@param		inURL			Optional UI describing the UI to reuest (e.g. "http://maps.apple.com/?q" to show a map).
 	@param		inCompletion	Optional completion function to call when the request completes. May be NULL.
 	@param		inContext		Optional context ptr to pass to completion function. May be NULL.
@@ -703,7 +673,7 @@ OSStatus
 /*!	@function	AirPlayReceiverSessionSetNightMode
 	@abstract	Builds and sends set night mode command to the controller.
 	
-	@param		inSession		Session to request a mode change on.
+	@param		inSession		Session to request a night mode command on.
 	@param		inNightMode		Whether to enable or disable night mode.
 	@param		inCompletion	Optional completion function to call when the request completes. May be NULL.
 	@param		inContext		Optional context ptr to pass to completion function. May be NULL.
@@ -719,7 +689,7 @@ OSStatus
 /*!	@function	AirPlayReceiverSessionSetLimitedUI
 	@abstract	Builds and sends set limited UI command to the controller.
 	
-	@param		inSession				Session to request a mode change on.
+	@param		inSession				Session to request a limited UI command on.
 	@param		inLimitUI				Whether or not to limit UI.
 	@param		inCompletion			Optional completion function to call when the request completes. May be NULL.
 	@param		inContext				Optional context ptr to pass to completion function. May be NULL.
@@ -735,7 +705,7 @@ OSStatus
 /*!	@function	AirPlayReceiverSessionSendiAPMessage
 	@abstract	Builds and sends iAP send message command to the controller.
 	
-	@param		inSession				Session to request a mode change on.
+	@param		inSession				Session to request an iAP message command on.
 	@param		inMessageData			The iAP message data.
 	@param		inCompletion			Optional completion function to call when the request completes. May be NULL.
 	@param		inContext				Optional context ptr to pass to completion function. May be NULL.
@@ -750,8 +720,8 @@ OSStatus
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	AirPlayReceiverSessionUpdateVehicleInformation
 	@abstract	Builds and sends update vehicle information command to the controller.
-	
-	@param		inSession				Session to request a mode change on.
+
+	@param		inSession				Session to request a update vehicle command on.
 	@param		inVehicleInformation	The new vehicle information to send.
 	@param		inCompletion			Optional completion function to call when the request completes. May be NULL.
 	@param		inContext				Optional context ptr to pass to completion function. May be NULL.
@@ -762,7 +732,117 @@ OSStatus
 		CFDictionaryRef								inVehicleInformation,
 		AirPlayReceiverSessionCommandCompletionFunc	inCompletion, 
 		void *										inContext );
-	
+
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	AirPlayReceiverSessionSendHIDReport
+	@abstract	Builds and sends a HID report to the controller.
+
+	@param		inSession				Session to request a HID report command on.
+	@param		inDeviceUID				The identifier for the HID device.
+	@param		inPtr					The HID report.
+	@param		inLen					The length of the HID report.
+*/
+OSStatus
+	AirPlayReceiverSessionSendHIDReport(
+		AirPlayReceiverSessionRef					inSession,
+		uint32_t									inDeviceUID,
+		const uint8_t *								inPtr,
+		size_t										inLen );
+
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	AirPlayInfoArrayAddHIDDevice
+	@abstract	Add a HID entry to the array.
+
+	@param		inArray					Array to add the HID device description to.  Array will be created if needed.
+	@param		inDeviceUID				A unique identifier for this HID device.
+	@param		inName					User-friendly name.
+	@param		inProductID				USB-style HID product ID.
+	@param		inVendorID				USB-style HID vendor ID.
+	@param		inCountryCode			USB-style HID country code.
+	@param		inDescPtr				HID descriptor.
+	@param		inDescLen				Length of HID descriptor.
+	@param		inDisplayUUID			UUID of a display associated with this HID device.
+*/
+OSStatus
+	AirPlayInfoArrayAddHIDDevice(
+		CFArrayRef *				inArray,
+		uint32_t					inDeviceUID,
+		const char *				inName,
+		uint16_t					inVendorID,
+		uint16_t					inProductID,
+		uint16_t					inCountryCode,
+		const uint8_t *				inDescPtr,
+		size_t						inDescLen,
+		CFStringRef					inDisplayUUID );
+
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	AirPlayInfoArrayAddAudioLatency
+	@abstract	Add an audio latency to the array.
+
+	@param		inArray					Array to add the audio format to.  Array will be created if needed.
+	@param		inStreamType			The stream type.
+	@param		inAudioType				Type of audio content.
+	@param		inSampleRate			Number of samples per second.
+	@param		inSampleSize			Bit size of each audio sample.
+	@param		inChannels				Number of audio channels.
+	@param		inInputLatency			Input latency in microseconds.
+	@param		inOutputLatency			Output latency in microseconds.
+*/
+OSStatus
+	AirPlayInfoArrayAddAudioLatency(
+		CFArrayRef *				inArray,
+		AudioStreamType				inStreamType,
+		CFStringRef					inAudioType,
+		uint32_t					inSampleRate,
+		uint32_t					inSampleSize,
+		uint32_t					inChannels,
+		uint32_t					inInputLatency,
+		uint32_t					inOutputLatency );
+
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	AirPlayInfoArrayAddAudioFormat
+	@abstract	Add an audio format to the array.
+	 
+	@param		inArray					Array to add the audio format to.  Array will be created if needed.
+	@param		inStreamType			The stream type.
+	@param		inAudioType				Type of audio content.
+	@param		inInputFormats			The supported audio input formats.
+	@param		inInputFormats			The supported audio output formats.
+*/
+OSStatus
+	AirPlayInfoArrayAddAudioFormat(
+		CFArrayRef *				inArray,
+		AudioStreamType				inStreamType,
+		CFStringRef					inAudioType,
+		AirPlayAudioFormat			inInputFormats,
+		AirPlayAudioFormat			inOutputFormats );
+
+//---------------------------------------------------------------------------------------------------------------------------
+/*!	@function	AirPlayInfoArrayAddScreenDisplay
+	@abstract	Add a screen to the array.
+	 
+	@param		inArray					Array to add the screen info to.  Array will be created if needed.
+	@param		inUUID					UUID of the display.
+	@param		inFeatures				Features of the display as a bitmask.
+	@param		inPrimaryDevice			Primary input device to be used for navigating the user interface.
+	@param		inMaxFPS				Max frames per second the display supports.
+	@param		inWidth					Width of the display in pixels.
+	@param		inHeight				Height of the display in pixels.
+	@param		inWidthPhysical			Width of the display in millimeters.
+	@param		inHeightPhysical		Height of the display in millimeters.
+*/
+OSStatus
+	AirPlayInfoArrayAddScreenDisplay(
+		CFArrayRef *						inArray,
+		CFStringRef							inUUID,
+		AirPlayDisplayFeatures				inFeatures,
+		AirPlayDisplayPrimaryInputDevice	inPrimaryDevice,
+		uint32_t							inMaxFPS,
+		uint32_t							inWidth,
+		uint32_t							inHeight,
+		uint32_t							inWidthPhysical,
+		uint32_t							inHeightPhysical );
+
 #ifdef __cplusplus
 }
 #endif

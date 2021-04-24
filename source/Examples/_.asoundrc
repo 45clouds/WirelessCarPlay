@@ -1,0 +1,53 @@
+pcm.!default {
+	type asym
+	playback {
+		pcm "mainaudio"
+	}
+	capture {
+		pcm "micinput"
+	}
+}
+
+pcm.!mainaudio {
+	type softvol
+	slave.pcm "mainplug"
+	control.name "mainsoftvol"
+}
+
+pcm.!mainplug {
+	type plug
+	slave {
+		pcm "swmixer"
+		rate 48000
+		channels 2
+	}
+}
+
+pcm.!altaudio {
+	type plug
+	slave {
+		pcm "swmixer"
+		rate 48000
+		channels 2
+	}
+}
+
+pcm.!swmixer {
+	type dmix
+	ipc_key 2000
+	slave {
+		pcm "hw:0,0"
+		period_size 480
+		buffer_size 960
+		rate 48000
+		channels 2
+	}
+}
+
+pcm.!micinput {
+	type rate
+	slave {
+		pcm "hw:0,0"
+		rate 48000
+	}
+}

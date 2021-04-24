@@ -2,7 +2,7 @@
 	File:    	AppleCarPlay_AppStub.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	n/a 
+	Version: 	n/a
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -27,7 +27,7 @@
 	may be infringed by your derivative works or by other works in which the Apple Software may be 
 	incorporated.  
 	
-	Unless youn explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
+	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
 	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2017 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 //===========================================================================================================================
@@ -58,21 +58,19 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <pthread.h>
-#include <CoreUtils/LogUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <AirPlayReceiverServer.h>
-#include <AirPlayReceiverSession.h>
-#include <AirPlayVersion.h>
-#include <AirPlayUtils.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/HIDUtils.h>
+
+#include "StringUtils.h"
+#include "AirPlayReceiverServer.h"
+#include "AirPlayReceiverSession.h"
+#include "AirPlayVersion.h"
+#include "AirPlayUtils.h"
+#include "DebugServices.h"
 #include "HIDKnob.h"
 #include "HIDTouchScreen.h"
-#include <CoreUtils/ScreenUtils.h>
-#include <CoreUtils/MathUtils.h>
-#include <CarPlayControlClient.h>
-#include <CoreUtils/CFCompat.h>
-#include <CoreUtils/CFUtils.h>
+#include "HIDProximity.h"
+#include "MathUtils.h"
+#include "AudioUtils.h"
+#include "CarPlayControlClient.h"
 
 //===========================================================================================================================
 //	Internals
@@ -87,6 +85,8 @@
 #define kUSBProductTouchScreen              0
 #define kUSBVendorKnobButtons               0
 #define kUSBProductKnobButtons              0
+#define kUSBVendorProxSensor                0
+#define kUSBProductProxSensor               0
 
 // Prototypes
 
@@ -97,7 +97,6 @@ static void		_RunUI( void );
 static void *	_AirPlayThread( void *inArg );
 
 void CarPlayControlClientEventCallback( CarPlayControlClientRef client, CarPlayControlClientEvent event, void *eventInfo, void *context );
-static OSStatus	_InitKnobDevice( void );
 
 static CFTypeRef
 	_AirPlayHandleServerCopyProperty( 
@@ -183,7 +182,14 @@ static void
 		AirPlayConstraint			inAudioBorrow,
 		AirPlayTriState				inPhone,
 		AirPlaySpeechMode			inSpeech,
-		AirPlayTriState				inTurnByTurn );		
+		AirPlayTriState				inTurnByTurn );
+
+static CFArrayRef _getAudioFormats( OSStatus *outErr );
+static CFArrayRef _getAudioLatencies( OSStatus *outErr );
+static OSStatus _setupHIDDevices( void );
+static CFArrayRef _getHIDDevices( OSStatus *outErr );
+static CFArrayRef _getScreenDisplays( OSStatus *outErr );
+static OSStatus _sendETCUpdate(bool inETCEnabled);
 
 ulog_define( CarPlayDemoApp, kLogLevelTrace, kLogFlags_Default, "CarPlayDemoApp", NULL );
 #define app_ucat()					&log_category_from_name( CarPlayDemoApp )
@@ -192,19 +198,18 @@ ulog_define( CarPlayDemoApp, kLogLevelTrace, kLogFlags_Default, "CarPlayDemoApp"
 
 // Globals
 
-static bool							gHIDConf		= false;
 static bool							gKnob			= true;
 static bool							gHiFiTouch		= true;
 static bool							gLoFiTouch		= true;
 static bool							gTouchpad		= true;
-static bool							gScreenConf		= false;
+static bool							gProxSensor		= true;
 static int							gVideoWidth		= 960;
 static int							gVideoHeight	= 540;
-static int							gPrimaryInputDevice			= kScreenPrimaryInputDevice_Undeclared;
+static int							gVideoWidthMM	= 0;
+static int							gVideoHeightMM	= 0;
+static int							gPrimaryInputDevice			= kAirPlayDisplayPrimaryInputDeviceUndeclared;
 static bool							gEnhancedRequestCarUI		= false;
-static bool							gETCEnabled					= false;
-static ScreenRef					gMainScreen 	= NULL;
-static HIDDeviceRef					gTouchHID		= NULL;
+static bool							gETCSupported				= false;
 static AirPlayReceiverServerRef		gAirPlayServer	= NULL;
 static AirPlayReceiverSessionRef	gAirPlaySession	= NULL;
 static CarPlayControlClientRef		gCarPlayControlClient = NULL;
@@ -216,10 +221,14 @@ static bool							gHasInitialModes	= false;
 static CFMutableArrayRef			gBluetoothIDs				= NULL;
 static CFMutableArrayRef			gRightHandDrive				= NULL;
 static CFMutableArrayRef			gNightMode				= NULL;
+static CFStringRef					gDeviceID				= NULL;
+static CFStringRef					giOSVersionMin			= NULL;
+static uint8_t						gTouchUID;
+static uint8_t						gKnobUID;
+static uint8_t						gProxSensorUID;
+static uint8_t						gNextDeviceUID = 0;
 
-// Virtual knob device
-static HIDDeviceRef		gKnobHID;
-// Current state of thMODULE_AIRPLAY_SUPPORT_NAMEe virtual knob
+// Current state of the virtual knob
 Boolean gSelectButtonPressed = false;
 Boolean gHomeButtonPressed = false;
 Boolean gBackButtonPressed = false;
@@ -235,8 +244,8 @@ int8_t	gWheelPositionRelative = 0;
 #define kMinYPosition	(-1.0)
 OSStatus	KnobUpdate( void );
 
-void    setupTouchScreen();
-
+static OSStatus _touchScreenUpdate( bool inPress, uint16_t inX, uint16_t inY );
+static OSStatus _proxSensorUpdate( bool inProxSensorPresence );
 
 //===========================================================================================================================
 //	main
@@ -247,7 +256,6 @@ int	main( int argc, char **argv )
 	int					i;
 	const char *		arg;
 	OSStatus			err;
-	uint32_t			u32;
 	
 	app_ulog( kLogLevelNotice, "AirPlay starting version %s\n", kAirPlaySourceVersionStr );
 	signal( SIGPIPE, SIG_IGN ); // Ignore SIGPIPE signals so we get EPIPE errors from APIs instead of a signal.
@@ -260,10 +268,6 @@ int	main( int argc, char **argv )
 	{
 		arg = argv[ i++ ];
 		if( 0 ) {}
-		else if( strcmp( arg, "--hid-conf" ) == 0 )
-		{
-			gHIDConf = true; // Use HID devices from the airplay.conf file instead of creating programmatically.
-		}
 		else if( strcmp( arg, "--no-knob" ) == 0 )
 		{
 			gKnob = false;
@@ -280,6 +284,10 @@ int	main( int argc, char **argv )
 		{
 			gTouchpad = false;
 		}
+		else if( strcmp( arg, "--no-proxsensor" ) == 0 )
+		{
+			gProxSensor = false;
+		}
 		else if( strcmp( arg, "--width" ) == 0 )
 		{
 			if( i >= argc ) { fprintf( stderr, "error: %s requires a value\n", arg ); exit( 1 ); }
@@ -292,9 +300,17 @@ int	main( int argc, char **argv )
 			arg = argv[ i++ ];
 			gVideoHeight = atoi( arg );
 		}
-		else if( strcmp( arg, "--screen-conf" ) == 0 )
+		else if( strcmp( arg, "--widthMM" ) == 0 )
 		{
-			gScreenConf = true; // Use screen devices from the airplay.conf file instead of creating programmatically.
+			if( i >= argc ) { fprintf( stderr, "error: %s requires a value\n", arg ); exit( 1 ); }
+			arg = argv[ i++ ];
+			gVideoWidthMM = atoi( arg );
+		}
+		else if( strcmp( arg, "--heightMM" ) == 0 )
+		{
+			if( i >= argc ) { fprintf( stderr, "error: %s requires a value\n", arg ); exit( 1 ); }
+			arg = argv[ i++ ];
+			gVideoHeightMM = atoi( arg );
 		}
 		else if( strcmp( arg, "--btid" ) == 0 )
 		{
@@ -335,7 +351,7 @@ int	main( int argc, char **argv )
 		}
 		else if( strcmp( arg, "--enable-etc" ) == 0 )
 		{
-			gETCEnabled = true;
+			gETCSupported = true;
 		}
 		else if( strcmp( arg, "--primary-input-device" ) == 0 )
 		{
@@ -346,6 +362,18 @@ int	main( int argc, char **argv )
 		else if( strcmp( arg, "--enhanced-requestcarui" ) == 0 )
 		{
 			gEnhancedRequestCarUI = true;
+		}
+		else if( strcmp( arg, "--deviceid" ) == 0 )
+		{
+			if( i >= argc ) { fprintf( stderr, "error: %s requires a value\n", arg ); exit( 1 ); }
+			gDeviceID = CFStringCreateWithCString( kCFAllocatorDefault, argv[ i++ ], kCFStringEncodingUTF8 );
+			check_noerr( err );
+		}
+		else if( strcmp( arg, "--iOSVersionMin" ) == 0 )
+		{
+			if( i >= argc ) { fprintf( stderr, "error: %s requires a value\n", arg ); exit( 1 ); }
+			giOSVersionMin = CFStringCreateWithCString( kCFAllocatorDefault, argv[ i++ ], kCFStringEncodingUTF8 );
+			check_noerr( err );
 		}
 	}
 	
@@ -360,48 +388,7 @@ int	main( int argc, char **argv )
 	err = _SetupUI();
 	require_noerr( err, exit );
 	
-	// Set up a screen object to represent the portion of the screen where AirPlay will render into.
-	
-	if( !gScreenConf )
-	{
-		err = ScreenCreate( &gMainScreen, NULL );
-		require_noerr( err, exit );
-		
-		u32 = 0;
-		if( gKnob )			u32 |= kScreenFeature_Knobs;
-		if( gHiFiTouch )	u32 |= kScreenFeature_HighFidelityTouch;
-		if( gLoFiTouch )	u32 |= kScreenFeature_LowFidelityTouch;
-		if( gTouchpad )		u32 |= kScreenFeature_Touchpad;
-		ScreenSetPropertyInt64( gMainScreen, kScreenProperty_Features, NULL, u32 );
-		ScreenSetPropertyInt64( gMainScreen, kScreenProperty_WidthPixels, NULL, gVideoWidth );
-		ScreenSetPropertyInt64( gMainScreen, kScreenProperty_HeightPixels, NULL, gVideoHeight );
-		if( gPrimaryInputDevice != kScreenPrimaryInputDevice_Undeclared ) {
-			ScreenSetPropertyInt64( gMainScreen, kScreenProperty_PrimaryInputDevice, NULL, gPrimaryInputDevice );
-		}
-		ScreenSetProperty( gMainScreen, kScreenProperty_UUID, NULL, kDefaultUUID );
-		
-		err = ScreenRegister( gMainScreen );
-		require_noerr( err, exit );
-	}
-	
-	// Set up a virtual HID device to post HID reports for the touch screen.
-	// Note: if you're specifying your HID devices in the airplay.conf file then the code below is excluded.
-	// This code shows how to programmatically create HID devices. If you are creating HID objects programmatically, 
-	// like below, then use HIDDevicePostReport with the created HIDDeviceRef to post HID reports. Otherwise, you'll
-	// need to use HIDPostReport API with HID UUID that matches the one(s) you put into the airplay.conf file.
-	// See HIDTouchScreen.h on registering a sample HID descriptor for a touchscreen.
-	
-	if( ( gHiFiTouch || gLoFiTouch ) && !gHIDConf )
-	{
-		setupTouchScreen();
-		
-		err = HIDRegisterDevice( gTouchHID );
-		require_noerr( err, exit );
-	}
-	
-	// Register a virtual HID device for a knob controller.
-	// See HIDKnob.h on registering a sample HID descriptor for a knob
-	err = _InitKnobDevice();
+	err = _setupHIDDevices();
 	require_noerr( err, exit );
 	
 	// Start AirPlay in a separate thread since the demo app needs to own the main thread.
@@ -427,7 +414,6 @@ static OSStatus	_SetupUI( void )
 	OSStatus			err = kNoErr;
 
 	// $$$ TODO: Set up the UI framework application and window for drawing and receiving user events.
-	// See HIDUtils.h on registering HID user input (touch events, knobs, etc.).
 
 	require_noerr( err, exit );
 
@@ -454,7 +440,6 @@ static void	_RunUI( void )
 
 	// $$$ TODO: Get user input and send HID reports to AirPlay. 
 	// For an example of creating a virtual HID knob report see KnobUpdate (void).
-	// See HIDUtils.h & Support/HID*for details.
 	
 }
 
@@ -521,9 +506,29 @@ static CFTypeRef
 	(void) inQualifier;
 	(void) inContext;
 	
+	if( 0 ) {}
+
+	// AudioFormats
+	
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_AudioFormats ) ) )
+	{
+		value = _getAudioFormats( &err );
+		require_noerr( err, exit );
+		CFRetain( value );
+	}
+	
+	// AudioLatencies
+	
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_AudioLatencies ) ) )
+	{
+		value = _getAudioLatencies( &err );
+		require_noerr( err, exit );
+		CFRetain( value );
+	}
+	
 	// BluetoothIDs
 	
-	if( CFEqual( inProperty, CFSTR( kAirPlayProperty_BluetoothIDs ) ) )
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_BluetoothIDs ) ) )
 	{
 		value = gBluetoothIDs;
 		require_action_quiet( value, exit, err = kNotHandledErr );
@@ -543,18 +548,31 @@ static CFTypeRef
     }
 	else if( CFEqual( inProperty, CFSTR( kAirPlayKey_VehicleInformation ) ) )
 	{
-		CFMutableArrayRef vehicleDict;
+		CFMutableDictionaryRef vehicleDict;
 
-		vehicleDict = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
+		vehicleDict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action_quiet( vehicleDict, exit, err = kNotHandledErr );
+		if( gETCSupported ) {
+			// Support ETC
+			CFMutableDictionaryRef dict = NULL;
+			dict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+			if( dict )
+			{
+				// Start with ETC active
+				CFDictionarySetBoolean( dict, CFSTR( kAirPlayKey_Active), true );
 
-		if( gETCEnabled ) {
-			CFArrayAppendValue( vehicleDict, CFSTR( kAirPlayVehicleInformation_ETC ) );
+				CFDictionarySetValue( vehicleDict, CFSTR( kAirPlayVehicleInformation_ETC), dict );
+				ForgetCF( &dict );
+				dict = NULL;
+			}
 		}
-		if( CFArrayGetCount( vehicleDict ) == 0 ) {
+		if( CFDictionaryGetCount( vehicleDict ) == 0 ) {
 			ForgetCF( &vehicleDict );
+			err = kNotHandledErr;
+			goto exit;
 		} else {
 			value = vehicleDict;
+        	CFRetain( value );
 		}
 	}
 	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_ExtendedFeatures ) ) )
@@ -573,6 +591,7 @@ static CFTypeRef
 			ForgetCF( &extendedFeatures );
 		} else {
 			value = extendedFeatures;
+        	CFRetain( value );
 		}
 	}
 	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_OEMIcons ) ) )
@@ -599,10 +618,77 @@ static CFTypeRef
 			}
 			CFRelease( obj );
 		}
+		obj = CFDataCreateWithFilePath( "/AirPlay/icon_180x180.png", NULL );
+		if( obj ) {
+			iconDict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+			if( iconDict ) {
+				CFDictionarySetInt64( iconDict, CFSTR( kAirPlayOEMIconKey_WidthPixels ), 180 );
+				CFDictionarySetInt64( iconDict, CFSTR( kAirPlayOEMIconKey_HeightPixels ), 180 );
+				CFDictionarySetBoolean( iconDict, CFSTR( kAirPlayOEMIconKey_Prerendered ), true );
+				CFDictionarySetValue( iconDict, CFSTR( kAirPlayOEMIconKey_ImageData ), obj );
+				CFArrayAppendValue( iconsArray, iconDict );
+				CFRelease( iconDict );
+				iconDict = NULL;
+			}
+			CFRelease( obj );
+		}
+		obj = CFDataCreateWithFilePath( "/AirPlay/icon_256x256.png", NULL );
+		if( obj ) {
+			iconDict = CFDictionaryCreateMutable( NULL, 0,  &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+			if( iconDict ) {
+				CFDictionarySetInt64( iconDict, CFSTR( kAirPlayOEMIconKey_WidthPixels ), 256 );
+				CFDictionarySetInt64( iconDict, CFSTR( kAirPlayOEMIconKey_HeightPixels ), 256 );
+				CFDictionarySetBoolean( iconDict, CFSTR( kAirPlayOEMIconKey_Prerendered ), true );
+				CFDictionarySetValue( iconDict, CFSTR( kAirPlayOEMIconKey_ImageData ), obj );
+				CFArrayAppendValue( iconsArray, iconDict );
+				CFRelease( iconDict );
+				iconDict = NULL;
+			}
+			CFRelease( obj );
+		}
 		if( CFArrayGetCount( iconsArray ) > 0) {
 			value = iconsArray;
+			CFRetain( value );
 		} else {
 			CFRelease( iconsArray );
+			err = kNotHandledErr;
+			goto exit;
+		}
+	}
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_Displays ) ) )
+	{
+		value = _getScreenDisplays( &err );
+		require_noerr( err, exit );
+		CFRetain( value );
+	}
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_HIDDevices ) ) )
+	{
+		value = _getHIDDevices( &err );
+		require_noerr( err, exit );
+		CFRetain( value );
+	}
+	else if( CFEqual( inProperty, CFSTR( kAirPlayKey_ClientOSBuildVersionMin ) ) )
+	{
+		if( giOSVersionMin )
+		{
+			value = giOSVersionMin; // ie. CFSTR( "11D257" )
+			CFRetain( value );
+		}
+		else
+		{
+			err = kNotHandledErr;
+			goto exit;
+		}
+	}
+	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_DeviceID ) ) )
+	{
+		if( gDeviceID )
+		{
+			value = gDeviceID; // ie. CFSTR( "00:11:22:AA:BB:CC" )
+			CFRetain( value );
+		}
+		else
+		{
 			err = kNotHandledErr;
 			goto exit;
 		}
@@ -674,13 +760,18 @@ static void _AirPlayHandleSessionStarted( AirPlayReceiverSessionRef inSession, v
 
 	(void) inContext;
 
+	// Start a new iAP2 session over the CarPlay control channel only if the current CarPlay session is over wireless.
+	// Disconnecting iAP2 over Bluetooth should only occur when disableBluetooth is received in the AirPlayReceiverSessionControl_f
+	// delegate.
 	value = (CFNumberRef) AirPlayReceiverSessionCopyProperty( inSession, 0, CFSTR( kAirPlayProperty_TransportType ), NULL, &error );
 	if( error == kNoErr && value ) {
 		uint32_t transportType;
 
 		CFNumberGetValue( (CFNumberRef) value, kCFNumberSInt32Type, &transportType ); 
 		if( NetTransportTypeIsWiFi( transportType ) ) {
-			// Start iAP
+			// This is a CarPlay session over wireless, start iAP2 over CarPlay.  For sending messages use
+			// AirPlayReceiverSessionSendiAPMessage() and for receiving message use the kAirPlayCommand_iAPSendMessage command
+			// in the AirPlayReceiverSessionControl_f delegate.
 		}
 	}
 }
@@ -799,55 +890,40 @@ static OSStatus
 	return( err );
 }
 
+OSStatus _setupHIDDevices( void )
+{
+	// Assign a unique identifier for each HID device
+	if( gHiFiTouch || gLoFiTouch )
+	{
+		gTouchUID = gNextDeviceUID++;
+	}
+
+	if( gKnob )
+	{
+		gKnobUID = gNextDeviceUID++;
+	}
+
+	if( gProxSensor )
+	{
+		gProxSensorUID = gNextDeviceUID++;
+	}
+
+	return( kNoErr );
+}
+
 //===========================================================================================================================
-//	_InitKnobDevice
+//	_touchScreenUpdate
 //===========================================================================================================================
 
-static OSStatus	_InitKnobDevice( void )
+static OSStatus _touchScreenUpdate( bool inPress, uint16_t inX, uint16_t inY )
 {
-	OSStatus			err;
-	CFNumberRef         countryCode;
-	CFNumberRef         productID;
-	CFNumberRef         vendorID;
-	uint8_t *			descPtr;
-	size_t				descLen;
-	CFDataRef			descData;
+	OSStatus		err;
+	uint8_t			report[ 5 ];
 	
-	// Create knob device.
-	err = HIDDeviceCreateVirtual( &gKnobHID, NULL );
-	require_noerr( err, exit );
-	HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_DisplayUUID, NULL, kDefaultUUID );
-	HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_Name, NULL, CFSTR( "My Knob" ) );
 	
-	countryCode = CFNumberCreateInt64( kUSBCountryCodeUS );
-	if ( countryCode ) 
-	{
-		HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_CountryCode, NULL, countryCode );
-        CFRelease( countryCode );
-	}
-    productID = CFNumberCreateInt64( kUSBProductKnobButtons );
-    if ( productID ) 
-    {
-    	HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_ProductID, NULL, productID );
-    	CFRelease( productID );
-	}
+	HIDTouchScreenFillReport( report, inPress, inX, inY );
 	
-	vendorID = CFNumberCreateInt64( kUSBVendorKnobButtons );
-	if ( vendorID ) 
-	{
-		HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_VendorID, NULL, vendorID );
-		CFRelease( vendorID );
-	}
-	
-	err = HIDKnobCreateDescriptor( &descPtr, &descLen );
-	require_noerr( err, exit );
-	descData = CFDataCreate( NULL, descPtr, (CFIndex) descLen );
-	free( descPtr );
-	require_action( descData, exit, err = kNoMemoryErr );
-	HIDDeviceSetProperty( gKnobHID, kHIDDeviceProperty_ReportDescriptor, NULL, descData );
-	CFRelease( descData );
-	
-	err = HIDRegisterDevice( gKnobHID );
+	AirPlayReceiverSessionSendHIDReport( gAirPlaySession, gTouchUID, report, sizeof( report ) );
 	require_noerr( err, exit );
 	
 exit:
@@ -855,56 +931,13 @@ exit:
 }
 
 //===========================================================================================================================
-//	setupTouchScreen
-//===========================================================================================================================
-
-void	setupTouchScreen()
-{
-    OSStatus		err;
-    CFNumberRef		countryCode;
-    CFNumberRef		productID;
-    CFNumberRef		vendorID;
-	uint8_t *		descPtr;
-	size_t			descLen;
-	CFDataRef		descData;
-
-	err = HIDDeviceCreateVirtual( &gTouchHID, NULL );
-	require_noerr( err, exit );
-	HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_DisplayUUID, NULL, kDefaultUUID );
-	HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_Name, NULL, CFSTR( "Touch Screen" ) );
-	countryCode = CFNumberCreateInt64( kUSBCountryCodeUnused );
-	if ( countryCode ) 
-	{
-		HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_CountryCode, NULL, countryCode );
-		CFRelease( countryCode );
-	}
-	productID = CFNumberCreateInt64( kUSBProductTouchScreen );
-	if ( productID ) 
-	{
-		HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_ProductID, NULL, productID );
-		CFRelease( productID );
-	}
-	vendorID = CFNumberCreateInt64( kUSBVendorTouchScreen );
-	if ( vendorID ) 
-	{
-		HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_VendorID, NULL, vendorID );
-		CFRelease( vendorID );
-	}
-	
-	err = HIDTouchScreenSingleCreateDescriptor( &descPtr, &descLen, gVideoWidth, gVideoHeight );
-	require_noerr( err, exit );
-	descData = CFDataCreate( NULL, descPtr, (CFIndex) descLen );
-	free( descPtr );
-	require_action( descData, exit, err = kNoMemoryErr );
-	HIDDeviceSetProperty( gTouchHID, kHIDDeviceProperty_ReportDescriptor, NULL, descData );
-	CFRelease( descData );
-exit:;
-}
-
-
-//===========================================================================================================================
 //	KnobUpdate
 //===========================================================================================================================
+
+static double TranslateValue( double inValue, double inOldMin, double inOldMax, double inNewMin, double inNewMax )
+{
+	return( ( ( ( inValue - inOldMin ) / ( inOldMax - inOldMin ) ) * ( inNewMax - inNewMin ) ) + inNewMin );
+}
 
 OSStatus	KnobUpdate( void )
 {
@@ -920,7 +953,25 @@ OSStatus	KnobUpdate( void )
 	// A HIDKnobFillReport must be sent on both button pressed and button released events
 	HIDKnobFillReport( report, gSelectButtonPressed, gHomeButtonPressed, gBackButtonPressed, x, y, gWheelPositionRelative );
 	
-	err = HIDDevicePostReport( gKnobHID, report, sizeof( report ) );
+	AirPlayReceiverSessionSendHIDReport( gAirPlaySession, gKnobUID, report, sizeof( report ) );
+	require_noerr( err, exit );
+	
+exit:
+	return( err );
+}
+
+//===========================================================================================================================
+//	_proxSensorUpdate
+//===========================================================================================================================
+
+static OSStatus _proxSensorUpdate( bool inProxSensorPresence )
+{
+	OSStatus		err;
+	uint8_t			report[ 1 ];
+	
+	HIDProximityFillReport( report, inProxSensorPresence );
+	
+	AirPlayReceiverSessionSendHIDReport( gAirPlaySession, gProxSensorUID, report, sizeof( report ) );
 	require_noerr( err, exit );
 	
 exit:
@@ -1204,5 +1255,297 @@ void CarPlayControlClientEventCallback( CarPlayControlClientRef client, CarPlayC
 	} else {
 		app_ulog( kLogLevelNotice, "CarPlayControlClientEvent event type %d received\n", (int)event );
 	}
+}
+
+//===========================================================================================================================
+//	_sendETCUpdate
+//===========================================================================================================================
+
+static OSStatus _sendETCUpdate(bool inETCEnabled)
+{
+	OSStatus err;
+	CFMutableDictionaryRef etcDict = NULL;
+	CFMutableDictionaryRef vehicleDict = NULL;
+
+	etcDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( etcDict, exit, err = kNoMemoryErr );
+	CFDictionarySetBoolean( etcDict, CFSTR( kAirPlayKey_Active), inETCEnabled );
+
+	vehicleDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
+	require_action( vehicleDict, exit, err = kNoMemoryErr );
+	CFDictionarySetValue( vehicleDict, CFSTR( kAirPlayVehicleInformation_ETC), etcDict );
+
+	err = AirPlayReceiverSessionUpdateVehicleInformation( gAirPlaySession, vehicleDict, NULL, NULL );
+	require_noerr( err, exit );
+
+exit:
+	CFReleaseNullSafe( etcDict );
+	CFReleaseNullSafe( vehicleDict );
+	return( err );
+}
+
+//===========================================================================================================================
+//	_getAudioFormats
+//===========================================================================================================================
+
+static CFArrayRef _getAudioFormats( OSStatus *outErr )
+{
+	CFArrayRef					dictArray = NULL;
+	OSStatus					err;
+	AirPlayAudioFormat			inputFormats, outputFormats;
+	
+	// Main Audio - Compatibility
+	inputFormats =
+		kAirPlayAudioFormat_PCM_8KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_8KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Compatibility, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Alt Audio - Compatibility
+	inputFormats = 0;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_AltAudio, kAudioStreamAudioType_Compatibility, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main Audio - Alert
+	inputFormats = 0;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_OPUS_48KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_48KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_44KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_48KHz_Stereo |
+		//kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Alert, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main Audio - Default
+	inputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono |
+		kAirPlayAudioFormat_OPUS_16KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_16KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono |
+		kAirPlayAudioFormat_OPUS_16KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_16KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Default, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main Audio - Media
+	inputFormats = 0;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Media, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main Audio - Telephony
+	inputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono |
+		kAirPlayAudioFormat_OPUS_16KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_16KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono |
+		kAirPlayAudioFormat_OPUS_16KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_16KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Telephony, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main Audio - SpeechRecognition
+	inputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono |
+		kAirPlayAudioFormat_OPUS_24KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_SpeechRecognition, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Alt Audio - Default
+	inputFormats = 0;
+	outputFormats =
+		kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo |
+		kAirPlayAudioFormat_OPUS_48KHz_Mono;
+		//kAirPlayAudioFormat_AAC_ELD_48KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_44KHz_Mono |
+		//kAirPlayAudioFormat_AAC_ELD_48KHz_Stereo |
+		//kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_AltAudio, kAudioStreamAudioType_Default, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+	// Main High - Media
+	inputFormats = 0;
+	outputFormats =
+		kAirPlayAudioFormat_AAC_LC_48KHz_Stereo |
+		kAirPlayAudioFormat_AAC_LC_44KHz_Stereo;
+	err = AirPlayInfoArrayAddAudioFormat( &dictArray, kAudioStreamType_AltAudio, kAudioStreamAudioType_Media, inputFormats, outputFormats );
+	require_noerr( err, exit );
+	
+exit:
+	if( outErr ) *outErr = err;
+	return( dictArray );
+}
+
+//===========================================================================================================================
+//	_getAudioLatencies
+//===========================================================================================================================
+
+static CFArrayRef _getAudioLatencies( OSStatus *outErr )
+{
+	CFArrayRef							dictArray = NULL;
+	OSStatus							err;
+	
+	// $$$ TODO: obtain audio latencies for all audio formats and audio types supported by the underlying hardware.
+	// Audio latencies are reported as an ordered array of dictionaries (from least restrictive to the most restrictive).
+	// Each dictionary contains the following keys:
+	//		[kAudioSessionKey_Type] - if not specified, then latencies are good for all stream types
+	//		[kAudioSessionKey_AudioType] - if not specified, then latencies are good for all audio types
+	//		[kAudioSessionKey_SampleRate] - if not specified, then latencies are good for all sample rates
+	//		[kAudioSessionKey_SampleSize] - if not specified, then latencies are good for all sample sizes
+	//		[kAudioSessionKey_Channels] - if not specified, then latencies are good for all channel counts
+	//		[kAudioSessionKey_CompressionType] - if not specified, then latencies are good for all compression types
+	//		kAudioSessionKey_InputLatencyMicros
+	//		kAudioSessionKey_OutputLatencyMicros
+	
+	// MainAudio catch all - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, NULL, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// MainAudio default latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Default, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// MainAudio media latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Media, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// MainAudio telephony latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Telephony, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// MainAudio SpeechRecognition latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_SpeechRecognition, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// Main Audio alert latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainAudio, kAudioStreamAudioType_Alert, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// AltAudio catch all latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_AltAudio, NULL, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// AltAudio default latencies - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_AltAudio, kAudioStreamAudioType_Default, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// MainHighAudio Media latencies (wireless only) - set 0 latencies for now - $$$ TODO set real latencies
+	err = AirPlayInfoArrayAddAudioLatency( &dictArray, kAudioStreamType_MainHighAudio, kAudioStreamAudioType_Media, 0, 0, 0, 0, 0 );
+	require_noerr( err, exit );
+	
+	// $$$ TODO add more latencies dictionaries as needed
+	
+exit:
+	if( outErr ) *outErr = kNoErr;
+	return( dictArray );
+}
+
+//===========================================================================================================================
+//	GetHIDDevices
+//===========================================================================================================================
+
+static CFArrayRef _getHIDDevices( OSStatus *outErr )
+{
+	CFArrayRef					dictArray = NULL;
+	
+	if( gHiFiTouch || gLoFiTouch )
+	{
+		uint8_t *	descPtr;
+		size_t		descLen;
+
+		err = HIDTouchScreenSingleCreateDescriptor( &descPtr, &descLen, gVideoWidth, gVideoHeight );
+		require_noerr( err, exit );
+
+		err = AirPlayInfoArrayAddHIDDevice( &dictArray, gTouchUID, "Touch Screen", kUSBVendorTouchScreen, kUSBProductTouchScreen, kUSBCountryCodeUnused, descPtr, descLen, kDefaultUUID );
+		free( descPtr );
+		require_noerr( err, exit );
+	}
+
+	if( gKnob )
+	{
+		uint8_t *	descPtr;
+		size_t		descLen;
+
+		err = HIDKnobCreateDescriptor( &descPtr, &descLen );
+		require_noerr( err, exit );
+
+		err = AirPlayInfoArrayAddHIDDevice( &dictArray, gKnobUID, "Knob & Buttons", kUSBVendorKnobButtons, kUSBProductKnobButtons, kUSBCountryCodeUnused, descPtr, descLen, kDefaultUUID );
+		free( descPtr );
+		require_noerr( err, exit );
+	}
+
+	if( gProxSensor )
+	{
+		uint8_t *	descPtr;
+		size_t		descLen;
+
+		err = HIDProximityCreateDescriptor( &descPtr, &descLen );
+		require_noerr( err, exit );
+
+		err = AirPlayInfoArrayAddHIDDevice( &dictArray, gProxSensorUID, "Proximity Sensor", kUSBVendorProxSensor, kUSBProductProxSensor, kUSBCountryCodeUnused, descPtr, descLen, kDefaultUUID );
+		free( descPtr );
+		require_noerr( err, exit );
+	}
+
+	err = kNoErr;
+
+exit:
+	if( outErr ) *outErr = err;
+	return( result );
+}
+
+//===========================================================================================================================
+//	_getScreenDisplays
+//===========================================================================================================================
+
+static CFArrayRef _getScreenDisplays( OSStatus *outErr )
+{
+	CFArrayRef dictArray = NULL;
+	uint32_t u32 = 0;
+
+	if( gKnob )			u32 |= kAirPlayDisplayFeatures_Knobs;
+	if( gHiFiTouch )	u32 |= kAirPlayDisplayFeatures_HighFidelityTouch;
+	if( gLoFiTouch )	u32 |= kAirPlayDisplayFeatures_LowFidelityTouch;
+	if( gTouchpad )		u32 |= kAirPlayDisplayFeatures_Touchpad;
+
+	AirPlayInfoArrayAddScreenDisplay( &dictArray, kDefaultUUID, u32, gPrimaryInputDevice, 0, gVideoWidth, gVideoHeight, gVideoWidthMM, gVideoHeightMM ); 
+
+	*outErr = kNoErr;
+	return( dictArray );
 }
 

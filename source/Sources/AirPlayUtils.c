@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayUtils.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,18 +48,16 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "AirPlayUtils.h"
 
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/PrintFUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/ThreadUtils.h>
-#include <CoreUtils/TickUtils.h>
+#include "CFUtils.h"
+#include "CommonServices.h"
+#include "DebugServices.h"
+#include "ThreadUtils.h"
+#include "TickUtils.h"
 
 #include "AirPlayCommon.h"
 
@@ -73,136 +71,6 @@
 ulog_define( AirPlayJitterBuffer, kLogLevelNotice, kLogFlags_Default, "AirPlay", "AirPlayJitterBuffer:rate=3;1000" );
 #define ap_jitter_ulog( LEVEL, ... )		ulog( &log_category_from_name( AirPlayJitterBuffer ), (LEVEL), __VA_ARGS__ )
 #define ap_jitter_label( CTX )				( (CTX)->label ? (CTX)->label : "Default" )
-
-//===========================================================================================================================
-//	ASBDToAirPlayAudioFormat
-//===========================================================================================================================
-
-OSStatus
-	ASBDToAirPlayAudioFormat(
-		const AudioStreamBasicDescription *	inASBD,
-		AirPlayAudioFormat *				outFormat )
-{
-	AirPlayAudioFormat format = kAirPlayAudioFormat_Invalid;
-	
-	switch( inASBD->mFormatID )
-	{
-		case kAudioFormatLinearPCM:
-			if( inASBD->mSampleRate == 8000 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 )
-					format = kAirPlayAudioFormat_PCM_8KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 )
-					format = kAirPlayAudioFormat_PCM_8KHz_16Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 16000 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 )
-					format = kAirPlayAudioFormat_PCM_16KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 )
-					format = kAirPlayAudioFormat_PCM_16KHz_16Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 24000 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 )
-					format = kAirPlayAudioFormat_PCM_24KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 )
-					format = kAirPlayAudioFormat_PCM_24KHz_16Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 32000 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 )
-					format = kAirPlayAudioFormat_PCM_32KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 )
-					format = kAirPlayAudioFormat_PCM_32KHz_16Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 44100 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 && inASBD->mBitsPerChannel == 16 )
-					format = kAirPlayAudioFormat_PCM_44KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 && inASBD->mBitsPerChannel == 16)
-					format = kAirPlayAudioFormat_PCM_44KHz_16Bit_Stereo;
-				else if( inASBD->mChannelsPerFrame == 1 && inASBD->mBitsPerChannel == 24 )
-					format = kAirPlayAudioFormat_PCM_44KHz_24Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 && inASBD->mBitsPerChannel == 24 )
-					format = kAirPlayAudioFormat_PCM_44KHz_24Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 48000 )
-			{
-				if( inASBD->mChannelsPerFrame == 1 && inASBD->mBitsPerChannel == 16 )
-					format = kAirPlayAudioFormat_PCM_48KHz_16Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 && inASBD->mBitsPerChannel == 16 )
-					format = kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo;
-				else if( inASBD->mChannelsPerFrame == 1 && inASBD->mBitsPerChannel == 24 )
-					format = kAirPlayAudioFormat_PCM_48KHz_24Bit_Mono;
-				else if( inASBD->mChannelsPerFrame == 2 && inASBD->mBitsPerChannel == 24 )
-					format = kAirPlayAudioFormat_PCM_48KHz_24Bit_Stereo;
-			}
-			break;
-		case kAudioFormatAppleLossless:
-			if( inASBD->mSampleRate == 44100 && inASBD->mChannelsPerFrame == 2 )
-			{
-				if( inASBD->mFormatFlags & kAppleLosslessFormatFlag_16BitSourceData )
-					format = kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo;
-				else if( inASBD->mFormatFlags & kAppleLosslessFormatFlag_24BitSourceData )
-					format = kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo;
-			}
-			else if( inASBD->mSampleRate == 48000 && inASBD->mChannelsPerFrame == 2 )
-			{
-				if( inASBD->mFormatFlags & kAppleLosslessFormatFlag_16BitSourceData )
-					format = kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo;
-				else if( inASBD->mFormatFlags & kAppleLosslessFormatFlag_24BitSourceData )
-					format = kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo;
-			}
-			break;
-		case kAudioFormatMPEG4AAC:
-			if( inASBD->mChannelsPerFrame == 2 )
-			{
-				if( inASBD->mSampleRate == 44100 )
-					format = kAirPlayAudioFormat_AAC_LC_44KHz_Stereo;
-				else if( inASBD->mSampleRate == 48000 )
-					format = kAirPlayAudioFormat_AAC_LC_48KHz_Stereo;
-			}
-			break;
-		case kAudioFormatMPEG4AAC_ELD:
-			if( inASBD->mChannelsPerFrame == 1 )
-			{
-				if( inASBD->mSampleRate == 16000 )
-					format = kAirPlayAudioFormat_AAC_ELD_16KHz_Mono;
-				else if( inASBD->mSampleRate == 24000 )
-					format = kAirPlayAudioFormat_AAC_ELD_24KHz_Mono;
-			}
-			else if( inASBD->mChannelsPerFrame == 2 )
-			{
-				if( inASBD->mSampleRate == 44100 )
-					format = kAirPlayAudioFormat_AAC_ELD_44KHz_Stereo;
-				else if( inASBD->mSampleRate == 48000 )
-					format = kAirPlayAudioFormat_AAC_ELD_48KHz_Stereo;
-			}
-			break;
-		case kAudioFormatOpus:
-			if( inASBD->mChannelsPerFrame == 1 )
-			{
-				if( inASBD->mSampleRate == 16000 )
-					format = kAirPlayAudioFormat_OPUS_16KHz_Mono;
-				else if( inASBD->mSampleRate == 24000 )
-					format = kAirPlayAudioFormat_OPUS_24KHz_Mono;
-				else if( inASBD->mSampleRate == 48000 )
-					format = kAirPlayAudioFormat_OPUS_48KHz_Mono;
-			}
-			break;
-		default:
-			format = kAirPlayAudioFormat_Invalid;
-	}
-	
-	if( format != kAirPlayAudioFormat_Invalid )
-	{
-		*outFormat = format;
-		return( kNoErr );
-	}
-	
-	return( kUnsupportedErr );
-}
 
 //===========================================================================================================================
 //	AirPlayAudioFormatToASBD
@@ -232,10 +100,6 @@ OSStatus
 		case kAirPlayAudioFormat_PCM_48KHz_16Bit_Stereo:	ASBD_FillPCM( outASBD, 48000, 16, 16, 2 ); break;
 		case kAirPlayAudioFormat_PCM_48KHz_24Bit_Mono:		ASBD_FillPCM( outASBD, 48000, 24, 24, 1 ); break;
 		case kAirPlayAudioFormat_PCM_48KHz_24Bit_Stereo:	ASBD_FillPCM( outASBD, 48000, 24, 24, 2 ); break;
-		case kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo:	ASBD_FillALAC( outASBD, 44100, 16, 2 ); break;
-		case kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo:	ASBD_FillALAC( outASBD, 44100, 24, 2 ); break;
-		case kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo:	ASBD_FillALAC( outASBD, 48000, 16, 2 ); break;
-		case kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo:	ASBD_FillALAC( outASBD, 48000, 24, 2 ); break;
 		case kAirPlayAudioFormat_AAC_LC_44KHz_Stereo:		ASBD_FillAAC_LC( outASBD, 44100, 2 ); break;
 		case kAirPlayAudioFormat_AAC_LC_48KHz_Stereo:		ASBD_FillAAC_LC( outASBD, 48000, 2 ); break;
 		case kAirPlayAudioFormat_AAC_ELD_16KHz_Mono:		ASBD_FillAAC_ELD( outASBD, 16000, 1 ); break;
@@ -245,13 +109,13 @@ OSStatus
 		case kAirPlayAudioFormat_OPUS_16KHz_Mono:			ASBD_FillOpus( outASBD, 16000, 1 ); break;
 		case kAirPlayAudioFormat_OPUS_24KHz_Mono:			ASBD_FillOpus( outASBD, 24000, 1 ); break;
 		case kAirPlayAudioFormat_OPUS_48KHz_Mono:			ASBD_FillOpus( outASBD, 48000, 1 ); break;
+		case kAirPlayAudioFormat_AAC_ELD_44KHz_Mono:		ASBD_FillAAC_ELD( outASBD, 44100, 1 ); break;
+		case kAirPlayAudioFormat_AAC_ELD_48KHz_Mono:		ASBD_FillAAC_ELD( outASBD, 48000, 1 ); break;
 		default: return( kUnsupportedErr );
 	}
 	if( outBitsPerChannel )
 	{
-		if( ( inFormat == kAirPlayAudioFormat_ALAC_44KHz_16Bit_Stereo )	||
-			( inFormat == kAirPlayAudioFormat_ALAC_48KHz_16Bit_Stereo )	||
-			( inFormat == kAirPlayAudioFormat_AAC_LC_44KHz_Stereo )		||
+		if( ( inFormat == kAirPlayAudioFormat_AAC_LC_44KHz_Stereo )		||
 			( inFormat == kAirPlayAudioFormat_AAC_LC_48KHz_Stereo )		||
 			( inFormat == kAirPlayAudioFormat_AAC_ELD_16KHz_Mono )		||
 			( inFormat == kAirPlayAudioFormat_AAC_ELD_24KHz_Mono )		||
@@ -259,14 +123,11 @@ OSStatus
 			( inFormat == kAirPlayAudioFormat_AAC_ELD_48KHz_Stereo )	||
 			( inFormat == kAirPlayAudioFormat_OPUS_16KHz_Mono )			||
 			( inFormat == kAirPlayAudioFormat_OPUS_24KHz_Mono )			||
-			( inFormat == kAirPlayAudioFormat_OPUS_48KHz_Mono ) )
+			( inFormat == kAirPlayAudioFormat_OPUS_48KHz_Mono )			||
+			( inFormat == kAirPlayAudioFormat_AAC_ELD_44KHz_Mono )		||
+			( inFormat == kAirPlayAudioFormat_AAC_ELD_48KHz_Mono ))
 		{
 			*outBitsPerChannel = 16;
-		}
-		else if( ( inFormat == kAirPlayAudioFormat_ALAC_44KHz_24Bit_Stereo ) ||
-				 ( inFormat == kAirPlayAudioFormat_ALAC_48KHz_24Bit_Stereo ) )
-		{
-			*outBitsPerChannel = 24;
 		}
 		else
 		{
@@ -313,7 +174,6 @@ AudioFormatID	AirPlayCompressionTypeToAudioFormatID( AirPlayCompressionType inCo
 	switch( inCompressionType )
 	{
 		case kAirPlayCompressionType_PCM:		formatID = kAudioFormatLinearPCM; break;
-		case kAirPlayCompressionType_ALAC:		formatID = kAudioFormatAppleLossless; break;
 		case kAirPlayCompressionType_AAC_LC:	formatID = kAudioFormatMPEG4AAC; break;
 		case kAirPlayCompressionType_AAC_ELD:	formatID = kAudioFormatMPEG4AAC_ELD; break;
 		case kAirPlayCompressionType_OPUS:		formatID = kAudioFormatOpus; break;
@@ -328,7 +188,6 @@ AirPlayCompressionType	AudioFormatIDToAirPlayCompressionType( AudioFormatID inFo
 	switch( inFormatID )
 	{
 		case kAudioFormatLinearPCM:			compressionType = kAirPlayCompressionType_PCM; break;
-		case kAudioFormatAppleLossless:		compressionType = kAirPlayCompressionType_ALAC; break;
 		case kAudioFormatMPEG4AAC:			compressionType = kAirPlayCompressionType_AAC_LC; break;
 		case kAudioFormatMPEG4AAC_ELD:		compressionType = kAirPlayCompressionType_AAC_ELD; break;
 		case kAudioFormatOpus:				compressionType = kAirPlayCompressionType_OPUS; break;
@@ -347,7 +206,6 @@ EXPORT_GLOBAL
 CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChanges, CFStringRef inReason, OSStatus *outErr )
 {
 	CFDictionaryRef				result		= NULL;
-	Boolean const				useStrings	= false;
 	CFMutableDictionaryRef		params;
 	CFMutableArrayRef			appStates	= NULL;
 	CFMutableArrayRef			resources	= NULL;
@@ -364,15 +222,7 @@ CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChange
 	{
 		tempDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( tempDict, exit, err = kNoMemoryErr );
-		if( useStrings )
-		{
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_AppStateID ), 
-				AirPlayAppStateIDToCFString( kAirPlayAppStateID_PhoneCall ) );
-		}
-		else
-		{
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_PhoneCall );
-		}
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_PhoneCall );
 		CFDictionarySetBoolean( tempDict, CFSTR( kAirPlayKey_State ), inChanges->phoneCall != kAirPlayTriState_False );
 		
 		err = CFArrayEnsureCreatedAndAppend( &appStates, tempDict );
@@ -387,17 +237,8 @@ CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChange
 	{
 		tempDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( tempDict, exit, err = kNoMemoryErr );
-		if( useStrings )
-		{
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_AppStateID ), 
-				AirPlayAppStateIDToCFString( kAirPlayAppStateID_Speech ) );
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_SpeechMode ), AirPlaySpeechModeToCFString( inChanges->speech ) );
-		}
-		else
-		{
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_Speech );
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_SpeechMode ), inChanges->speech );
-		}
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_Speech );
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_SpeechMode ), inChanges->speech );
 		
 		err = CFArrayEnsureCreatedAndAppend( &appStates, tempDict );
 		CFRelease( tempDict );
@@ -411,15 +252,7 @@ CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChange
 	{
 		tempDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( tempDict, exit, err = kNoMemoryErr );
-		if( useStrings )
-		{
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_AppStateID ), 
-				AirPlayAppStateIDToCFString( kAirPlayAppStateID_TurnByTurn ) );
-		}
-		else
-		{
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_TurnByTurn );
-		}
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_AppStateID ), kAirPlayAppStateID_TurnByTurn );
 		CFDictionarySetBoolean( tempDict, CFSTR( kAirPlayKey_State ), inChanges->turnByTurn != kAirPlayTriState_False );
 		
 		err = CFArrayEnsureCreatedAndAppend( &appStates, tempDict );
@@ -435,49 +268,22 @@ CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChange
 		tempDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( tempDict, exit, err = kNoMemoryErr );
 		
-		if( useStrings )
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_ResourceID ), kAirPlayResourceID_MainScreen );
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferType ), inChanges->screen.type );
+		if( inChanges->screen.priority != kAirPlayTransferPriority_NotApplicable )
 		{
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_ResourceID ), 
-				AirPlayResourceIDToCFString( kAirPlayResourceID_MainScreen ) );
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TransferType ), 
-				AirPlayTransferTypeToCFString( inChanges->screen.type ) );
-			if( inChanges->screen.priority != kAirPlayTransferPriority_NotApplicable )
-			{
-				CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TransferPriority ), 
-					AirPlayTransferPriorityToCFString( inChanges->screen.priority ) );
-			}
-			if( inChanges->screen.takeConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), 
-					AirPlayConstraintToCFString( inChanges->screen.takeConstraint ) );
-			}
-			if( inChanges->screen.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				if(      inChanges->screen.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
-				else if( inChanges->screen.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
-				else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
-				CFDictionarySetValue( tempDict, key, AirPlayConstraintToCFString( inChanges->screen.borrowOrUnborrowConstraint ) );
-			}
+			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferPriority ), inChanges->screen.priority );
 		}
-		else
+		if( inChanges->screen.takeConstraint != kAirPlayConstraint_NotApplicable )
 		{
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_ResourceID ), kAirPlayResourceID_MainScreen );
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferType ), inChanges->screen.type );
-			if( inChanges->screen.priority != kAirPlayTransferPriority_NotApplicable )
-			{
-				CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferPriority ), inChanges->screen.priority );
-			}
-			if( inChanges->screen.takeConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), inChanges->screen.takeConstraint );
-			}
-			if( inChanges->screen.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				if(      inChanges->screen.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
-				else if( inChanges->screen.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
-				else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
-				CFDictionarySetInt64( tempDict, key, inChanges->screen.borrowOrUnborrowConstraint );
-			}
+			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), inChanges->screen.takeConstraint );
+		}
+		if( inChanges->screen.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
+		{
+			if(      inChanges->screen.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
+			else if( inChanges->screen.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
+			else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
+			CFDictionarySetInt64( tempDict, key, inChanges->screen.borrowOrUnborrowConstraint );
 		}
 		
 		err = CFArrayEnsureCreatedAndAppend( &resources, tempDict );
@@ -493,49 +299,22 @@ CFDictionaryRef	AirPlayCreateModesDictionary( const AirPlayModeChanges *inChange
 		tempDict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 		require_action( tempDict, exit, err = kNoMemoryErr );
 		
-		if( useStrings )
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_ResourceID ), kAirPlayResourceID_MainAudio );
+		CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferType ), inChanges->mainAudio.type );
+		if( inChanges->mainAudio.priority != kAirPlayTransferPriority_NotApplicable )
 		{
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_ResourceID ), 
-				AirPlayResourceIDToCFString( kAirPlayResourceID_MainAudio ) );
-			CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TransferType ), 
-				AirPlayTransferTypeToCFString( inChanges->mainAudio.type ) );
-			if( inChanges->mainAudio.priority != kAirPlayTransferPriority_NotApplicable )
-			{
-				CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TransferPriority ), 
-					AirPlayTransferPriorityToCFString( inChanges->mainAudio.priority ) );
-			}
-			if( inChanges->mainAudio.takeConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				CFDictionarySetValue( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), 
-					AirPlayConstraintToCFString( inChanges->mainAudio.takeConstraint ) );
-			}
-			if( inChanges->mainAudio.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				if(      inChanges->mainAudio.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
-				else if( inChanges->mainAudio.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
-				else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
-				CFDictionarySetValue( tempDict, key, AirPlayConstraintToCFString( inChanges->mainAudio.borrowOrUnborrowConstraint ) );
-			}
+			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferPriority ), inChanges->mainAudio.priority );
 		}
-		else
+		if( inChanges->mainAudio.takeConstraint != kAirPlayConstraint_NotApplicable )
 		{
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_ResourceID ), kAirPlayResourceID_MainAudio );
-			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferType ), inChanges->mainAudio.type );
-			if( inChanges->mainAudio.priority != kAirPlayTransferPriority_NotApplicable )
-			{
-				CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TransferPriority ), inChanges->mainAudio.priority );
-			}
-			if( inChanges->mainAudio.takeConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), inChanges->mainAudio.takeConstraint );
-			}
-			if( inChanges->mainAudio.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
-			{
-				if(      inChanges->mainAudio.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
-				else if( inChanges->mainAudio.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
-				else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
-				CFDictionarySetInt64( tempDict, key, inChanges->mainAudio.borrowOrUnborrowConstraint );
-			}
+			CFDictionarySetInt64( tempDict, CFSTR( kAirPlayKey_TakeConstraint ), inChanges->mainAudio.takeConstraint );
+		}
+		if( inChanges->mainAudio.borrowOrUnborrowConstraint != kAirPlayConstraint_NotApplicable )
+		{
+			if(      inChanges->mainAudio.type == kAirPlayTransferType_Take )   key = CFSTR( kAirPlayKey_BorrowConstraint );
+			else if( inChanges->mainAudio.type == kAirPlayTransferType_Borrow ) key = CFSTR( kAirPlayKey_UnborrowConstraint );
+			else { dlogassert( "Bad borrow/unborrow constraint" ); err = kParamErr; goto exit; }
+			CFDictionarySetInt64( tempDict, key, inChanges->mainAudio.borrowOrUnborrowConstraint );
 		}
 		
 		err = CFArrayEnsureCreatedAndAppend( &resources, tempDict );
@@ -617,8 +396,8 @@ void
 	char *screenStreamKeySalt = NULL, *screenStreamIVSalt = NULL;
 	size_t screenStreamKeySaltLen, screenStreamIVSaltLen;
 				
-	screenStreamKeySaltLen = ASPrintF( &screenStreamKeySalt, "%s%llu", kAirPlayEncryptionStreamPrefix_Key, inScreenStreamConnectionID );
-	screenStreamIVSaltLen = ASPrintF( &screenStreamIVSalt, "%s%llu", kAirPlayEncryptionStreamPrefix_IV, inScreenStreamConnectionID );
+	screenStreamKeySaltLen = asprintf( &screenStreamKeySalt, "%s%llu", kAirPlayEncryptionStreamPrefix_Key, inScreenStreamConnectionID );
+	screenStreamIVSaltLen = asprintf( &screenStreamIVSalt, "%s%llu", kAirPlayEncryptionStreamPrefix_IV, inScreenStreamConnectionID );
 				
 	AirPlay_DeriveAESKeySHA512( inMasterKeyPtr, inMasterKeyLen, screenStreamKeySalt, screenStreamKeySaltLen, screenStreamIVSalt, screenStreamIVSaltLen, outKey, outIV );
 
@@ -672,7 +451,8 @@ static void _RTPJitterBufferLog( void *inCtx )
 	}
 }
 
-static void RTPJitterBufferLog( RTPJitterBufferContext *ctx, LogLevel inLevel, const char *inFormat, ... ) PRINTF_STYLE_FUNCTION( 3, 4 )
+static void RTPJitterBufferLog( RTPJitterBufferContext *ctx, LogLevel inLevel, const char *inFormat, ... ) PRINTF_STYLE_FUNCTION( 3, 4 );
+static void RTPJitterBufferLog( RTPJitterBufferContext *ctx, LogLevel inLevel, const char *inFormat, ... )
 {
 	RTPJitterBufferLogContext *		logCtx;
 	va_list							args;
@@ -682,7 +462,7 @@ static void RTPJitterBufferLog( RTPJitterBufferContext *ctx, LogLevel inLevel, c
 		logCtx = malloc( sizeof( *logCtx ) );
 		logCtx->level = inLevel;
 		va_start( args, inFormat );
-		VASPrintF( &logCtx->msg, inFormat, args );
+		vasprintf( &logCtx->msg, inFormat, args );
 		va_end( args );
 		dispatch_async_f( ctx->logQueue, logCtx, _RTPJitterBufferLog);
 	}
@@ -1162,7 +942,6 @@ exit:
 
 static void * _RTPJitterBufferDecodeThread( void *inCtx )
 {
-	OSStatus					err;
 	RTPJitterBufferContext *	ctx = inCtx;
 	RTPPacketNode *				node;
 	uint32_t					nextDecodeTS = 0;
@@ -1194,7 +973,7 @@ static void * _RTPJitterBufferDecodeThread( void *inCtx )
 					dispatch_semaphore_wait( node->decodeLock, DISPATCH_TIME_FOREVER );
 					RTPJitterBufferUnlock( ctx, AIRPLAY_SIGNPOST_JB_DECODEITERATION_LOCK_EXIT );
 
-					err = _RTPJitterBufferDecodeNode( ctx, node );
+					OSStatus err = _RTPJitterBufferDecodeNode( ctx, node );
 
 					RTPJitterBufferLock( ctx, AIRPLAY_SIGNPOST_JB_DECODEITERATION_LOCK_ENTER );
 					dispatch_semaphore_signal( node->decodeLock );
@@ -1217,7 +996,6 @@ static void * _RTPJitterBufferDecodeThread( void *inCtx )
 					TAILQ_REMOVE( &ctx->receivedList, node, list );
 					TAILQ_INSERT_TAIL( &ctx->preparedList, node, list );
 					
-					err = kNoErr;
 					nextDecodeTS += node->pkt.len / ctx->outputFormat.mBytesPerFrame;
 				}
 			}
@@ -1226,8 +1004,7 @@ static void * _RTPJitterBufferDecodeThread( void *inCtx )
 				// We have a gap, so decide whether we can afford to wait a bit
 				if( RTPJitterBufferPreparedMs( ctx ) >= 0.5 * ctx->bufferMs )
 				{
-					RTPJitterBufferLog( ctx, kLogLevelNotice | kLogLevelFlagDontRateLimit, "Delaying decode of node at time %u\n",
-						node->pkt.pkt.rtp.header.ts, nextDecodeTS );
+					RTPJitterBufferLog( ctx, kLogLevelNotice | kLogLevelFlagDontRateLimit, "Delaying decode of node at time %u\n", node->pkt.pkt.rtp.header.ts );
 					break;
 				}
 
@@ -1244,7 +1021,6 @@ static void * _RTPJitterBufferDecodeThread( void *inCtx )
 					node->pkt.pkt.rtp.header.ts );
 				
 				// The node must have arrived late, just after we decoded one of its successors, so just toss it
-				err = kOrderErr;
 			}
 		}
 		RTPJitterBufferUnlock( ctx, AIRPLAY_SIGNPOST_JB_DECODEPASS_LOCK_EXIT );

@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverServer.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,33 +48,32 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2017 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
+
+#include "CommonServices.h"
 
 #include "AirPlayReceiverServer.h"
 #include "AirPlayReceiverServerPriv.h"
 
-#include <CoreUtils/Base64Utils.h>
-#include <CoreUtils/NetTransportChaCha20Poly1305.h>
-#include <CoreUtils/NetUtils.h>
-#include <CoreUtils/RandomNumberUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/SystemUtils.h>
-#include <CoreUtils/ThreadUtils.h>
-#include <CoreUtils/TickUtils.h>
-#include <CoreUtils/UUIDUtils.h>
+#include "CFLiteBinaryPlist.h"
+#include "NetTransportChaCha20Poly1305.h"
+#include "NetUtils.h"
+#include "RandomNumberUtils.h"
+#include "StringUtils.h"
+#include "ThreadUtils.h"
+#include "TickUtils.h"
+#include "UUIDUtils.h"
 
 #include "AirPlayCommon.h"
-#include "AirPlaySettings.h"
 #include "AirPlayReceiverSession.h"
 #include "AirPlayReceiverSessionPriv.h"
 #include "AirPlayUtils.h"
 #include "AirPlayVersion.h"
+#include "ScreenUtils.h"
 
-	#include "APAdvertiser.h"
-	#include "APAdvertiserInfo.h"
 #if( 0 || ( TARGET_OS_POSIX && DEBUG ) )
-	#include <CoreUtils/DebugIPCUtils.h>
+	#include "DebugIPCUtils.h"
 #endif
 #if( TARGET_OS_POSIX )
 	#include <signal.h>
@@ -85,14 +84,14 @@
 #include "dns_sd.h"
 #include LIBDISPATCH_HEADER
 
-	#include <CoreUtils/HIDUtils.h>
-	#include <CoreUtils/ScreenUtils.h>
+#include "HIDUtils.h"
+#include "ScreenUtils.h"
 #if( TARGET_OS_BSD )
 	#include <net/if_media.h>
 	#include <net/if.h>
 #endif
-	#include <CoreUtils/MFiSAP.h>
-	#include <CoreUtils/PairingUtils.h>
+#include "MFiSAP.h"
+#include "PairingUtils.h"
 
 typedef enum
 {
@@ -103,7 +102,7 @@ typedef enum
 #if 0
 #pragma mark == Prototypes ==
 #endif
-#include <glib.h>
+
 //===========================================================================================================================
 //	Prototypes
 //===========================================================================================================================
@@ -111,47 +110,46 @@ typedef enum
 static void	_FinalizeLogs( CFTypeRef inCF );
 
 	static char *
-		AirPlayGetConfigCString( 
+		AirPlayGetConfigCString(
+            AirPlayReceiverServerRef inServer,
 			CFStringRef			inKey,
 			char *				inBuffer, 
 			size_t				inMaxLen, 
 			OSStatus *			outErr );
 	static void _ProcessLimitedUIElementsConfigArray( const void *value, void *context );
 	static void _ProcessLimitedUIElementsConfigArrayDictionaryEntry( const void *key, const void *value, void *context );
-static OSStatus	AirPlayGetDeviceModel( char *inBuffer, size_t inMaxLen );
+static OSStatus	AirPlayGetDeviceModel( AirPlayReceiverServerRef inServer, char *inBuffer, size_t inMaxLen );
 
 static void _GetTypeID( void *inContext );
 static void	_GlobalInitialize( void *inContext );
 
 #if( 0 || ( TARGET_OS_POSIX && DEBUG ) )
 	static OSStatus	_HandleDebug( CFDictionaryRef inRequest, CFDictionaryRef *outResponse, void *inContext );
-	static OSStatus	AirPlayReceiverServerDebugShow( AirPlayReceiverServerRef inServer, int inVerbose, DataBuffer *inDataBuf );
-	typedef struct
-	{
-		AirPlayReceiverServerRef		server;
-		int								verbose;
-		DataBuffer *					dataBuf;
-	} AirPlayReceiverServerDebugShowContext;
-	static void	_AirPlayReceiverServerDebugShow( void *inContext );
 #endif
 
 	static OSStatus	_InitializeConfig( AirPlayReceiverServerRef inServer );
 static void	_Finalize( CFTypeRef inCF );
-static void	_UpdatePrefs( AirPlayReceiverServerRef inServer );
 
-static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdvertiserInfoRef *outAdvertiserInfo );
-static OSStatus	_RestartAdvertising( AirPlayReceiverServerRef inServer );
-static OSStatus	_EnsureStartedAdvertising( AirPlayReceiverServerRef inServer );
-static OSStatus	_EnsureStoppedAdvertising( AirPlayReceiverServerRef inServer, const char *inReason );
-static OSStatus	_UpdateAdvertising( AirPlayReceiverServerRef inServer );
-
+static void DNSSD_API
+_BonjourRegistrationHandler(
+							DNSServiceRef		inRef,
+							DNSServiceFlags		inFlags,
+							DNSServiceErrorType	inError,
+							const char *		inName,
+							const char *		inType,
+							const char *		inDomain,
+							void *				inContext );
+static void	_RestartBonjour( AirPlayReceiverServerRef inServer );
+static void	_RetryBonjour( void *inArg );
+static void	_StopBonjour( AirPlayReceiverServerRef inServer, const char *inReason );
+static void	_UpdateBonjour( AirPlayReceiverServerRef inServer );
+static OSStatus	_UpdateBonjourAirPlay( AirPlayReceiverServerRef inServer, CFDataRef *outTXTRecord );
+static void	_UpdateDeviceID( AirPlayReceiverServerRef inServer );
 static HTTPServerRef _CreateHTTPServerForPort( AirPlayReceiverServerRef inServer, int inListenPort );
 static void	_StartServers( AirPlayReceiverServerRef inServer );
 static void	_StopServers( AirPlayReceiverServerRef inServer );
-static void	_UpdateServers( AirPlayReceiverServerRef inServer );
 
 static Boolean _IsConnectionActive( HTTPConnectionRef inConnection );
-static HTTPConnectionRef _FindActiveConnection( AirPlayReceiverServerRef inServer );
 static void _HijackConnections( AirPlayReceiverServerRef inServer, HTTPConnectionRef inHijacker );
 static void _RemoveAllConnections( AirPlayReceiverServerRef inServer );
 static void	_DestroyConnection( HTTPConnectionRef inCnx );
@@ -172,16 +170,11 @@ static OSStatus	_HandleHTTPConnectionMessage( HTTPConnectionRef inCnx, HTTPMessa
 static HTTPStatus	_requestProcessCommand( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 static HTTPStatus	_requestProcessFeedback( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 	static HTTPStatus	_requestProcessFlush( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
-static HTTPStatus	_requestProcessGetLog( AirPlayReceiverConnectionRef inCnx );
 	static HTTPStatus	_requestProcessGetLogs( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest );
 static HTTPStatus	_requestProcessInfo( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 static HTTPStatus	_requestProcessOptions( AirPlayReceiverConnectionRef inCnx );
 	static HTTPStatus	_requestProcessPairSetup( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 	static HTTPStatus	_requestProcessPairVerify( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
-static HTTPStatus	_requestProcessGetParameter( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
-static HTTPStatus	_requestProcessSetParameter( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
-static HTTPStatus	_requestProcessSetParameterText( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
-static HTTPStatus	_requestProcessSetProperty( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 static HTTPStatus	_requestProcessRecord( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 static HTTPStatus	_requestProcessSetup( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
 static HTTPStatus	_requestProcessSetupPlist( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inMsg );
@@ -204,6 +197,7 @@ static HTTPStatus
 		OSStatus *			outErr );
 #if( TARGET_OS_POSIX )
 	static void			_requestNetworkChangeListenerHandleEvent( uint32_t inEvent, void *inContext );
+	static void			_tearDownNetworkListener( void *inContext);
 #endif
 
 //===========================================================================================================================
@@ -212,7 +206,7 @@ static HTTPStatus
 
 static dispatch_once_t			gAirPlayReceiverServerInitOnce	= 0;
 static CFTypeID					gAirPlayReceiverServerTypeID	= _kCFRuntimeNotATypeID;
-AirPlayReceiverServerRef		gAirPlayReceiverServer			= NULL;
+
 static const CFRuntimeClass		kAirPlayReceiverServerClass = 
 {
 	0,							// version
@@ -247,21 +241,9 @@ static const CFRuntimeClass		kAirPlayReceiverLogsClass =
 
 static dispatch_once_t			gAirPlayReceiverInitOnce		= 0;
 
-AirPlayCompressionType				gAirPlayAudioCompressionType	= kAirPlayCompressionType_Undefined;
-
 	#define PairingDescription( cnx )				( (cnx)->pairingVerified ? " (Paired)" : "" )
 	
-		#define PairingRequired( inCnx, aprCnx )		( (aprCnx)->server->pairAll )
-
 	#define AirPlayReceiverConnectionDidSetup( aprCnx )	( (aprCnx)->didAudioSetup || (aprCnx)->didScreenSetup )
-
-// sync extension for HTTPServer. 
-#define HTTPServerControlSync( SERVER, FLAGS, COMMAND, PARAMS ) \
-	CFObjectSetProperty( (SERVER), (SERVER)->queue, _HTTPServerControl, (FLAGS), \
-		(COMMAND), NULL, (PARAMS) )
-		
-#define HTTPServerStartSync( X )			HTTPServerControlSync( (X), 0, kHTTPServerCommand_StartServer, NULL )
-#define HTTPServerStopSync( X )				HTTPServerControlSync( (X), 0, kHTTPServerCommand_StopServer, NULL )
 
 ulog_define( AirPlayReceiverServer, kLogLevelNotice, kLogFlags_Default, "AirPlay",  NULL );
 #define aprs_ucat()					&log_category_from_name( AirPlayReceiverServer )
@@ -281,30 +263,31 @@ CFDictionaryRef
 	AirPlayCopyServerInfo(
 		AirPlayReceiverSessionRef inSession,
 		CFArrayRef inProperties,
-		uint8_t *inMACAddr,
 		OSStatus *outErr )
 {
+    AirPlayReceiverServerRef    server;
 	CFDictionaryRef				result = NULL;
 	OSStatus					err;
-	CFMutableDictionaryRef		info;
-	uint8_t						buf[ 32 ];
-	char						macStr[ 128 ];
+	CFMutableDictionaryRef		info = NULL;
 	char						str[ PATH_MAX + 1 ];
 	uint64_t					u64;
 	CFTypeRef					obj;
 	CFDataRef					data;
 	char *						cptr;
 	
+    server = inSession->server;
+    require_action(server, exit, err = kParamErr);
+    
 	info = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 	require_action( info, exit, err = kNoMemoryErr );
 	
 	// AudioFormats
 	
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayProperty_AudioFormats ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayProperty_AudioFormats ) );
 	CFRetainNullSafe( obj );
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayProperty_AudioFormats ), NULL, NULL );
 	}
 	if( obj )
@@ -315,11 +298,11 @@ CFDictionaryRef
 	
 	// AudioLatencies
 	
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayProperty_AudioLatencies ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayProperty_AudioLatencies ) );
 	CFRetainNullSafe( obj );
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 														CFSTR( kAirPlayProperty_AudioLatencies ), NULL, NULL );
 	}
 	if( obj )
@@ -330,7 +313,7 @@ CFDictionaryRef
 	
 	// BluetoothIDs
 	
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect, 
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayProperty_BluetoothIDs ), NULL, NULL );
 	if( obj )
 	{
@@ -340,12 +323,12 @@ CFDictionaryRef
 	
 	// DeviceID
 	
-	AirPlayGetDeviceID( buf );
-	MACAddressToCString( buf, str );
+	MACAddressToCString( server->deviceID, str );
 	CFDictionarySetCString( info, CFSTR( kAirPlayKey_DeviceID ), str, kSizeCString );
 	
 	// Displays
 	
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	if( inSession )
 	{
 		obj = AirPlayReceiverSessionPlatformCopyProperty( inSession, kCFObjectFlagDirect, 
@@ -356,14 +339,22 @@ CFDictionaryRef
 			CFRelease( obj );
 		}
 	}
+#else
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect, CFSTR( kAirPlayProperty_Displays ), NULL, NULL );
+	if( obj )
+	{
+		CFDictionarySetValue( info, CFSTR( kAirPlayProperty_Displays ), obj );
+		CFRelease( obj );
+	}
+#endif
 	
 	// Extended Features
 	
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayProperty_ExtendedFeatures ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayProperty_ExtendedFeatures ) );
 	CFRetainNullSafe( obj );
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 														CFSTR( kAirPlayProperty_ExtendedFeatures ), NULL, NULL );
 	}
 	if( obj )
@@ -374,18 +365,18 @@ CFDictionaryRef
 	
 	// Features
 	
-	u64 = AirPlayGetFeatures();
+	u64 = AirPlayGetFeatures( server );
 	if( u64 != 0 ) CFDictionarySetInt64( info, CFSTR( kAirPlayKey_Features ), u64 );
 	
 	// FirmwareRevision
 	
 	obj = NULL;
 	*str = '\0';
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_FirmwareRevision ), str, sizeof( str ), NULL );
+	AirPlayGetConfigCString( server, CFSTR( kAirPlayKey_FirmwareRevision ), str, sizeof( str ), NULL );
 	if( *str != '\0' ) CFDictionarySetCString( info, CFSTR( kAirPlayKey_FirmwareRevision ), str, kSizeCString );
 	else
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect, 
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_FirmwareRevision ), NULL, NULL );
 	}
 	if( obj )
@@ -398,11 +389,11 @@ CFDictionaryRef
 	
 	obj = NULL;
 	*str = '\0';
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_HardwareRevision ), str, sizeof( str ), NULL );
+	AirPlayGetConfigCString( server, CFSTR( kAirPlayKey_HardwareRevision ), str, sizeof( str ), NULL );
 	if( *str != '\0' ) CFDictionarySetCString( info, CFSTR( kAirPlayKey_HardwareRevision ), str, kSizeCString );
 	else
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect, 
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_HardwareRevision ), NULL, NULL );
 	}
 	if( obj )
@@ -413,6 +404,7 @@ CFDictionaryRef
 	
 	// HID
 	
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	if( inSession )
 	{
 		obj = AirPlayReceiverSessionPlatformCopyProperty( inSession, kCFObjectFlagDirect, 
@@ -423,10 +415,18 @@ CFDictionaryRef
 			CFRelease( obj );
 		}
 	}
+#else
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect, CFSTR( kAirPlayProperty_HIDDevices ), NULL, NULL );
+	if( obj )
+	{
+		CFDictionarySetValue( info, CFSTR( kAirPlayProperty_HIDDevices ), obj );
+		CFRelease( obj );
+	}
+#endif
 	
 	// HIDLanguages
 	
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayKey_HIDLanguages ), NULL, NULL );
 	if( obj )
 	{
@@ -434,15 +434,7 @@ CFDictionaryRef
 		CFRelease( obj );
 	}
 	
-	// Interface MAC Address
-	
-	if( inMACAddr )
-	{
-		MACAddressToCString( inMACAddr, macStr );
-		CFDictionarySetCString( info, CFSTR( kAirPlayKey_MACAddress ), macStr, kSizeCString );
-	}
-	
-	// Supports statistics as part of the keep alive body. 
+	// Supports statistics as part of the keep alive body.
 	
 	CFDictionarySetBoolean( info, CFSTR( kAirPlayKey_KeepAliveSendStatsAsBody ), true );
 	
@@ -452,7 +444,7 @@ CFDictionaryRef
 
 	// LimitedUIElements
 	
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayKey_LimitedUIElements ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayKey_LimitedUIElements ) );
 	if( obj )
 	{
 		if( CFIsType( obj, CFArray ) )
@@ -469,7 +461,7 @@ CFDictionaryRef
 	}
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_LimitedUIElements ), NULL, NULL );
 	}
 	if( obj )
@@ -479,7 +471,7 @@ CFDictionaryRef
 	}
 	
 	// LimitedUI
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayKey_LimitedUI ), NULL, NULL );
 	if( obj )
 	{
@@ -491,11 +483,11 @@ CFDictionaryRef
 	
 	obj = NULL;
 	*str = '\0';
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_Manufacturer ), str, sizeof( str ), NULL );
+	AirPlayGetConfigCString( server, CFSTR( kAirPlayKey_Manufacturer ), str, sizeof( str ), NULL );
 	if( *str != '\0' ) CFDictionarySetCString( info, CFSTR( kAirPlayKey_Manufacturer ), str, kSizeCString );
 	else
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect, 
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_Manufacturer ), NULL, NULL );
 	}
 	if( obj )
@@ -506,7 +498,7 @@ CFDictionaryRef
 	
 	// Model
 	
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayKey_Model ), NULL, NULL );
 	if( obj )
 	{
@@ -516,7 +508,7 @@ CFDictionaryRef
 	else
 	{
 		*str = '\0';
-		AirPlayGetDeviceModel( str, sizeof( str ) );
+		AirPlayGetDeviceModel( server, str, sizeof( str ) );
 		CFDictionarySetCString( info, CFSTR( kAirPlayKey_Model ), str, kSizeCString );
 	}
 	
@@ -548,7 +540,7 @@ CFDictionaryRef
 	
 	// NightMode
 
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayKey_NightMode ), NULL, NULL );
 	if( obj )
 	{
@@ -562,11 +554,11 @@ CFDictionaryRef
 	{
 		obj = NULL;
 		*str = '\0';
-		AirPlayGetConfigCString( CFSTR( kAirPlayProperty_OEMIconPath ), str, sizeof( str ), NULL );
+		AirPlayGetConfigCString( server, CFSTR( kAirPlayProperty_OEMIconPath ), str, sizeof( str ), NULL );
 		if( *str != '\0' ) obj = CFDataCreateWithFilePath( str, NULL );
 		if( !obj )
 		{
-			obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+			obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 				CFSTR( kAirPlayProperty_OEMIcon ), NULL, NULL );
 		}
 		if( obj )
@@ -575,11 +567,11 @@ CFDictionaryRef
 			CFRelease( obj );
 		}
 		
-		obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayProperty_OEMIcons ) );
+		obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayProperty_OEMIcons ) );
 		CFRetainNullSafe( obj );
 		if( !obj )
 		{
-			obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+			obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 				CFSTR( kAirPlayProperty_OEMIcons ), NULL, NULL );
 		}
 		if( obj )
@@ -590,11 +582,11 @@ CFDictionaryRef
 		
 		obj = NULL;
 		*str = '\0';
-		AirPlayGetConfigCString( CFSTR( kAirPlayProperty_OEMIconLabel ), str, sizeof( str ), NULL );
+		AirPlayGetConfigCString( server, CFSTR( kAirPlayProperty_OEMIconLabel ), str, sizeof( str ), NULL );
 		if( *str != '\0' ) CFDictionarySetCString( info, CFSTR( kAirPlayProperty_OEMIconLabel ), str, kSizeCString );
 		else
 		{
-			obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+			obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 				CFSTR( kAirPlayProperty_OEMIconLabel ), NULL, NULL );
 		}
 		if( obj )
@@ -603,11 +595,11 @@ CFDictionaryRef
 			CFRelease( obj );
 		}
 
-		obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayProperty_OEMIconVisible ) );
+		obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayProperty_OEMIconVisible ) );
 		CFRetainNullSafe( obj );
 		if( !obj )
 		{
-			obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+			obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 															CFSTR( kAirPlayProperty_OEMIconVisible ), NULL, NULL );
 		}
 		if( obj )
@@ -619,12 +611,12 @@ CFDictionaryRef
 	
 	// OS Info
 		
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayKey_OSInfo ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayKey_OSInfo ) );
 	if( CFIsType( obj, CFString ) ) CFRetainNullSafe( obj );
 	else obj = NULL;
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_OSInfo ), NULL, NULL );
 	}
 	if( obj )
@@ -642,11 +634,11 @@ CFDictionaryRef
 	
 	// RightHandDrive
 	
-	obj = CFDictionaryGetValue( gAirPlayReceiverServer->config, CFSTR( kAirPlayKey_RightHandDrive ) );
+	obj = CFDictionaryGetValue( server->config, CFSTR( kAirPlayKey_RightHandDrive ) );
 	CFRetainNullSafe( obj );
 	if( !obj )
 	{
-		obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+		obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 			CFSTR( kAirPlayKey_RightHandDrive ), NULL, NULL );
 	}
 	if( obj )
@@ -661,7 +653,7 @@ CFDictionaryRef
 	
 	// StatusFlags
 	
-	u64 = AirPlayGetStatusFlags();
+	u64 = AirPlayGetStatusFlags( server );
 	if( u64 != 0 ) CFDictionarySetInt64( info, CFSTR( kAirPlayKey_StatusFlags ), u64 );
 	
 	// TXT records
@@ -673,29 +665,19 @@ CFDictionaryRef
 		range = CFRangeMake( 0, CFArrayGetCount( inProperties ) );
 		if( CFArrayContainsValue( inProperties, range, CFSTR( kAirPlayKey_TXTAirPlay ) ) )
 		{
-			APAdvertiserInfoRef advertiserInfo = NULL;
 			data = NULL;
-			
-			err = APAdvertiserCopyProperty( gAirPlayReceiverServer->advertiser, kAPAdvertiserProperty_AdvertiserInfo,
-				kCFAllocatorDefault, &advertiserInfo );
-			require_noerr( err, exit );
-            require_action( advertiserInfo, exit, err = kInternalErr );
-			
-			err = APAdvertiserInfoCopyAirPlayData( advertiserInfo, &data );
-			require_noerr_action( err, exit, CFReleaseNullSafe( advertiserInfo ) );
-
+			_UpdateBonjourAirPlay( server, &data );
 			if( data )
 			{
 				CFDictionarySetValue( info, CFSTR( kAirPlayKey_TXTAirPlay ), data );
 				CFRelease( data );
 			}
-			CFReleaseNullSafe( advertiserInfo );
 		}
 	}
 	
 	// Vehicle information.
 	
-	obj = AirPlayReceiverServerPlatformCopyProperty( gAirPlayReceiverServer, kCFObjectFlagDirect,
+	obj = AirPlayReceiverServerPlatformCopyProperty( server, kCFObjectFlagDirect,
 		CFSTR( kAirPlayKey_VehicleInformation ), NULL, NULL );
 	if( obj )
 	{
@@ -718,7 +700,8 @@ exit:
 //===========================================================================================================================
 
 static char *
-	AirPlayGetConfigCString( 
+	AirPlayGetConfigCString(
+        AirPlayReceiverServerRef inServer,
 		CFStringRef			inKey,
 		char *				inBuffer, 
 		size_t				inMaxLen, 
@@ -727,57 +710,10 @@ static char *
 	char *				result = "";
 	OSStatus			err;
 	
-	require_action( gAirPlayReceiverServer, exit, err = kNotInitializedErr );
+	require_action( inServer, exit, err = kNotInitializedErr );
+	require_action_quiet( inServer->config, exit, err = kNotFoundErr );
 	
-#if( defined( AIRPLAY_FIRMWARE_REVISION ) )
-	if( CFEqual( inKey, CFSTR( kAirPlayKey_FirmwareRevision ) ) )
-	{
-		strlcpy( inBuffer, AIRPLAY_FIRMWARE_REVISION, inMaxLen );
-		if( inMaxLen > 0 ) result = inBuffer;
-		err = kNoErr;
-		goto exit;
-	}
-#endif
-#if( defined( AIRPLAY_HARDWARE_REVISION ) )
-	if( CFEqual( inKey, CFSTR( kAirPlayKey_HardwareRevision ) ) )
-	{
-		strlcpy( inBuffer, AIRPLAY_HARDWARE_REVISION, inMaxLen );
-		if( inMaxLen > 0 ) result = inBuffer;
-		err = kNoErr;
-		goto exit;
-	}
-#endif
-#if( defined( AIRPLAY_MANUFACTURER ) )
-	if( CFEqual( inKey, CFSTR( kAirPlayKey_Manufacturer ) ) )
-	{
-		strlcpy( inBuffer, AIRPLAY_MANUFACTURER, inMaxLen );
-		if( inMaxLen > 0 ) result = inBuffer;
-		err = kNoErr;
-		goto exit;
-	}
-#endif
-#if( defined( AIRPLAY_OEM_ICON_PATH ) )
-	if( CFEqual( inKey, CFSTR( kAirPlayProperty_OEMIconPath ) ) )
-	{
-		strlcpy( inBuffer, AIRPLAY_OEM_ICON_PATH, inMaxLen );
-		if( inMaxLen > 0 ) result = inBuffer;
-		err = kNoErr;
-		goto exit;
-	}
-#endif
-#if( defined( AIRPLAY_OEM_ICON_LABEL ) )
-	if( CFEqual( inKey, CFSTR( kAirPlayProperty_OEMIconLabel ) ) )
-	{
-		strlcpy( inBuffer, AIRPLAY_OEM_ICON_LABEL, inMaxLen );
-		if( inMaxLen > 0 ) result = inBuffer;
-		err = kNoErr;
-		goto exit;
-	}
-#endif
-	
-	require_action_quiet( gAirPlayReceiverServer->config, exit, err = kNotFoundErr );
-	
-	result = CFDictionaryGetCString( gAirPlayReceiverServer->config, inKey, inBuffer, inMaxLen, &err );
+	result = CFDictionaryGetCString( inServer->config, inKey, inBuffer, inMaxLen, &err );
 	require_noerr_quiet( err, exit );
 	
 exit:
@@ -815,10 +751,10 @@ static void _ProcessLimitedUIElementsConfigArrayDictionaryEntry( const void *key
 //	AirPlayGetDeviceID
 //===========================================================================================================================
 
-uint64_t	AirPlayGetDeviceID( uint8_t *outDeviceID )
+uint64_t	AirPlayGetDeviceID( AirPlayReceiverServerRef inServer,  uint8_t *outDeviceID )
 {
-	if( outDeviceID )	memcpy( outDeviceID, gAirPlayReceiverServer->deviceID, 6 );
-	return( ReadBig48( gAirPlayReceiverServer->deviceID ) );
+	if( outDeviceID )	memcpy( outDeviceID, inServer->deviceID, 6 );
+	return( ReadBig48( inServer->deviceID ) );
 }
 
 //===========================================================================================================================
@@ -843,17 +779,14 @@ exit:
 //	AirPlayGetDeviceModel
 //===========================================================================================================================
 
-static OSStatus	AirPlayGetDeviceModel( char *inBuffer, size_t inMaxLen )
+static OSStatus	AirPlayGetDeviceModel( AirPlayReceiverServerRef inServer, char *inBuffer, size_t inMaxLen )
 {
 	OSStatus		err;
 	
 	require_action( inMaxLen > 0, exit, err = kSizeErr );
 	
 	*inBuffer = '\0';
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_Model ), inBuffer, inMaxLen, NULL );
-#if( defined( AIRPLAY_DEVICE_MODEL ) )
-	if( *inBuffer == '\0' ) strlcpy( inBuffer, AIRPLAY_DEVICE_MODEL, inMaxLen );	// Use hard-coded model if provided.
-#endif
+	AirPlayGetConfigCString( inServer, CFSTR( kAirPlayKey_Model ), inBuffer, inMaxLen, NULL );
 	if( *inBuffer == '\0' ) strlcpy( inBuffer, "AirPlayGeneric1,1", inMaxLen );		// If no model, use a default.
 	err = kNoErr;
 	
@@ -865,34 +798,21 @@ exit:
 //	AirPlayGetFeatures
 //===========================================================================================================================
 
-AirPlayFeatures	AirPlayGetFeatures( void )
+AirPlayFeatures	AirPlayGetFeatures( AirPlayReceiverServerRef inServer )
 {
 	AirPlayFeatures		features = 0;
-	OSStatus			err;
-	Boolean				b;
-	
-	// Mark as used to avoid special case for conditionalized cases.
-	
-	(void) err;
-	(void) b;
 	
 	features |= kAirPlayFeature_Audio;
 	features |= kAirPlayFeature_AudioAES_128_MFi_SAPv1;
 	features |= kAirPlayFeature_AudioPCM;
-	features |= kAirPlayFeature_AudioAAC_LC;
-	features |= kAirPlayFeature_AudioUnencrypted;
 	features |= kAirPlayFeature_Screen;
-	features |= kAirPlayFeature_Rotate;
-	features |= kAirPlayFeature_UnifiedBonjour;
-	{
-		features |= kAirPlayFeature_Car;
-		features |= kAirPlayFeature_CarPlayControl;
-	}
-	{
-		features |= kAirPlayFeature_HKPairingAndEncrypt;
-	}
+	features |= kAirPlayFeature_Car;
+	features |= kAirPlayFeature_CarPlayControl;
+#if !TARGET_OS_MACOSX
+	features |= kAirPlayFeature_HKPairingAndEncrypt;
+#endif
 	
-	features |= AirPlayReceiverServerPlatformGetInt64( gAirPlayReceiverServer, CFSTR( kAirPlayProperty_Features ), NULL, NULL );
+	features |= AirPlayReceiverServerPlatformGetInt64( inServer, CFSTR( kAirPlayProperty_Features ), NULL, NULL );
 	return( features );
 }
 
@@ -900,12 +820,14 @@ AirPlayFeatures	AirPlayGetFeatures( void )
 //	AirPlayGetMinimumClientOSBuildVersion
 //===========================================================================================================================
 
-OSStatus	AirPlayGetMinimumClientOSBuildVersion( char *inBuffer, size_t inMaxLen )
+OSStatus	AirPlayGetMinimumClientOSBuildVersion( AirPlayReceiverServerRef inServer, char *inBuffer, size_t inMaxLen )
 {
 	OSStatus	err;
 	
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_ClientOSBuildVersionMin ), inBuffer, inMaxLen, &err );
-	
+	AirPlayGetConfigCString( inServer, CFSTR( kAirPlayKey_ClientOSBuildVersionMin ), inBuffer, inMaxLen, &err );
+	if( err) {
+		AirPlayReceiverServerGetCString( inServer, CFSTR( kAirPlayKey_ClientOSBuildVersionMin ), NULL, inBuffer, inMaxLen, &err );
+	}
 	return( err );
 }
 
@@ -935,12 +857,11 @@ exit:
 //	AirPlayGetStatusFlags
 //===========================================================================================================================
 
-AirPlayStatusFlags	AirPlayGetStatusFlags( void )
+AirPlayStatusFlags	AirPlayGetStatusFlags( AirPlayReceiverServerRef inServer )
 {
 	AirPlayStatusFlags		flags = 0;
 	
-	if( gAirPlayReceiverServer->pairPIN ) flags |= kAirPlayStatusFlag_PairPIN;
-	flags |= (AirPlayStatusFlags) AirPlayReceiverServerPlatformGetInt64( gAirPlayReceiverServer, 
+	flags |= (AirPlayStatusFlags) AirPlayReceiverServerPlatformGetInt64( inServer,
 		CFSTR( kAirPlayProperty_StatusFlags ), NULL, NULL );
 	return( flags );
 }
@@ -1000,8 +921,6 @@ OSStatus	AirPlayReceiverServerCreateWithConfigFilePath( CFStringRef inConfigFile
 	OSStatus						err;
 	AirPlayReceiverServerRef		me;
 	size_t							extraLen;
-	int								i;
-	uint64_t						u64;
 	
 	dispatch_once_f( &gAirPlayReceiverInitOnce, NULL, _GlobalInitialize );
 	
@@ -1010,18 +929,10 @@ OSStatus	AirPlayReceiverServerCreateWithConfigFilePath( CFStringRef inConfigFile
 	require_action( me, exit, err = kNoMemoryErr );
 	memset( ( (uint8_t *) me ) + sizeof( me->base ), 0, extraLen );
 	
-	me->overscanOverride = -1; // Default to auto.
 	me->timeoutDataSecs  = kAirPlayDataTimeoutSecs;
 	
 	me->queue = dispatch_queue_create( "AirPlayReceiverServerQueue", 0 );
 	me->httpQueue = dispatch_queue_create( "AirPlayReceiverServerHTTPQueue", 0 );
-	
-	for( i = 1; i < 10; ++i )
-	{
-		u64 = GetPrimaryMACAddress( me->deviceID, NULL );
-		if( u64 != 0 ) break;
-		sleep( 1 );
-	}
 	
 	if( !inConfigFilePath )
 	{
@@ -1036,15 +947,10 @@ OSStatus	AirPlayReceiverServerCreateWithConfigFilePath( CFStringRef inConfigFile
 		
 	RandomBytes( me->httpTimedNonceKey, sizeof( me->httpTimedNonceKey ) );
 	
-	err = APAdvertiserCreate( &me->advertiser );
-	require_noerr( err, exit );
-	
 	err = AirPlayReceiverServerPlatformInitialize( me );
 	require_noerr( err, exit );
 	
 	*outServer = me;
-	gAirPlayReceiverServer = me;
-	g_message("%s : gAirPlayReceiverServer = %p\n",__func__,gAirPlayReceiverServer );
 	me = NULL;
 	err = kNoErr;
 	
@@ -1177,31 +1083,23 @@ OSStatus
 		goto exit;
 	}
 	
-	// UpdateAdvertising
+	// UpdateBonjour
 	
-	else if( CFEqual( inCommand, CFSTR( kAirPlayCommand_UpdateAdvertising ) ) )
+	else if( CFEqual( inCommand, CFSTR( kAirPlayCommand_UpdateBonjour ) ) )
 	{
-		err = _UpdateAdvertising( server );
-		require_noerr( err, exit );
-	}
-	
-	// PrefsChanged
-	
-	else if( CFEqual( inCommand, CFSTR( kAirPlayEvent_PrefsChanged ) ) )
-	{
-		if( server->started )
-		{
-			aprs_ulog( kLogLevelNotice, "Prefs changed\n" );
-			_UpdatePrefs( server );
-		}
+		_UpdateBonjour( server );
 	}
 	
 	// StartServer / StopServer
 	
 	else if( CFEqual( inCommand, CFSTR( kAirPlayCommand_StartServer ) ) )
 	{
-		server->started = true;
-		_UpdatePrefs( server );
+		if( !server->serversStarted )
+		{
+			server->started = true;
+			_UpdateDeviceID( server );
+			_StartServers( server );
+		}
 	}
 	else if( CFEqual( inCommand, CFSTR( kAirPlayCommand_StopServer ) ) )
 	{
@@ -1311,41 +1209,20 @@ OSStatus
 	
 	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_InterfaceName ) ) )
 	{
-		char			ifname[ IF_NAMESIZE + 1 ];
-		uint32_t		ifindex = 0;
-		CFNumberRef		ifindexObj = NULL;
-		
-		CFGetCString( inValue, ifname, sizeof( ifname ) );
-		if( *ifname != '\0' )
-		{
-			ifindex = if_nametoindex( ifname );
-			require_action_quiet( ifindex != 0, exit, err = kNotFoundErr );
-		}
-		
-		ifindexObj = CFNumberCreateInt64( ifindex );
-		require_action( ifindexObj, exit, err = kNoMemoryErr );
-		
-		err = APAdvertiserSetProperty( server->advertiser, kAPAdvertiserProperty_InterfaceIndex, ifindexObj );
-		CFRelease( ifindexObj );
-		require_noerr( err, exit );
-		
-		err = _RestartAdvertising( server );
-		require_noerr( err, exit );
+		CFGetCString( inValue, server->ifname, sizeof( server->ifname ) );
 	}
-	
+
 	// Playing
 	
 	else if( CFEqual( inProperty, CFSTR( kAirPlayProperty_Playing ) ) )
 	{
-		g_message("%s : server = %p\n",__func__, server );
 		server->playing = CFGetBoolean( inValue, NULL );
 		
 		// If we updated Bonjour while we were playing and had to defer it, do it now that we've stopped playing.
 		
-		if( !server->playing && server->started && server->serversStarted && server->advertisingRestartPending )
+		if( !server->playing && server->started && server->serversStarted && server->bonjourRestartPending )
 		{
-			err = _RestartAdvertising( server );
-			require_noerr( err, exit );
+			_RestartBonjour( server );
 		}
 	}
 	
@@ -1380,37 +1257,6 @@ static void _GetTypeID( void *inContext )
 
 #if( 0 || ( TARGET_OS_POSIX && DEBUG ) )
 //===========================================================================================================================
-//	AirPlayReceiverServerDebugShow
-//===========================================================================================================================
-
-static OSStatus	AirPlayReceiverServerDebugShow( AirPlayReceiverServerRef inServer, int inVerbose, DataBuffer *inDataBuf )
-{
-	AirPlayReceiverServerDebugShowContext		context = { inServer, inVerbose, inDataBuf };
-
-	dispatch_sync_f( inServer->queue, &context, _AirPlayReceiverServerDebugShow );
-	return( kNoErr );
-}
-
-//===========================================================================================================================
-//	AirPlayReceiverServerDebugShow
-//===========================================================================================================================
-
-static void	_AirPlayReceiverServerDebugShow( void *inContext )
-{
-	AirPlayReceiverServerDebugShowContext *		context = (AirPlayReceiverServerDebugShowContext *) inContext;
-
-	DataBuffer_AppendF( context->dataBuf, "\n" );
-	DataBuffer_AppendF( context->dataBuf, "+-+ AirPlay Server state +-+\n" );
-	DataBuffer_AppendF( context->dataBuf, "\n" );
-	
-	DataBuffer_AppendF( context->dataBuf, "DeviceActivated=%s", context->server->deviceActivated ? "yes" : "no" );
-	DataBuffer_AppendF( context->dataBuf, " playing=%s", context->server->playing ? "yes" : "no" );
-	DataBuffer_AppendF( context->dataBuf, "\n" );
-	
-	APAdvertiserDebugShow( context->server->advertiser, context->verbose, context->dataBuf );
-}
-
-//===========================================================================================================================
 //	_HandleDebug
 //===========================================================================================================================
 
@@ -1439,9 +1285,8 @@ static OSStatus	_HandleDebug( CFDictionaryRef inRequest, CFDictionaryRef *outRes
 		int		verbose;
 		
 		verbose = (int) CFDictionaryGetInt64( inRequest, CFSTR( "verbose" ), NULL );
-		err = AirPlayReceiverServerDebugShow( gAirPlayReceiverServer, verbose, &dataBuf );
-		require_noerr( err, exit );
 		
+		DataBuffer_AppendF( &dataBuf, " verbose=%d\n", verbose );
 		err = CFPropertyListCreateFormatted( NULL, &response, "{%kO=%.*s}",
 											kDebugIPCKey_Value, (int) dataBuf.bufferLen, dataBuf.bufferPtr );
 		require_noerr( err, exit );
@@ -1486,10 +1331,6 @@ static void	_GlobalInitialize( void *inContext )
 	
 	// Setup logging.
 	
-#if( LOGUTILS_CF_PREFERENCES )
-	LogSetAppID( CFSTR( kAirPlayPrefAppID ) );
-#endif
-	
 	AirPlayReceiverServerSetLogLevel();
 	
 #if  ( TARGET_OS_POSIX && DEBUG )
@@ -1510,9 +1351,11 @@ static OSStatus	_InitializeConfig( AirPlayReceiverServerRef inServer )
 	CFMutableDataRef	tempData;
 #endif
 	CFDictionaryRef		config = NULL;
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	CFArrayRef			array;
 	CFIndex				i, n;
 	CFDictionaryRef		dict;
+#endif
 	
 	(void) inServer;
 	
@@ -1561,6 +1404,7 @@ static OSStatus	_InitializeConfig( AirPlayReceiverServerRef inServer )
 		config = NULL;
 	}
 	
+#if( defined( LEGACY_REGISTER_SCREEN_HID ) )
 	// Register static HID devices.
 	
 	array = config ? CFDictionaryGetCFArray( config, CFSTR( kAirPlayKey_HIDDevices ), NULL ) : NULL;
@@ -1604,35 +1448,8 @@ static OSStatus	_InitializeConfig( AirPlayReceiverServerRef inServer )
 		CFRelease( screen );
 		check_noerr( err );
 	}
+#endif
 
-	// Retrieve vendor specific screen stream options
-	
-	if( config )
-	{
-		inServer->screenStreamOptions = CFDictionaryGetCFDictionary( config, CFSTR( kAirPlayKey_ScreenStreamOptions ), NULL );
-		if( !inServer->screenStreamOptions )
-		{
-			// INI named sections are read into an array.
-			array = CFDictionaryGetCFArray( config, CFSTR( kAirPlayKey_ScreenStreamOptions ), NULL );
-			if( array ) inServer->screenStreamOptions = CFArrayGetCFDictionaryAtIndex( array, 0, NULL );
-		}
-		CFRetainNullSafe( inServer->screenStreamOptions );
-	}
-
-	// Retrieve vendor specific audio stream options
-
-	if( config )
-	{
-		inServer->audioStreamOptions = CFDictionaryGetCFDictionary( config, CFSTR( kAirPlayKey_AudioStreamOptions ), NULL );
-		if( !inServer->audioStreamOptions )
-		{
-			// INI named sections are read into an array.
-			array = CFDictionaryGetCFArray( config, CFSTR( kAirPlayKey_AudioStreamOptions ), NULL );
-			if( array ) inServer->audioStreamOptions = CFArrayGetCFDictionaryAtIndex( array, 0, NULL );
-		}
-		CFRetainNullSafe( inServer->audioStreamOptions );
-	}
-	
 	// Save off the config dictionary for future use.
 	
 	inServer->config = config;
@@ -1653,172 +1470,45 @@ exit:
 
 static void	_Finalize( CFTypeRef inCF )
 {
-	OSStatus							err = kNoErr;
 	AirPlayReceiverServerRef const		me = (AirPlayReceiverServerRef) inCF;
 	
 	_StopServers( me );
 	AirPlayReceiverServerPlatformFinalize( me );
 	
-	err = APAdvertiserInvalidate( me->advertiser );
-	check_noerr( err );
-	ForgetCF( &me->advertiser );
-	
 	dispatch_forget( &me->queue );
 	dispatch_forget( &me->httpQueue );
-	ForgetCF( &me->audioStreamOptions );
-	ForgetCF( &me->screenStreamOptions );
 	ForgetMem( &me->configFilePath );
 	ForgetCF( &me->config );
-	g_message("%s : gAirPlayReceiverServer = %p\n",__func__,gAirPlayReceiverServer );
-	gAirPlayReceiverServer = NULL;
 }
 
 //===========================================================================================================================
-//	_UpdatePrefs
+//	_UpdateDeviceID
 //===========================================================================================================================
 
-static void	_UpdatePrefs( AirPlayReceiverServerRef inServer )
+static void	_UpdateDeviceID( AirPlayReceiverServerRef inServer )
 {
 	OSStatus		err;
-	Boolean			b;
 	int				i;
-	char			cstr[ 64 ];
-	Boolean			restartAdvertising = false;
-	Boolean			updateServers  = false;
+	CFTypeRef		obj = NULL;
 	
-	AirPlaySettings_Synchronize();
+	// DeviceID
 	
-	// Enabled. If disabled, stop the servers and skip all the rest.
-	
-	b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_Enabled ), &err );
-	if( err ) b = true;
-	if( !b )
+	err = kNoErr;
+	obj = AirPlayReceiverServerPlatformCopyProperty( inServer, kCFObjectFlagDirect, CFSTR( kAirPlayProperty_DeviceID ), NULL, NULL );
+	if( obj )
 	{
-		_StopServers( inServer );
-		goto exit;
+		CFGetMACAddress( obj, inServer->deviceID, &err );
 	}
-	
-	// DenyInterruptions
-	
-	b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_DenyInterruptions ), NULL );
-	if( b != inServer->denyInterruptions )
-	{
-		aprs_dlog( kLogLevelNotice, "Deny Interruptions: %s -> %s\n", !b ? "yes" : "no", b ? "yes" : "no" );
-		inServer->denyInterruptions = b;
-		
-	}
-	
-	// Name
-	
-	*cstr = '\0';
-	AirPlayGetDeviceName( cstr, sizeof( cstr ) );
-	if( strcmp( cstr, inServer->name ) != 0 )
-	{
-		aprs_ulog( kLogLevelNotice, "Name changed '%s' -> '%s'\n", inServer->name, cstr );
-		strlcpy( inServer->name, cstr, sizeof( inServer->name ) );
-		restartAdvertising = true;
-		updateServers  = true;
-	}
-	
-	// OverscanOverride
-	
-	i = (int) AirPlaySettings_GetInt64( NULL, CFSTR( kAirPlayPrefKey_OverscanOverride ), &err );
-	if( err ) i = -1;
-	if( i != inServer->overscanOverride )
-	{
-		aprs_dlog( kLogLevelNotice, "Overscan override: %s -> %s\n", 
-			( inServer->overscanOverride  < 0 ) ? "auto" :
-			( inServer->overscanOverride == 0 ) ? "no"   :
-												  "yes", 
-			( i  < 0 ) ? "auto" :
-			( i == 0 ) ? "no"   :
-						 "yes" );
-		inServer->overscanOverride = i;
-	}
-	
-	// PairAll
-	
-	b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_PairAll ), NULL );
-	if( b != inServer->pairAll )
-	{
-		aprs_dlog( kLogLevelNotice, "Pair all: %s -> %s\n", !b ? "yes" : "no", b ? "yes" : "no" );
-		inServer->pairAll = b;
-		updateServers = true;
-	}
-	
-	// PairPIN
-	
-	b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_PairPIN ), &err );
-	if( b != inServer->pairPIN )
-	{
-		aprs_dlog( kLogLevelNotice, "Pair PIN: %s -> %s\n", !b ? "yes" : "no", b ? "yes" : "no" );
-		inServer->pairPIN = b;
-		updateServers = true;
-		
-			b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_PairPINServerShadow ), NULL );
-			if( b != inServer->pairPIN )
-			{
-				PairingSessionRef				pairingSessionHomeKit;
-				
-				aprs_ulog( kLogLevelNotice, "Deleting server pairing peers on pref change\n" );
-				
-				err = PairingSessionCreate( &pairingSessionHomeKit, NULL, kPairingSessionType_None );
-				check_noerr( err );
-				if( !err )
-				{
-					PairingSessionSetKeychainInfo_AirPlay( pairingSessionHomeKit );
-					PairingSessionDeletePeer( pairingSessionHomeKit, NULL, 0 );
-					CFRelease( pairingSessionHomeKit );
-				}
-				AirPlaySettings_SetBoolean( CFSTR( kAirPlayPrefKey_PairPINServerShadow ), inServer->pairPIN );
-				AirPlaySettings_Synchronize();
-			}
-	}
-	
-	// QoSDisabled
-	
-	b = AirPlaySettings_GetBoolean( NULL, CFSTR( kAirPlayPrefKey_QoSDisabled ), NULL );
-	if( b != inServer->qosDisabled )
-	{
-		aprs_dlog( kLogLevelNotice, "QoS disabled: %s -> %s\n", !b ? "yes" : "no", b ? "yes" : "no" );
-		inServer->qosDisabled = b;
-		updateServers = true;
-	}
-	
-	// TimeoutData
-	
-	inServer->timeoutDataSecs = (int) AirPlaySettings_GetInt64( NULL, CFSTR( kAirPlayPrefKey_TimeoutDataSecs ), &err );
-	if( err || ( inServer->timeoutDataSecs <= 0 ) ) inServer->timeoutDataSecs = kAirPlayDataTimeoutSecs;
-	
-	
-	// Tell the platform so it can re-read any prefs it might have.
-	
-	AirPlayReceiverServerPlatformControl( inServer, kCFObjectFlagDirect, CFSTR( kAirPlayCommand_UpdatePrefs ), NULL, NULL, NULL );
-	
-	// Tell the advertiser to re-read any prefs that it might have.
-	
-	err = APAdvertiserUpdatePreferences( inServer->advertiser, false );
-	
-	// Finally, act on any settings changes.
-	
-	if( !inServer->serversStarted )
-	{
-		_StartServers( inServer );
-	}
-	else
-	{
-		if( restartAdvertising )
+	if( !obj || err ) {
+		for( i = 1; i < 10; ++i )
 		{
-			_RestartAdvertising( inServer );
-		}
-		if( updateServers )
-		{
-			_UpdateServers( inServer );
+			uint64_t u64 = GetPrimaryMACAddress( inServer->deviceID, NULL );
+			if( u64 != 0 ) break;
+			sleep( 1 );
 		}
 	}
-	
-exit:
-	return;
+	CFReleaseNullSafe( obj );
+
 }
 
 #if 0
@@ -1826,217 +1516,196 @@ exit:
 #endif
 
 //===========================================================================================================================
-//	_RestartAdvertising
+//	_BonjourRegistrationHandler
 //===========================================================================================================================
 
-static OSStatus	_RestartAdvertising( AirPlayReceiverServerRef inServer )
+static void DNSSD_API
+_BonjourRegistrationHandler(
+							DNSServiceRef		inRef,
+							DNSServiceFlags		inFlags,
+							DNSServiceErrorType	inError,
+							const char *		inName,
+							const char *		inType,
+							const char *		inDomain,
+							void *				inContext )
 {
-	OSStatus			err = kNoErr;
-	APAdvertiserMode	mode;
+	AirPlayReceiverServerRef const		server = (AirPlayReceiverServerRef) inContext;
+	DNSServiceRef *						servicePtr  = NULL;
+	const char *						serviceType = "?";
 	
-	inServer->advertisingRestartPending = false;
+	(void) inFlags;
 	
+	if( inRef == server->bonjourAirPlay )
+	{
+		servicePtr  = &server->bonjourAirPlay;
+		serviceType = kAirPlayBonjourServiceType;
+	}
+	
+	if( inError == kDNSServiceErr_ServiceNotRunning )
+	{
+		aprs_ulog( kLogLevelNotice, "### Bonjour server crashed for %s\n", serviceType );
+		if( servicePtr ) DNSServiceForget( servicePtr );
+		_UpdateBonjour( server );
+	}
+	else if( inError )
+	{
+		aprs_ulog( kLogLevelNotice, "### Bonjour registration error for %s: %#m\n", serviceType, inError );
+	}
+	else
+	{
+		aprs_ulog( kLogLevelNotice, "Registered Bonjour %s.%s%s\n", inName, inType, inDomain );
+	}
+}
+
+//===========================================================================================================================
+//	_RestartBonjour
+//===========================================================================================================================
+
+static void	_RestartBonjour( AirPlayReceiverServerRef inServer )
+{
+	inServer->bonjourRestartPending = false;
+
 	// Ignore if we've been disabled.
 	
 	if( !inServer->started )
 	{
-		aprs_dlog( kLogLevelNotice, "Ignoring advertising restart while disabled.\n" );
+		aprs_dlog( kLogLevelNotice, "Ignoring Bonjour restart while disabled\n" );
 		goto exit;
 	}
 	
-	// Only restart advertising if we're not playing because some clients may stop playing if they see us go away.
-	// If we're playing, just mark the advertising restart as pending and we'll process it when we stop playing.
-	
+	// Only restart bonjour if we're not playing because some clients may stop playing if they see us go away.
+	// If we're playing, just mark the Bonjour restart as pending and we'll process it when we stop playing.
 	if( inServer->playing )
 	{
-		aprs_dlog( kLogLevelNotice, "Deferring advertising restart until we've stopped playing.\n" );
-		inServer->advertisingRestartPending = true;
+		aprs_dlog( kLogLevelNotice, "Deferring Bonjour restart until we've stopped playing\n" );
+		inServer->bonjourRestartPending = true;
 		goto exit;
 	}
+
+	// Ignore if Bonjour hasn't been started.
 	
-	// Ignore if advertiser hasn't been started.
-	
-	err = APAdvertiserGetMode( inServer->advertiser, &mode );
-	require_noerr( err, exit );
-	
-	if( mode == kAPAdvertiserMode_None )
+	if( !inServer->bonjourAirPlay )
 	{
-		aprs_dlog( kLogLevelNotice, "Ignoring advertising restart since advertising wasn't started.\n" );
+		aprs_dlog( kLogLevelNotice, "Ignoring Bonjour restart since Bonjour wasn't started\n" );
 		goto exit;
 	}
 	
-	// Some clients stop resolves after ~2 minutes to reduce multicast traffic so if we changed something in the 
+	// Some clients stop resolves after ~2 minutes to reduce multicast traffic so if we changed something in the
 	// TXT record, such as the password state, those clients wouldn't be able to detect that state change.
-	// To work around this, completely remove the Bonjour service, wait 2 seconds to give time for Bonjour to 
+	// To work around this, completely remove the Bonjour service, wait 2 seconds to give time for Bonjour to
 	// flush out the removal then re-add the Bonjour service so client will re-resolve it.
 	
-	err = _EnsureStoppedAdvertising( inServer, "restart" );
-	require_noerr( err, exit );
+	_StopBonjour( inServer, "restart" );
 	
-	aprs_dlog( kLogLevelNotice, "Waiting for 2 seconds for the advertiser to remove services.\n" );
+	aprs_dlog( kLogLevelNotice, "Waiting for 2 seconds for Bonjour to remove service\n" );
 	sleep( 2 );
 	
-	aprs_dlog( kLogLevelNotice, "Restarting to advertise.\n" );
-	err = _UpdateAdvertising( inServer );
-	require_noerr( err, exit );
+	aprs_dlog( kLogLevelNotice, "Starting Bonjour service for restart\n" );
+	_UpdateBonjour( inServer );
 	
 exit:
-	return( err );
+	return;
 }
 
 //===========================================================================================================================
-//	_EnsureStartedAdvertising
+//	_RetryBonjour
 //===========================================================================================================================
 
-static OSStatus	_EnsureStartedAdvertising( AirPlayReceiverServerRef inServer )
+static void	_RetryBonjour( void *inArg )
 {
-	OSStatus			err = kNoErr;
-	CFNumberRef			port = NULL;
-	APAdvertiserMode	mode = kAPAdvertiserMode_None;
+	AirPlayReceiverServerRef const		server = (AirPlayReceiverServerRef) inArg;
 	
-	err = APAdvertiserGetMode( inServer->advertiser, &mode );
-	require_noerr( err, exit );
-	
-	require_action_quiet( mode == kAPAdvertiserMode_None, exit, err = kNoErr );
-	
-	port = CFNumberCreateInt64( _GetListenPort( inServer ) );
-	require_action( port, exit, err = kNoMemoryErr );
-	
-	err = APAdvertiserSetProperty( inServer->advertiser, kAPAdvertiserProperty_ListeningPort, port );
-	require_noerr( err, exit );
-	
-	err = APAdvertiserSetMode( inServer->advertiser, kAPAdvertiserMode_Discoverable );
-	require_noerr( err, exit );
-	
-	aprs_ulog( kLogLevelNotice, "Started advertising.\n" );
-	
-exit:
-	CFReleaseNullSafe( port );
-	return( err );
-}
-
-
-//===========================================================================================================================
-//	_EnsureStoppedAdvertising
-//===========================================================================================================================
-
-static OSStatus	_EnsureStoppedAdvertising( AirPlayReceiverServerRef inServer, const char *inReason )
-{
-	OSStatus			err = kNoErr;
-	APAdvertiserMode	mode = kAPAdvertiserMode_None;
-	
-	err = APAdvertiserGetMode( inServer->advertiser, &mode );
-	require_noerr( err, exit );
-	
-	require_action_quiet( mode != kAPAdvertiserMode_None, exit, err = kNoErr );
-	
-	err = APAdvertiserSetMode( inServer->advertiser, kAPAdvertiserMode_None );
-	require_noerr( err, exit );
-	
-	aprs_ulog( kLogLevelNotice, "Stopped advertising due to %s\n", inReason );
-	
-exit:
-	return( err );
+	aprs_ulog( kLogLevelNotice, "Retrying Bonjour after failure\n" );
+	dispatch_source_forget( &server->bonjourRetryTimer );
+	server->bonjourStartTicks = 0;
+	_UpdateBonjour( server );
 }
 
 //===========================================================================================================================
-//	_UpdateAdvertising
+//	_StopBonjour
 //===========================================================================================================================
 
-static OSStatus	_UpdateAdvertising( AirPlayReceiverServerRef inServer )
+static void	_StopBonjour( AirPlayReceiverServerRef inServer, const char *inReason )
 {
-	OSStatus				err;
+	dispatch_source_forget( &inServer->bonjourRetryTimer );
+	inServer->bonjourStartTicks = 0;
+	
+	if( inServer->bonjourAirPlay )
+	{
+		DNSServiceForget( &inServer->bonjourAirPlay );
+		aprs_ulog( kLogLevelNotice, "Deregistered Bonjour %s for %s\n", kAirPlayBonjourServiceType, inReason );
+	}
+}
+
+//===========================================================================================================================
+//	_UpdateBonjour
+//
+//	Update all Bonjour services.
+//===========================================================================================================================
+
+static void	_UpdateBonjour( AirPlayReceiverServerRef inServer )
+{
+	OSStatus				err, firstErr = kNoErr;
+	dispatch_source_t		timer;
 	Boolean					activated = true;
-	APAdvertiserInfoRef		info = NULL;
+	uint64_t				ms;
 	
 	if( !inServer->serversStarted || !activated )
 	{
-		if( !activated )
-		{
-			aprs_ulog( kLogLevelNotice, "Device has not been activated. Bonjour service registration disabled.\n" );
-		}
-		
-		err = _EnsureStoppedAdvertising( inServer, "disable" );
-		check_noerr( err );
-		goto exit;
+		_StopBonjour( inServer, "disable" );
+		return;
 	}
+	if( inServer->bonjourStartTicks == 0 ) inServer->bonjourStartTicks = UpTicks();
 	
-	err = _CreateAdvertiserInfo( inServer, &info );
-	require_noerr( err, exit );
+	err = _UpdateBonjourAirPlay( inServer, NULL );
+	if( !firstErr ) firstErr = err;
 	
-	err = APAdvertiserSetProperty( inServer->advertiser, kAPAdvertiserProperty_AdvertiserInfo, info );
-	require_noerr( err, exit );
-	
-	// The server is supposed to be advertising all the time, so start it if it hasn't started yet.
-	
-	err = _EnsureStartedAdvertising( inServer );
-	require_noerr( err, exit );
-	
-exit:
-	CFReleaseNullSafe( info );
-	return( err );
+	if( !firstErr )
+	{
+		dispatch_source_forget( &inServer->bonjourRetryTimer );
+	}
+	else if( !inServer->bonjourRetryTimer )
+	{
+		ms = UpTicksToMilliseconds( UpTicks() - inServer->bonjourStartTicks );
+		ms = ( ms < 11113 ) ? ( 11113 - ms ) : 1; // Use 11113 to avoid being syntonic with 10 second re-launching.
+		aprs_ulog( kLogLevelNotice, "### Bonjour failed, retrying in %llu ms: %#m\n", ms, firstErr );
+		
+		inServer->bonjourRetryTimer = timer = dispatch_source_create( DISPATCH_SOURCE_TYPE_TIMER, 0, 0, inServer->queue );
+		check( timer );
+		if( timer )
+		{
+			dispatch_set_context( timer, inServer );
+			dispatch_source_set_event_handler_f( timer, _RetryBonjour );
+			dispatch_source_set_timer( timer, dispatch_time_milliseconds( ms ), INT64_MAX, kNanosecondsPerSecond );
+			dispatch_resume( timer );
+		}
+	}
 }
 
 //===========================================================================================================================
-//	_AdvertiserInfoAddString
+//	_UpdateBonjourAirPlay
+//
+//	Update Bonjour for the _airplay._tcp service.
 //===========================================================================================================================
 
-static OSStatus _AdvertiserInfoAddString( APAdvertiserInfoRef inInfo, CFStringRef inKey, const char *cstr )
+static OSStatus	_UpdateBonjourAirPlay( AirPlayReceiverServerRef inServer, CFDataRef *outTXTRecord )
 {
-	OSStatus		err;
-	CFStringRef		string = NULL;
+	OSStatus			err;
+	TXTRecordRef		txtRec;
+	uint8_t				txtBuf[ 256 ];
+	const uint8_t *		txtPtr;
+	uint16_t			txtLen;
+	char				cstr[ 256 ];
+	const char *		ptr;
+	AirPlayFeatures		features;
+	int					n;
+	uint32_t			u32;
+	uint16_t			port;
+	DNSServiceFlags		flags;
+	const char *		domain;
+	uint32_t			ifindex;
 	
-	string = CFStringCreateWithCString( kCFAllocatorDefault, cstr, kCFStringEncodingUTF8 );
-	require_action( string, exit, err = kNoMemoryErr );
-	
-	err = APAdvertiserInfoSetProperty( inInfo, inKey, string );
-	require_noerr( err, exit );
-	
-exit:
-	CFReleaseNullSafe( string );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_AdvertiserInfoAddString
-//===========================================================================================================================
-
-static
-	OSStatus _AdvertiserInfoAddNumber(
-		APAdvertiserInfoRef inInfo,
-		CFStringRef inKey,
-		CFNumberType inType,
-		const void *valuePtr )
-{
-	OSStatus		err;
-	CFNumberRef		number = NULL;
-	
-	number = CFNumberCreate( kCFAllocatorDefault, inType, valuePtr );
-	require_action( number, exit, err = kNoMemoryErr );
-	
-	err = APAdvertiserInfoSetProperty( inInfo, inKey, number );
-	require_noerr( err, exit );
-	
-exit:
-	CFReleaseNullSafe( number );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_CreateAdvertiserInfo
-//===========================================================================================================================
-
-static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdvertiserInfoRef *outAdvertiserInfo )
-{
-	OSStatus				err;
-	char					cstr[ 256 ];
-	const char *			ptr;
-	APAdvertiserInfoRef		info = NULL;
-	AirPlayFeatures			features;
-	uint32_t				u32;
-	
-	err = APAdvertiserInfoCreate( kCFAllocatorDefault, &info );
-	require_noerr( err, exit );
+	TXTRecordCreate( &txtRec, (uint16_t) sizeof( txtBuf ), txtBuf );
 	
 	// Device Name
 	
@@ -2044,56 +1713,65 @@ static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdve
 	err = AirPlayGetDeviceName( cstr, sizeof( cstr ) );
 	require_noerr( err, exit );
 	
-	err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_DeviceName, cstr );
-	require_noerr( err, exit );
 	
 	// DeviceID
 	
-	AirPlayGetDeviceID( inServer->deviceID );
 	MACAddressToCString( inServer->deviceID, cstr );
-	
-	err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_DeviceID, cstr );
+	err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_DeviceID, (uint8_t) strlen( cstr ), cstr );
 	require_noerr( err, exit );
 	
 	// Features
 	
-	features = AirPlayGetFeatures();
-	
-	err = _AdvertiserInfoAddNumber( info, kAPAdvertiserInfoProperty_Features, kCFNumberSInt64Type, &features );
+	features = AirPlayGetFeatures( inServer );
+	u32 = (uint32_t)( ( features >> 32 ) & UINT32_C( 0xFFFFFFFF ) );
+	if( u32 != 0 )
+	{
+		n = snprintf( cstr, sizeof( cstr ), "0x%X,0x%X", (uint32_t)( features & UINT32_C( 0xFFFFFFFF ) ), u32 );
+	}
+	else
+	{
+		n = snprintf( cstr, sizeof( cstr ), "0x%X", (uint32_t)( features & UINT32_C( 0xFFFFFFFF ) ) );
+	}
+	err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_Features, (uint8_t) n, cstr );
 	require_noerr( err, exit );
 	
 	// FirmwareRevision
 	
 	*cstr = '\0';
-	AirPlayGetConfigCString( CFSTR( kAirPlayKey_FirmwareRevision ), cstr, sizeof( cstr ), NULL );
+	AirPlayGetConfigCString( inServer, CFSTR( kAirPlayKey_FirmwareRevision ), cstr, sizeof( cstr ), NULL );
 	if( *cstr == '\0' )
 	{
 		AirPlayReceiverServerPlatformGetCString( inServer, CFSTR( kAirPlayKey_FirmwareRevision ), NULL,
-			cstr, sizeof( cstr ), NULL );
+												cstr, sizeof( cstr ), NULL );
 	}
 	
 	if( *cstr != '\0' )
 	{
-		err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_FirmwareVersion, cstr );
+		err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_FirmwareVersion, (uint8_t) strlen( cstr ), cstr );
 		require_noerr( err, exit );
 	}
 	
 	// Flags
 	
-	u32 = AirPlayGetStatusFlags();
+	u32 = AirPlayGetStatusFlags( inServer );
 	if( u32 != 0 )
 	{
-		err = _AdvertiserInfoAddNumber( info, kAPAdvertiserInfoProperty_SystemFlags, kCFNumberSInt32Type, &u32 );
+		n = snprintf( cstr, sizeof( cstr ), "0x%x", u32 );
+		err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_Flags, (uint8_t) n, cstr );
 		require_noerr( err, exit );
 	}
 	
 	// Model
 	
 	*cstr = '\0';
-	AirPlayGetDeviceModel( cstr, sizeof( cstr ) );
+	AirPlayReceiverServerPlatformGetCString( inServer, CFSTR( kAirPlayKey_Model ), NULL, cstr, sizeof( cstr ), NULL );
+	if( *cstr == '\0' )
+	{
+		AirPlayGetDeviceModel( inServer, cstr, sizeof( cstr ) );
+	}
 	if( *cstr != '\0' )
 	{
-		err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_DeviceModel, cstr );
+		err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_Model, (uint8_t) strlen( cstr ), cstr );
 		require_noerr( err, exit );
 	}
 	
@@ -2102,7 +1780,7 @@ static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdve
 	ptr = kAirPlayProtocolVersionStr;
 	if( strcmp( ptr, "1.0" ) != 0 )
 	{
-		err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_ProtocolVersion, ptr );
+		err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_ProtocolVersion, (uint8_t) strlen( ptr ), ptr );
 		require_noerr( err, exit );
 	}
 	
@@ -2114,7 +1792,7 @@ static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdve
 	err = AirPlayCopyHomeKitPairingIdentity( &cptr, NULL );
 	if( !err )	
 	{
-		err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_PublicHomeKitPairingIdentity, cptr );
+		err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_PublicHKID, (uint8_t) strlen( cptr ), cptr );
 		free( cptr );
 		require_noerr( err, exit );
 	}
@@ -2127,12 +1805,67 @@ static OSStatus _CreateAdvertiserInfo( AirPlayReceiverServerRef inServer, APAdve
 	// Source Version
 	
 	ptr = kAirPlaySourceVersionStr;
-	err = _AdvertiserInfoAddString( info, kAPAdvertiserInfoProperty_AirPlayVersion, ptr );
+	err = TXTRecordSetValue( &txtRec, kAirPlayTXTKey_SourceVersion, (uint8_t) strlen( ptr ), ptr );
 	require_noerr( err, exit );
 	
-	*outAdvertiserInfo = info;
+	// If we're only building the TXT record then return it and exit without registering.
+	
+	txtPtr = TXTRecordGetBytesPtr( &txtRec );
+	txtLen = TXTRecordGetLength( &txtRec );
+	if( outTXTRecord )
+	{
+		CFDataRef		data;
+		
+		data = CFDataCreate( NULL, txtPtr, txtLen );
+		require_action( data, exit, err = kNoMemoryErr );
+		*outTXTRecord = data;
+		goto exit;
+	}
+	
+	// Update the service.
+	
+	if( inServer->bonjourAirPlay )
+	{
+		err = DNSServiceUpdateRecord( inServer->bonjourAirPlay, NULL, 0, txtLen, txtPtr, 0 );
+		if( !err ) aprs_ulog( kLogLevelNotice, "Updated Bonjour TXT for %s\n", kAirPlayBonjourServiceType );
+		else
+		{
+			// Update record failed or isn't supported so deregister to force a re-register below.
+			
+			aprs_ulog( kLogLevelNotice, "Bonjour TXT update failed for %s, deregistering so we can force a re-register %s\n",
+					  kAirPlayBonjourServiceType );
+			DNSServiceForget( &inServer->bonjourAirPlay );
+		}
+	}
+	if( !inServer->bonjourAirPlay )
+	{
+		
+		ptr = NULL;
+		*cstr = '\0';
+		AirPlayGetDeviceName( cstr, sizeof( cstr ) );
+		ptr = cstr;
+		
+		flags = kDNSServiceFlagsKnownUnique;
+		domain = kAirPlayBonjourServiceDomain;
+		
+		port = (uint16_t) _GetListenPort( inServer );
+		require_action( port > 0, exit, err = kInternalErr );
+		
+		ifindex = kDNSServiceInterfaceIndexAny;
+		if( *inServer->ifname != '\0' )
+		{
+			ifindex = if_nametoindex( inServer->ifname );
+			require_action_quiet( ifindex != 0, exit, err = kNotFoundErr );
+		}
+		err = DNSServiceRegister( &inServer->bonjourAirPlay, flags, ifindex, ptr, kAirPlayBonjourServiceType, domain, NULL,
+								 htons( port ), txtLen, txtPtr, _BonjourRegistrationHandler, inServer );
+		require_noerr_quiet( err, exit );
+		
+		aprs_ulog( kLogLevelNotice, "Registering Bonjour %s port %d\n", kAirPlayBonjourServiceType, port );
+	}
 	
 exit:
+	TXTRecordDeallocate( &txtRec );
 	return( err );
 }
 
@@ -2180,15 +1913,13 @@ static void	_StartServers( AirPlayReceiverServerRef inServer )
 	
 	check( inServer->httpServer == NULL );
 	inServer->httpServer = _CreateHTTPServerForPort( inServer, kAirPlayFixedPort_MediaControl );
-//	inServer->httpServer = _CreateHTTPServerForPort( inServer, kAirPlayFixedPort_RTSPControl );
+	
 #if( AIRPLAY_HTTP_SERVER_LEGACY )
 	check( inServer->httpServerLegacy == NULL );
 	inServer->httpServerLegacy = _CreateHTTPServerForPort( inServer, kAirPlayFixedPort_RTSPControl );
 #endif
 	
 	// After all the servers are created, apply settings then start them (synchronously).
-	
-	_UpdateServers( inServer );
 
 	err = HTTPServerStartSync( inServer->httpServer );
 	check_noerr( err );
@@ -2199,8 +1930,7 @@ static void	_StartServers( AirPlayReceiverServerRef inServer )
 #endif
 	
 	inServer->serversStarted = true;
-	err = _UpdateAdvertising( inServer );
-	check_noerr( err );
+	_UpdateBonjour( inServer );
 	
 	aprs_ulog( kLogLevelNotice, "AirPlay servers started\n" );
 }
@@ -2211,10 +1941,7 @@ static void	_StartServers( AirPlayReceiverServerRef inServer )
 
 static void	_StopServers( AirPlayReceiverServerRef inServer )
 {
-	OSStatus		err = kNoErr;
-	
-	err = _EnsureStoppedAdvertising( inServer, "stop" );
-	check_noerr( err );
+	_StopBonjour( inServer, "stop" );
 	
 	HTTPServerForget( &inServer->httpServer );
 #if( AIRPLAY_HTTP_SERVER_LEGACY )
@@ -2226,15 +1953,6 @@ static void	_StopServers( AirPlayReceiverServerRef inServer )
 		aprs_ulog( kLogLevelNotice, "AirPlay servers stopped\n" );
 		inServer->serversStarted = false;
 	}
-}
-
-//===========================================================================================================================
-//	_UpdateServers
-//===========================================================================================================================
-
-static void	_UpdateServers( AirPlayReceiverServerRef inServer )
-{
-	(void) inServer;
 }
 
 #if 0
@@ -2253,36 +1971,6 @@ static Boolean _IsConnectionActive( HTTPConnectionRef inConnection )
 	if( aprsCnx && aprsCnx->didAnnounce )
 		isActive = true;
 	return isActive;
-}
-
-//===========================================================================================================================
-//	_FindActiveConnection
-//===========================================================================================================================
-
-static HTTPConnectionRef _FindActiveConnection( AirPlayReceiverServerRef inServer )
-{
-	HTTPConnectionRef cnx;
-	
-	if( !inServer )					return NULL;
-	if( inServer->httpServer )
-	{
-		for( cnx = inServer->httpServer->connections; cnx; cnx = cnx->next )
-		{
-			if( _IsConnectionActive( cnx ) )	return( cnx );
-		}
-	}
-	
-#if( AIRPLAY_HTTP_SERVER_LEGACY )
-	if( inServer->httpServerLegacy )
-	{
-		for( cnx = inServer->httpServerLegacy->connections; cnx; cnx = cnx->next )
-		{
-			if( _IsConnectionActive( cnx ) )	return( cnx );
-		}
-	}
-#endif
-	
-	return( NULL );
 }
 
 //===========================================================================================================================
@@ -2399,8 +2087,8 @@ static void _RemoveHTTPServerConnections( void *inArg )
 		}
 		
 		check( params->httpServer->connections == NULL );	
+		CFRelease( params->httpServer );
 	}
-	CFRelease( params->httpServer );
 	free( params );
 }
 
@@ -2413,12 +2101,11 @@ static void _RemoveHTTPServerConnections( void *inArg )
 static void _RemoveHTTPServerConnectionsOfType( AirPlayReceiverServerRef inServer, HTTPServerRef inHTTPServer, AirPlayHTTPConnectionTypes inConnectionTypeToRemove )
 {
 	AirPlayReceiverServer_RemoveHTTPConnectionsParams * params	= NULL;
-	OSStatus											err		= kNoErr;
 	
 	if( !inHTTPServer )			return;
 	
 	params = (AirPlayReceiverServer_RemoveHTTPConnectionsParams *) calloc( 1, sizeof( *params ) );
-	require_action( params, exit, err = kNoMemoryErr );
+	require( params, exit );
 	
 	CFRetain( inHTTPServer );			// it will be released in _RemoveHTTPServerConnections
 	params->httpServer = inHTTPServer;
@@ -2554,8 +2241,10 @@ static void	_HandleHTTPConnectionClose( HTTPConnectionRef inCnx, void *inContext
 		}
 		
 		AirPlayReceiverSessionTearDown( session, NULL, ( !cnx->didAnnounce || allStreamsTornDown ) ? kNoErr : kConnectionErr, NULL );
+        if (session->server) {
+            AirPlayReceiverServerSetBoolean( session->server, CFSTR( kAirPlayProperty_Playing ), NULL, false );
+        }
 		CFRelease( session );
-		AirPlayReceiverServerSetBoolean( gAirPlayReceiverServer, CFSTR( kAirPlayProperty_Playing ), NULL, false );
 	}
 	
 }
@@ -2567,14 +2256,10 @@ static void	_HandleHTTPConnectionClose( HTTPConnectionRef inCnx, void *inContext
 
 static OSStatus _HandleHTTPConnectionInitialize( HTTPConnectionRef inCnx, void *inContext )
 {
-	OSStatus err;
-	AirPlayReceiverConnectionRef const		cnx		= (AirPlayReceiverConnectionRef) inContext;
-	
-	cnx->compressionType	= kAirPlayCompressionType_Undefined;
+	(void)inContext;
     SocketSetKeepAlive( inCnx->sock, kAirPlayDataTimeoutSecs / 5, 5 );
-	err	= kNoErr;
 	
-	return err;
+	return kNoErr;
 }
 
 //===========================================================================================================================
@@ -2590,11 +2275,7 @@ static void _HandleHTTPConnectionFinalize( HTTPConnectionRef inCnx, void *inCont
 	cnx->server = NULL;
 	
 #if( TARGET_OS_POSIX )
-	if( cnx->networkChangeListener )
-	{
-		NetworkChangeListenerStop( cnx->networkChangeListener );
-		ForgetCF( &cnx->networkChangeListener );
-	}
+	_tearDownNetworkListener( cnx );
 #endif
 	ForgetCF( &cnx->pairSetupSessionHomeKit );
 	ForgetCF( &cnx->pairVerifySessionHomeKit );
@@ -2651,6 +2332,7 @@ static OSStatus _HandleHTTPConnectionMessage( HTTPConnectionRef inCnx, HTTPMessa
 	inCnx->delegate.httpProtocol = httpProtocol;
 	
 	// OPTIONS and /feedback requests are too chatty so don't log them by default.
+	
 	if( ( ( strnicmpx( methodPtr, methodLen, "OPTIONS" ) == 0 ) ||
 		( ( strnicmpx( methodPtr, methodLen, "POST" ) == 0 ) && ( strnicmp_suffix( pathPtr, pathLen, "/feedback" ) == 0 ) ) ) &&
 		!log_category_enabled( aprs_http_ucat(), kLogLevelChatty ) )
@@ -2684,35 +2366,6 @@ static OSStatus _HandleHTTPConnectionMessage( HTTPConnectionRef inCnx, HTTPMessa
 		goto SendResponse;
 	}
 
-	// Reject requests except PIN-based pair-setup or pair-verify until paired when using pairAll or P2P connections.
-	if( !cnx->pairingVerified && PairingRequired( inCnx, cnx ) &&
-		( ( strnicmpx( methodPtr, methodLen, "POST" ) != 0 ) ||
-		  ( ( strnicmp_suffix( pathPtr, pathLen, "/pair-setup" )		!= 0 ) &&
-		    ( strnicmp_suffix( pathPtr, pathLen, "/pair-verify" )		!= 0 ) ) ) )
-	{
-		aprs_ulog( kLogLevelNotice, "### Unverified RTSP request denied: %.*s %.*s\n",
-			(int) methodLen, methodPtr, (int) pathLen, pathPtr );
-		_requestReportIfIncompatibleSender( cnx, inRequest );
-		status = kHTTPStatus_Forbidden;
-		goto SendResponse;
-	}
-	
-	// Reject requests except PIN pairing URLs until paired when using PIN pairing.
-	
-	if( !cnx->pairingVerified && gAirPlayReceiverServer->pairPIN &&
-		!( ( strnicmpx( methodPtr, methodLen, "GET" ) == 0 ) &&
-		   ( strnicmp_suffix( pathPtr, pathLen, "/info" ) == 0 ) ) &&
-		( ( strnicmpx( methodPtr, methodLen, "POST" ) != 0 ) ||
-		  ( ( strnicmp_suffix( pathPtr, pathLen, "/pair-setup" )		!= 0 ) &&
-		    ( strnicmp_suffix( pathPtr, pathLen, "/pair-verify" )		!= 0 ) ) ) )
-	{
-		aprs_ulog( kLogLevelNotice, "### Unverified RTSP request in PIN mode denied: %.*s %.*s\n",
-			(int) methodLen, methodPtr, (int) pathLen, pathPtr );
-		_requestReportIfIncompatibleSender( cnx, inRequest );
-		status = kHTTPStatus_Forbidden;
-		goto SendResponse;
-	}
-	
 	// Process the request. Assume success initially, but we'll change it if there is an error.
 	// Note: methods are ordered below roughly to how often they are used (most used earlier).
 	
@@ -2721,16 +2374,13 @@ static OSStatus _HandleHTTPConnectionMessage( HTTPConnectionRef inCnx, HTTPMessa
 	response->bodyLen = 0;
 	
 	if(      strnicmpx( methodPtr, methodLen, "OPTIONS" )			== 0 ) status = _requestProcessOptions( cnx );
-	else if( strnicmpx( methodPtr, methodLen, "SET_PARAMETER" )		== 0 ) status = _requestProcessSetParameter( cnx, inRequest );
 	else if( strnicmpx( methodPtr, methodLen, "FLUSH" )				== 0 ) status = _requestProcessFlush( cnx, inRequest );
-	else if( strnicmpx( methodPtr, methodLen, "GET_PARAMETER" ) 	== 0 ) status = _requestProcessGetParameter( cnx, inRequest );
 	else if( strnicmpx( methodPtr, methodLen, "RECORD" )			== 0 ) status = _requestProcessRecord( cnx, inRequest );
 	else if( strnicmpx( methodPtr, methodLen, "SETUP" )				== 0 ) status = _requestProcessSetup( cnx, inRequest );
 	else if( strnicmpx( methodPtr, methodLen, "TEARDOWN" )			== 0 ) status = _requestProcessTearDown( cnx, inRequest );
 	else if( strnicmpx( methodPtr, methodLen, "GET" )				== 0 )
 	{
 		if( 0 ) {}
-		else if( strnicmp_suffix( pathPtr, pathLen, "/log" )		== 0 ) status = _requestProcessGetLog( cnx );
 		else if( strnicmp_suffix( pathPtr, pathLen, "/info" )		== 0 ) status = _requestProcessInfo( cnx, inRequest );
 		else { dlog( kLogLevelNotice, "### Unsupported GET: '%.*s'\n", (int) pathLen, pathPtr ); status = kHTTPStatus_NotFound; }
 	}
@@ -2747,7 +2397,6 @@ static OSStatus _HandleHTTPConnectionMessage( HTTPConnectionRef inCnx, HTTPMessa
 		else { dlogassert( "Bad POST: '%.*s'", (int) pathLen, pathPtr ); status = kHTTPStatus_NotFound; }
 	}
 	else { dlogassert( "Bad method: %.*s", (int) methodLen, methodPtr ); status = kHTTPStatus_NotImplemented; }
-	goto SendResponse;
 	
 SendResponse:
 	
@@ -2759,43 +2408,24 @@ SendResponse:
 		require_noerr( err, exit );
 		response->bodyLen = 0;
 		
-		err = HTTPHeader_SetField( &response->header, kHTTPHeader_ContentLength, "0" );
+		err = HTTPHeader_AddFieldF( &response->header, kHTTPHeader_ContentLength, "0" );
 		require_noerr( err, exit );
 	}
 	
 	// Server
 	
-	err = HTTPHeader_SetField( &response->header, kHTTPHeader_Server, "AirTunes/%s", kAirPlaySourceVersionStr );
+	err = HTTPHeader_AddFieldF( &response->header, kHTTPHeader_Server, "AirTunes/%s", kAirPlaySourceVersionStr );
 	require_noerr( err, exit );
-	
-	// WWW-Authenticate
-	
-	if( status == kHTTPStatus_Unauthorized )
-	{
-
-		char		nonce[ 64 ];
-		
-		err = HTTPMakeTimedNonce( kHTTPTimedNonceETagPtr, kHTTPTimedNonceETagLen,
-			cnx->server->httpTimedNonceKey, sizeof( cnx->server->httpTimedNonceKey ),
-			nonce, sizeof( nonce ), NULL );
-		require_noerr( err, exit );
-		
-		err = HTTPHeader_SetField( &response->header, kHTTPHeader_WWWAuthenticate, "Digest realm=\"airplay\", nonce=\"%s\"", nonce );
-		require_noerr( err, exit );
-	}
 	
 	// CSeq
 	
 	if( cSeqPtr )
 	{
-		err = HTTPHeader_SetField( &response->header, kHTTPHeader_CSeq, "%.*s", (int) cSeqLen, cSeqPtr );
+		err = HTTPHeader_AddFieldF( &response->header, kHTTPHeader_CSeq, "%.*s", (int) cSeqLen, cSeqPtr );
 		require_noerr( err, exit );
 	}
 	
-	// Apple-Challenge
-	
-	if( logHTTP ) LogHTTP( aprs_http_ucat(), aprs_http_ucat(), response->header.buf, response->header.len,
-		response->bodyPtr, response->bodyLen );
+	if( logHTTP ) LogHTTP( aprs_http_ucat(), aprs_http_ucat(), response->header.buf, response->header.len, response->bodyPtr, response->bodyLen );
 	
 	err = HTTPConnectionSendResponse( inCnx );
 	require_noerr( err, exit );
@@ -2844,8 +2474,9 @@ static HTTPStatus _requestProcessAuthSetup( AirPlayReceiverConnectionRef inCnx, 
 	
 	// Send the MFi-SAP output data in the response.
 	
-	err = HTTPMessageSetBody( response, kMIMEType_Binary, outputPtr, outputLen );
+	err = HTTPMessageSetBodyPtr( response, kMIMEType_Binary, outputPtr, outputLen );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
+	outputPtr = NULL;
 	
 	status = kHTTPStatus_OK;
 	
@@ -2862,13 +2493,16 @@ static HTTPStatus _requestProcessCommand( AirPlayReceiverConnectionRef inCnx, HT
 {
 	HTTPStatus				status;
 	OSStatus				err;
-	CFDictionaryRef			requestDict;
+	CFDictionaryRef			requestDict = NULL;
 	CFStringRef				command = NULL;
 	CFDictionaryRef			params;
 	CFDictionaryRef			responseDict;
 	
-	requestDict = CFDictionaryCreateWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, &err );
-	require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+	if( inRequest->bodyOffset > 0 ) {
+		requestDict = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inRequest->bodyPtr, inRequest->bodyOffset, &err );
+		require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+		require_action( CFGetTypeID( requestDict ) == CFDictionaryGetTypeID() , exit, status = kHTTPStatus_BadRequest );
+	}
 	
 	command = CFDictionaryGetCFString( requestDict, CFSTR( kAirPlayKey_Type ), NULL );
 	require_action( command, exit, err = kParamErr; status = kHTTPStatus_ParameterNotUnderstood );
@@ -2907,9 +2541,12 @@ static HTTPStatus _requestProcessFeedback( AirPlayReceiverConnectionRef inCnx, H
 	CFDictionaryRef				input	= NULL;
 	CFMutableDictionaryRef		output	= NULL;
 	CFDictionaryRef				dict;
-	
-	input = CFDictionaryCreateWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, &err );
-	require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+
+	if( inRequest->bodyLen ) {
+		input = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inRequest->bodyPtr, inRequest->bodyLen, &err );
+		require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+		require_action( CFGetTypeID( input ) == CFDictionaryGetTypeID() , exit, status = kHTTPStatus_BadRequest );
+	}
 	
 	output = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 	require_action( output, exit, err = kNoMemoryErr; status = kHTTPStatus_InternalServerError );
@@ -2965,57 +2602,12 @@ static HTTPStatus _requestProcessFlush( AirPlayReceiverConnectionRef inCnx, HTTP
 	err = AirPlayReceiverSessionFlushAudio( inCnx->session, flushTS, flushSeq, &lastPlayedTS );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	
-	err = HTTPHeader_SetField( &response->header, kHTTPHeader_RTPInfo, "rtptime=%u", lastPlayedTS );
+	err = HTTPHeader_AddFieldF( &response->header, kHTTPHeader_RTPInfo, "rtptime=%u", lastPlayedTS );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	
 	status = kHTTPStatus_OK;
 	
 exit:
-	return( status );
-}
-
-//===========================================================================================================================
-//	_requestProcessGetLog
-//===========================================================================================================================
-
-static HTTPStatus _requestProcessGetLog( AirPlayReceiverConnectionRef inCnx )
-{
-	HTTPStatus		status;
-	OSStatus		err;
-	DataBuffer		dataBuf;
-	uint8_t *		ptr;
-	size_t			len;
-	HTTPMessageRef	response = inCnx->httpCnx->responseMsg;
-	
-	DataBuffer_Init( &dataBuf, NULL, 0, 10 * kBytesPerMegaByte );
-	
-	{
-	}
-	
-	DataBuffer_AppendF( &dataBuf, "AirPlay Diagnostics\n" );
-	DataBuffer_AppendF( &dataBuf, "===================\n" );
-	AirTunesDebugAppendShowData( "globals", &dataBuf );
-	AirTunesDebugAppendShowData( "stats", &dataBuf );
-	AirTunesDebugAppendShowData( "rtt", &dataBuf );
-	AirTunesDebugAppendShowData( "retrans", &dataBuf );
-	AirTunesDebugAppendShowData( "retransDone", &dataBuf );
-	
-#if( TARGET_OS_POSIX )
-	DataBuffer_AppendF( &dataBuf, "+-+ syslog +--\n" );
-	DataBuffer_RunProcessAndAppendOutput( &dataBuf, "syslog" );
-	DataBuffer_AppendFile( &dataBuf, kAirPlayPrimaryLogPath );
-#endif
-	
-	err = DataBuffer_Commit( &dataBuf, &ptr, &len );
-	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
-	
-	err = HTTPMessageSetBody( response, "text/plain", ptr, len );
-	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
-	
-	status = kHTTPStatus_OK;
-	
-exit:
-	DataBuffer_Free( &dataBuf );
 	return( status );
 }
 
@@ -3086,8 +2678,8 @@ static HTTPStatus _requestProcessLogsRetrieve( AirPlayReceiverConnectionRef inCn
 		err = HTTPHeader_InitResponse( &response->header, inCnx->httpCnx->delegate.httpProtocol, kHTTPStatus_Accepted, NULL );
 		require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 		
-		HTTPHeader_SetField( &response->header, "Retry-After", "5" ); // Retry in 5 sec
-		HTTPHeader_SetField( &response->header, "Location", "/Logs?id=%u", inCnx->logs->requestID );
+		HTTPHeader_AddFieldF( &response->header, "Retry-After", "5" ); // Retry in 5 sec
+		HTTPHeader_AddFieldF( &response->header, "Location", "/Logs?id=%u", inCnx->logs->requestID );
 		response->bodyLen = 0;
 		
 		// Return "OK" here to indicate that we prepared the response message ourselves
@@ -3101,10 +2693,10 @@ static HTTPStatus _requestProcessLogsRetrieve( AirPlayReceiverConnectionRef inCn
 			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 			response->bodyLen = 0;
 			
-			err = DataBuffer_Commit( inCnx->logs->dataBuffer, &ptr, &len );
+			err = DataBuffer_Detach( inCnx->logs->dataBuffer, &ptr, &len );
 			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 			
-			err = HTTPMessageSetBody( response, "application/x-gzip", ptr, len );
+			err = HTTPMessageSetBodyPtr( response, "application/x-gzip", ptr, len );
 			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 			
 			DataBuffer_Free( inCnx->logs->dataBuffer );
@@ -3174,8 +2766,8 @@ static HTTPStatus _requestProcessLogsInitiate( AirPlayReceiverConnectionRef inCn
 		err = HTTPHeader_InitResponse( &response->header, inCnx->httpCnx->delegate.httpProtocol, kHTTPStatus_Accepted, NULL );
 		require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 		
-		HTTPHeader_SetField( &response->header, "Retry-After", "5" ); // Retry in 5 sec
-		HTTPHeader_SetField( &response->header, "Location", "/Logs?id=%u", inCnx->logs->requestID );
+		HTTPHeader_AddFieldF( &response->header, "Retry-After", "5" ); // Retry in 5 sec
+		HTTPHeader_AddFieldF( &response->header, "Location", "/Logs?id=%u", inCnx->logs->requestID );
 		response->bodyLen = 0;
 		
 		// Return "OK" here to indicate that we prepared the response message ourselves
@@ -3227,7 +2819,7 @@ static HTTPStatus _requestProcessInfo( AirPlayReceiverConnectionRef inCnx, HTTPM
 {
 	HTTPStatus					status;
 	OSStatus					err;
-	CFMutableDictionaryRef		requestDict;
+	CFDictionaryRef				requestDict = NULL;
 	CFMutableArrayRef			qualifier = NULL;
 	CFDictionaryRef				responseDict;
 	const char *				src;
@@ -3236,9 +2828,18 @@ static HTTPStatus _requestProcessInfo( AirPlayReceiverConnectionRef inCnx, HTTPM
 	size_t						nameLen;
 	char *						nameBuf;
 	uint32_t					userVersion = 0;
-	
-	requestDict = CFDictionaryCreateMutableWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, &err );
-	require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+
+	if ( !inCnx->session )
+	{
+		dlogassert( "/info not allowed before SETUP" );
+		return( kHTTPStatus_MethodNotValidInThisState );
+	}
+
+	if ( inRequest->bodyLen > 0 ) {
+		requestDict = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inRequest->bodyPtr, inRequest->bodyLen, &err );
+		require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+		require_action( CFGetTypeID( requestDict ) == CFDictionaryGetTypeID() , exit, status = kHTTPStatus_BadRequest );
+	}
 	
 	qualifier = (CFMutableArrayRef) CFDictionaryGetCFArray( requestDict, CFSTR( kAirPlayKey_Qualifier ), NULL );
 	if( qualifier ) CFRetain( qualifier );
@@ -3253,9 +2854,8 @@ static HTTPStatus _requestProcessInfo( AirPlayReceiverConnectionRef inCnx, HTTPM
 	}
 	
 	HTTPScanFHeaderValue( inRequest->header.buf, inRequest->header.len, kAirPlayHTTPHeader_ProtocolVersion, "%u", &userVersion );
-	if( inCnx->session ) AirPlayReceiverSessionSetUserVersion( inCnx->session, userVersion );
 	
-	responseDict = AirPlayCopyServerInfo( inCnx->session, qualifier, inCnx->httpCnx->ifMACAddress , &err );
+	responseDict = AirPlayCopyServerInfo( inCnx->session, qualifier, &err );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	
 	status = _requestSendPlistResponse( inCnx->httpCnx, inRequest, responseDict, &err );
@@ -3276,8 +2876,7 @@ static HTTPStatus _requestProcessOptions( AirPlayReceiverConnectionRef inCnx )
 {
 	HTTPMessageRef response = inCnx->httpCnx->responseMsg;
 	
-	HTTPHeader_SetField( &response->header, kHTTPHeader_Public,
-		"ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, TEARDOWN, OPTIONS, GET_PARAMETER, SET_PARAMETER, POST, GET, PUT" );
+	HTTPHeader_AddFieldF( &response->header, kHTTPHeader_Public, "ANNOUNCE, SETUP, RECORD, PAUSE, FLUSH, TEARDOWN, OPTIONS, POST, GET, PUT" );
 	
 	return( kHTTPStatus_OK );
 }
@@ -3290,21 +2889,14 @@ static HTTPStatus _requestProcessPairSetupHomeKit( AirPlayReceiverConnectionRef 
 {
 	HTTPStatus				status;
 	OSStatus				err;
-	const char *			cptr;
-	uint8_t					deviceID[ 6 ];
+	const char				cptr[] = "3939";
 	char					cstr[ 32 ];
-	char					fixedPin[8];
 	uint8_t *				outputPtr	= NULL;
 	size_t					outputLen;
 	Boolean					done;
 	HTTPMessageRef			response	= inCnx->httpCnx->responseMsg;
 	
 	aprs_ulog( kLogLevelNotice, "Control pair-setup HK, type %d\n", inHomeKitPairingType );
-	
-	{
-		strcpy( fixedPin, "3939" );
-		cptr = fixedPin;
-	}
 	
 	// Perform the next stage of the PIN process.
 	
@@ -3315,8 +2907,7 @@ static HTTPStatus _requestProcessPairSetupHomeKit( AirPlayReceiverConnectionRef 
 		PairingSessionSetKeychainInfo_AirPlay( inCnx->pairSetupSessionHomeKit );
 		PairingSessionSetLogging( inCnx->pairSetupSessionHomeKit, aprs_ucat() );
 		
-		AirPlayGetDeviceID( deviceID );
-		MACAddressToCString( deviceID, cstr );
+		MACAddressToCString( inCnx->server->deviceID, cstr );
 		err = PairingSessionSetIdentifier( inCnx->pairSetupSessionHomeKit, cstr, kSizeCString );
 		require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	}
@@ -3330,12 +2921,12 @@ static HTTPStatus _requestProcessPairSetupHomeKit( AirPlayReceiverConnectionRef 
 	require_noerr_action_quiet( err, exit, status = kHTTPStatus_ConnectionAuthorizationRequired );
 	if( done )
 	{
-		*gAirPlayReceiverServer->pairPINStr = '\0';
 		ForgetCF( &inCnx->pairSetupSessionHomeKit );
 	}
 	
-	err = HTTPMessageSetBody( response, kMIMEType_AppleBinaryPlist, outputPtr, outputLen );
+	err = HTTPMessageSetBodyPtr( response, kMIMEType_Binary, outputPtr, outputLen );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
+	outputPtr = NULL;
 	
 	status = kHTTPStatus_OK;
 	
@@ -3420,7 +3011,6 @@ static HTTPStatus _requestProcessPairVerifyHomeKit( AirPlayReceiverConnectionRef
 	Boolean					done;
 	uint8_t *				outputPtr	= NULL;
 	size_t					outputLen	= 0;
-	uint8_t					deviceID[ 6 ];
 	char					cstr[ 32 ];
 	HTTPMessageRef			response = inCnx->httpCnx->responseMsg;
 	
@@ -3433,8 +3023,7 @@ static HTTPStatus _requestProcessPairVerifyHomeKit( AirPlayReceiverConnectionRef
 		PairingSessionSetKeychainInfo_AirPlay( inCnx->pairVerifySessionHomeKit );
 		PairingSessionSetLogging( inCnx->pairVerifySessionHomeKit, aprs_ucat() );
 		
-		AirPlayGetDeviceID( deviceID );
-		MACAddressToCString( deviceID, cstr );
+		MACAddressToCString( inCnx->server->deviceID, cstr );
 		err = PairingSessionSetIdentifier( inCnx->pairVerifySessionHomeKit, cstr, kSizeCString );
 		require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	}
@@ -3452,8 +3041,9 @@ static HTTPStatus _requestProcessPairVerifyHomeKit( AirPlayReceiverConnectionRef
 		response->completion   = _HandlePairVerifyHomeKitCompletion;
 	}
 	
-	err = HTTPMessageSetBody( response, kMIMEType_Binary, outputPtr, outputLen );
+	err = HTTPMessageSetBodyPtr( response, kMIMEType_Binary, outputPtr, outputLen );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
+	outputPtr = NULL;
 	
 	status = kHTTPStatus_OK;
 	
@@ -3488,233 +3078,6 @@ static HTTPStatus _requestProcessPairVerify( AirPlayReceiverConnectionRef inCnx,
 	else
 		status = _requestProcessPairVerifyHomeKit( inCnx, inRequest );
 	
-	return( status );
-}
-
-//===========================================================================================================================
-//	_requestProcessGetParameter
-//===========================================================================================================================
-
-static HTTPStatus _requestProcessGetParameter( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest )
-{
-	HTTPStatus				status;
-	OSStatus				err;
-	const char *			src;
-	const char *			end;
-	size_t					len;
-	char					tempStr[ 256 ];
-	char					responseBuf[ 256 ];
-	int						n;
-	HTTPMessageRef			response	= inCnx->httpCnx->responseMsg;
-	
-	if( !AirPlayReceiverConnectionDidSetup( inCnx ) )
-	{
-		dlogassert( "GET_PARAMETER not allowed before SETUP" );
-		status = kHTTPStatus_MethodNotValidInThisState;
-		goto exit;
-	}
-	
-	// Check content type.
-	
-	err = GetHeaderValue( inRequest, kHTTPHeader_ContentType, &src, &len );
-	if( err )
-	{
-		dlogassert( "No Content-Type header" );
-		status = kHTTPStatus_BadRequest;
-		goto exit;
-	}
-	if( strnicmpx( src, len, "text/parameters" ) != 0 )
-	{
-		dlogassert( "Bad Content-Type: '%.*s'", (int) len, src );
-		status = kHTTPStatus_HeaderFieldNotValid;
-		goto exit;
-	}
-	
-	// Parse parameters. Each parameter is formatted as <name>\r\n
-	
-	src = (const char *) inRequest->bodyPtr;
-	end = src + inRequest->bodyOffset;
-	while( src < end )
-	{
-		char				c;
-		const char *		namePtr;
-		size_t				nameLen;
-		
-		namePtr = src;
-		while( ( src < end ) && ( ( c = *src ) != '\r' ) && ( c != '\n' ) ) ++src;
-		nameLen = (size_t)( src - namePtr );
-		if( ( nameLen == 0 ) || ( src >= end ) )
-		{
-			dlogassert( "Bad parameter: '%.*s'", (int) inRequest->bodyOffset, inRequest->bodyPtr );
-			status = kHTTPStatus_ParameterNotUnderstood;
-			goto exit;
-		}
-		
-		// Process the parameter.
-		
-		if( 0 ) {}
-		
-		// Name
-		
-		else if( strnicmpx( namePtr, nameLen, "name" ) == 0 )
-		{
-			err = AirPlayGetDeviceName( tempStr, sizeof( tempStr ) );
-			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
-			
-			n = snprintf( responseBuf, sizeof( responseBuf ), "name: %s\r\n", tempStr );
-			err = HTTPMessageSetBody( response, "text/parameters", responseBuf, (size_t) n );
-			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
-		}
-		
-		// Other
-		
-		else
-		{
-			dlogassert( "Unknown parameter: '%.*s'", (int) nameLen, namePtr );
-			status = kHTTPStatus_ParameterNotUnderstood;
-			goto exit;
-		}
-		
-		while( ( src < end ) && ( ( ( c = *src ) == '\r' ) || ( c == '\n' ) ) ) ++src;
-	}
-	
-	status = kHTTPStatus_OK;
-	
-exit:
-	return( status );
-}
-
-//===========================================================================================================================
-//	_requestProcessSetParameter
-//===========================================================================================================================
-
-static HTTPStatus _requestProcessSetParameter( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest )
-{
-	HTTPStatus				status;
-	const char *			src;
-	size_t					len;
-	
-	if( !AirPlayReceiverConnectionDidSetup( inCnx ) )
-	{
-		dlogassert( "SET_PARAMETER not allowed before SETUP" );
-		status = kHTTPStatus_MethodNotValidInThisState;
-		goto exit;
-	}
-	
-	src = NULL;
-	len = 0;
-	GetHeaderValue( inRequest, kHTTPHeader_ContentType, &src, &len );
-	if( ( len == 0 ) && ( inRequest->bodyOffset == 0 ) )			status = kHTTPStatus_OK;
-	else if( strnicmpx( src, len, "text/parameters" ) == 0 )	status = _requestProcessSetParameterText( inCnx, inRequest );
-	else if( MIMETypeIsPlist( src, len ) )						status = _requestProcessSetProperty( inCnx, inRequest );
-	else { dlogassert( "Bad Content-Type: '%.*s'", (int) len, src ); status = kHTTPStatus_HeaderFieldNotValid; goto exit; }
-	
-exit:
-	return( status );
-}
-
-//===========================================================================================================================
-//	_requestProcessSetParameterText
-//===========================================================================================================================
-
-static HTTPStatus _requestProcessSetParameterText( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest )
-{
-	HTTPStatus			status;
-	OSStatus			err;
-	const char *		src;
-	const char *		end;
-	(void) inCnx;
-	
-	// Parse parameters. Each parameter is formatted as <name>: <value>\r\n
-	
-	src = (const char *) inRequest->bodyPtr;
-	end = src + inRequest->bodyOffset;
-	while( src < end )
-	{
-		char				c;
-		const char *		namePtr;
-		size_t				nameLen;
-		const char *		valuePtr;
-		size_t				valueLen;
-		
-		// Parse the name.
-		
-		namePtr = src;
-		while( ( src < end ) && ( *src != ':' ) ) ++src;
-		nameLen = (size_t)( src - namePtr );
-		if( ( nameLen == 0 ) || ( src >= end ) )
-		{
-			dlogassert( "Bad parameter: '%.*s'", (int) inRequest->bodyOffset, inRequest->bodyPtr );
-			status = kHTTPStatus_ParameterNotUnderstood;
-			goto exit;
-		}
-		++src;
-		while( ( src < end ) && ( ( ( c = *src ) == ' ' ) || ( c == '\t' ) ) ) ++src;
-		
-		// Parse the value.
-		
-		valuePtr = src;
-		while( ( src < end ) && ( ( c = *src ) != '\r' ) && ( c != '\n' ) ) ++src;
-		valueLen = (size_t)( src - valuePtr );
-		
-		// Process the parameter.
-		
-		if( 0 ) {}
-		
-		// Other
-		
-		else
-		{
-			(void) err;
-			(void) valueLen;
-			
-			dlogassert( "Unknown parameter: '%.*s'", (int) nameLen, namePtr );
-			status = kHTTPStatus_ParameterNotUnderstood;
-			goto exit;
-		}
-		
-		while( ( src < end ) && ( ( ( c = *src ) == '\r' ) || ( c == '\n' ) ) ) ++src;
-	}
-	
-	status = kHTTPStatus_OK;
-	
-exit:
-	return( status );
-}
-
-//===========================================================================================================================
-//	_requestProcessSetProperty
-//===========================================================================================================================
-
-static HTTPStatus _requestProcessSetProperty( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest )
-{
-	HTTPStatus				status;
-	OSStatus				err;
-	CFDictionaryRef			requestDict;
-	CFStringRef				property = NULL;
-	CFTypeRef				qualifier;
-	CFTypeRef				value;
-	
-	requestDict = CFDictionaryCreateWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, &err );
-	require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
-	
-	property = CFDictionaryGetCFString( requestDict, CFSTR( kAirPlayKey_Property ), NULL );
-	require_action( property, exit, err = kParamErr; status = kHTTPStatus_BadRequest );
-	
-	qualifier	= CFDictionaryGetValue( requestDict, CFSTR( kAirPlayKey_Qualifier ) );
-	value		= CFDictionaryGetValue( requestDict, CFSTR( kAirPlayKey_Value ) );
-	
-	// Set the property on the session.
-	
-	require_action( inCnx->session, exit, err = kNotPreparedErr; status = kHTTPStatus_SessionNotFound );
-	err = AirPlayReceiverSessionSetProperty( inCnx->session, kCFObjectFlagDirect, property, qualifier, value );
-	require_noerr_action_quiet( err, exit, status = kHTTPStatus_UnprocessableEntity );
-	
-	status = kHTTPStatus_OK;
-	
-exit:
-	if( err ) aprs_ulog( kLogLevelNotice, "### Set property '%@' failed: %#m, %#m\n", property, status, err );
-	CFReleaseNullSafe( requestDict );
 	return( status );
 }
 
@@ -3775,7 +3138,7 @@ static HTTPStatus _requestProcessRecord( AirPlayReceiverConnectionRef inCnx, HTT
 #if( TARGET_OS_POSIX )
 	err = NetworkChangeListenerCreate( &inCnx->networkChangeListener );
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
-	NetworkChangeListenerSetDispatchQueue( inCnx->networkChangeListener, AirPlayReceiverServerGetDispatchQueue( gAirPlayReceiverServer) );
+	NetworkChangeListenerSetDispatchQueue( inCnx->networkChangeListener, AirPlayReceiverServerGetDispatchQueue( inCnx->server ) );
 	NetworkChangeListenerSetHandler( inCnx->networkChangeListener, _requestNetworkChangeListenerHandleEvent, inCnx );
 	NetworkChangeListenerStart( inCnx->networkChangeListener );
 #endif
@@ -3824,7 +3187,7 @@ static HTTPStatus _requestProcessSetupPlist( AirPlayReceiverConnectionRef inCnx,
 {
 	HTTPStatus					status;
 	OSStatus					err;
-	CFMutableDictionaryRef		requestParams  = NULL;
+	CFDictionaryRef				requestParams  = NULL;
 	CFDictionaryRef				responseParams = NULL;
 	uint8_t						sessionUUID[ 16 ];
 	char						cstr[ 64 ];
@@ -3834,26 +3197,11 @@ static HTTPStatus _requestProcessSetupPlist( AirPlayReceiverConnectionRef inCnx,
 	
 	aprs_ulog( kAirPlayPhaseLogLevel, "Setup\n" );
 	
-	// If we're denying interrupts then reject if there's already an active session.
-	// Otherwise, hijack any active session to start the new one (last-in-wins).
-	
-	if( inCnx->server->denyInterruptions )
-	{
-		HTTPConnectionRef activeCnx;
-		
-		activeCnx = _FindActiveConnection( inCnx->server );
-		if( activeCnx && ( activeCnx != inCnx->httpCnx ) )
-		{
-			aprs_ulog( kLogLevelNotice, "Denying interruption from %##a due to %##a\n", &inCnx->httpCnx->peerAddr, &activeCnx->peerAddr );
-			status = kHTTPStatus_NotEnoughBandwidth;
-			err = kNoErr;
-			goto exit;
-		}
-	}
 	_HijackConnections( inCnx->server, inCnx->httpCnx );
 	
-	requestParams = CFDictionaryCreateMutableWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, &err );
+	requestParams = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inRequest->bodyPtr, inRequest->bodyOffset, &err );
 	require_noerr_action( err, exit, status = kHTTPStatus_BadRequest );
+	require_action( CFGetTypeID( requestParams ) == CFDictionaryGetTypeID(), exit, status = kHTTPStatus_BadRequest );
 	
 	u64 = CFDictionaryGetMACAddress( requestParams, CFSTR( kAirPlayKey_DeviceID ), NULL, &err );
 	if( !err ) inCnx->clientDeviceID = u64;
@@ -3902,8 +3250,6 @@ static HTTPStatus _requestProcessSetupPlist( AirPlayReceiverConnectionRef inCnx,
 			MemZeroSecure( key, sizeof( key ) );
 			require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 		}
-		CFDictionaryRemoveValue( requestParams, CFSTR( kAirPlayKey_EncryptionKey ) );
-		CFDictionaryRemoveValue( requestParams, CFSTR( kAirPlayKey_EncryptionIV ) );
 	}
 	
 	err = AirPlayReceiverSessionSetup( inCnx->session, requestParams, &responseParams );
@@ -3912,7 +3258,7 @@ static HTTPStatus _requestProcessSetupPlist( AirPlayReceiverConnectionRef inCnx,
 	inCnx->didAnnounce		= true;
 	inCnx->didAudioSetup	= true;
 	inCnx->didScreenSetup	= true;
-	AirPlayReceiverServerSetBoolean( gAirPlayReceiverServer, CFSTR( kAirPlayProperty_Playing ), NULL, true );
+	AirPlayReceiverServerSetBoolean( inCnx->server, CFSTR( kAirPlayProperty_Playing ), NULL, true );
 	
 	status = _requestSendPlistResponse( inCnx->httpCnx, inRequest, responseParams, &err );
 	require_noerr( err, exit );
@@ -3930,10 +3276,16 @@ exit:
 
 static HTTPStatus _requestProcessTearDown( AirPlayReceiverConnectionRef inCnx, HTTPMessageRef inRequest )
 {
-	CFDictionaryRef			requestDict;
+	CFDictionaryRef			requestDict = NULL;
 	Boolean					done = true;
-	
-	requestDict = CFDictionaryCreateWithBytes( inRequest->bodyPtr, inRequest->bodyOffset, NULL );
+
+	if( inRequest->bodyOffset > 0) {
+		requestDict = (CFDictionaryRef)CFBinaryPlistV0CreateWithData( inRequest->bodyPtr, inRequest->bodyOffset, NULL );
+		if( requestDict && ( CFGetTypeID( requestDict ) != CFDictionaryGetTypeID() ) ) {
+			CFRelease( requestDict );
+			requestDict = NULL;
+		}
+	}
 	aprs_ulog( kLogLevelNotice, "Teardown %?@\n", log_category_enabled( aprs_ucat(), kLogLevelVerbose ), requestDict );
 	
 	if( inCnx->session )
@@ -3943,15 +3295,10 @@ static HTTPStatus _requestProcessTearDown( AirPlayReceiverConnectionRef inCnx, H
 	if( done )
 	{
 #if( TARGET_OS_POSIX )
-		if( inCnx->networkChangeListener )
-		{
-			NetworkChangeListenerStop( inCnx->networkChangeListener );
-			ForgetCF( &inCnx->networkChangeListener );
-		}
+		_tearDownNetworkListener( inCnx );
 #endif
 		ForgetCF( &inCnx->session );
-		AirPlayReceiverServerSetBoolean( gAirPlayReceiverServer, CFSTR( kAirPlayProperty_Playing ), NULL, false );
-		gAirPlayAudioCompressionType = kAirPlayCompressionType_Undefined;
+		AirPlayReceiverServerSetBoolean( inCnx->server, CFSTR( kAirPlayProperty_Playing ), NULL, false );
 		inCnx->didAnnounce = false;
 		inCnx->didAudioSetup = false;
 		inCnx->didScreenSetup	= false;
@@ -3977,7 +3324,7 @@ static OSStatus _requestCreateSession( AirPlayReceiverConnectionRef inCnx, Boole
 	require_action_quiet( !inCnx->session, exit, err = kNoErr );
 	
 	memset( &createParams, 0, sizeof( createParams ) );
-	createParams.server				= gAirPlayReceiverServer;
+	createParams.server				= inCnx->server;
 	createParams.transportType		= inCnx->httpCnx->transportType;
 	createParams.peerAddr			= &inCnx->httpCnx->peerAddr;
 	createParams.clientDeviceID		= inCnx->clientDeviceID;
@@ -4071,9 +3418,8 @@ static void _requestReportIfIncompatibleSender( AirPlayReceiverConnectionRef inC
 static HTTPStatus _requestSendPlistResponse( HTTPConnectionRef inCnx, HTTPMessageRef inRequest, CFPropertyListRef inPlist, OSStatus *outErr )
 {
 	HTTPStatus			status;
-	OSStatus			err;
+	OSStatus			err = kNoErr;
 	const char *		httpProtocol;
-	CFDataRef			data = NULL;
 	const uint8_t *		ptr;
 	size_t				len;
 	HTTPMessageRef		response = inCnx->responseMsg;
@@ -4089,22 +3435,15 @@ static HTTPStatus _requestSendPlistResponse( HTTPConnectionRef inCnx, HTTPMessag
 	
 	if( inPlist )
 	{
-		data = CFPropertyListCreateData( NULL, inPlist, kCFPropertyListBinaryFormat_v1_0, 0, NULL );
-		require_action( data, exit, err = kUnknownErr; status = kHTTPStatus_InternalServerError );
-		ptr = CFDataGetBytePtr( data );
-		len = (size_t) CFDataGetLength( data );
-		err = HTTPMessageSetBody( response, kMIMEType_AppleBinaryPlist, ptr, len );
-	}
-	else
-	{
-		err = HTTPMessageSetBody( response, NULL, NULL, 0 );
+		ptr = CFBinaryPlistV0Create( inPlist, &len, NULL );
+		require_action( ptr, exit, err = kUnknownErr; status = kHTTPStatus_InternalServerError );
+		err = HTTPMessageSetBodyPtr( response, kMIMEType_AppleBinaryPlist, ptr, len );
 	}
 	require_noerr_action( err, exit, status = kHTTPStatus_InternalServerError );
 	
 	status = kHTTPStatus_OK;
 	
 exit:
-	CFReleaseNullSafe( data );
 	if( outErr ) *outErr = err;
 	return( status );
 }
@@ -4148,14 +3487,19 @@ static void	_requestNetworkChangeListenerHandleEvent( uint32_t inEvent, void *in
 exit:
 	if( sessionDied )
 	{
-#if( TARGET_OS_POSIX )
-		if( cnx->networkChangeListener )
-		{
-			NetworkChangeListenerStop( cnx->networkChangeListener );
-			ForgetCF( &cnx->networkChangeListener );
-		}
-#endif
-		AirPlayReceiverServerControl( gAirPlayReceiverServer, kCFObjectFlagDirect, CFSTR( kAirPlayCommand_SessionDied ), cnx->session, NULL, NULL );
+		dispatch_async_f( cnx->server->httpQueue, cnx, _tearDownNetworkListener );
+		AirPlayReceiverServerControl( cnx->server, kCFObjectFlagDirect, CFSTR( kAirPlayCommand_SessionDied ), cnx->session, NULL, NULL );
+	}
+}
+
+static void	_tearDownNetworkListener( void *inContext)
+{
+	AirPlayReceiverConnectionRef cnx = (AirPlayReceiverConnectionRef) inContext;
+	if( cnx->networkChangeListener )
+	{
+		NetworkChangeListenerSetHandler( cnx->networkChangeListener, NULL, NULL );
+		NetworkChangeListenerStop( cnx->networkChangeListener );
+		ForgetCF( &cnx->networkChangeListener );
 	}
 }
 #endif

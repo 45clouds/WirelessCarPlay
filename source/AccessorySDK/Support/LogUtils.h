@@ -2,7 +2,7 @@
 	File:    	LogUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 1997-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 1997-2014 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__LogUtils_h__
@@ -136,10 +136,6 @@ extern "C" {
 	
 	Outputs:
 	
-		"asl"				-- Logs to Apple System Log (ASL).
-			"facility"			-- Set ASL_KEY_FACILITY. Defaults to "user".
-			"level"				-- Level to override the input log level. Format: level=<log level to use>.
-			"sender"			-- Set ASL_KEY_SENDER. Defaults to the process name.
 		"callback"			-- Logs to a callback function you specify.
 			"func"				-- Pointer value (%p) to a LogOutputCallBack function to call.
 			"arg"				-- Pointer value (%p) for the last context parameter to pass to the callback function.
@@ -153,7 +149,6 @@ extern "C" {
 			"path"				-- Log file path. May also be "stderr" or "stdout" to go to those special destinations.
 			"roll"				-- Control log rolling. Format: roll=<maxSize>#<maxCount>.
 			"backup"			-- Control log file backups. Format: backup=<base path to backup files>#<maxCount>.
-		"iDebug"			-- Logs using iDebug for IOKit drivers.
 		"IOLog"				-- Logs using IOLog for IOKit drivers.
 		"kprintf"			-- Logs using kprintf for Mac OS X kernel code.
 		"oslog"				-- Logs using os_log for Mac OS X and iOS.
@@ -265,7 +260,6 @@ typedef int		LogOutputType;
 #define kLogOutputType_None					0
 #define kLogOutputType_EFI					1
 #define kLogOutputType_File					2
-#define kLogOutputType_iDebug				3
 #define kLogOutputType_IOLog				4
 #define kLogOutputType_kprintf				5
 #define kLogOutputType_syslog				6
@@ -274,7 +268,6 @@ typedef int		LogOutputType;
 #define kLogOutputType_WindowsEventLog		9
 #define kLogOutputType_WindowsKernel		10
 #define kLogOutputType_CallBack				11
-#define kLogOutputType_ASL					13
 #if( LOGUTILS_OSLOG_ENABLED )
 #define kLogOutputType_OSLog				14
 #endif
@@ -316,16 +309,6 @@ struct LogOutput
 	LogOutputType		type;
 	union
 	{
-		#if( TARGET_OS_DARWIN )
-		struct
-		{
-			char *		facility;
-			int			priority;
-			char *		sender;
-			
-		}	asl;
-		#endif
-		
 		struct
 		{
 			LogOutputCallBack		func;

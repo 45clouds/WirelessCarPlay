@@ -2,13 +2,13 @@
 	File:    	MFiServerPlatformLinux.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2013-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2013-2014 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	Linux platform plugin for MFi-SAP authentication/encryption.
 	
@@ -73,25 +73,21 @@
 #include "DebugServices.h"
 #include "TickUtils.h"
 
-#include <glib.h>
 //===========================================================================================================================
 //	Constants
 //===========================================================================================================================
 
-//#if( defined( MFI_AUTH_DEVICE_PATH ) )
-//	#define kMFiAuthDevicePath					MFI_AUTH_DEVICE_PATH
-//#else
-//	#define kMFiAuthDevicePath					"/dev/i2c-1"
-//#endif
+#if( defined( MFI_AUTH_DEVICE_PATH ) )
+	#define kMFiAuthDevicePath					MFI_AUTH_DEVICE_PATH
+#else
+	#define kMFiAuthDevicePath					"/dev/i2c-1"
+#endif
 
-//#if( defined( MFI_AUTH_DEVICE_ADDRESS ) )
-//	#define kMFiAuthDeviceAddress				MFI_AUTH_DEVICE_ADDRESS
-//#else
-//	#define kMFiAuthDeviceAddress				0x11
-//#endif
-
-#define kMFiAuthDevicePath					getenv("MH_APPLE_AUTH_COPROCESSOR_ADDRESS")?getenv("MH_APPLE_AUTH_COPROCESSOR_ADDRESS") : "/dev/i2c-1"
-#define kMFiAuthDeviceAddress				getenv("MH_I2C_DEV_ADDR")?(guint)atoi( getenv("MH_I2C_DEV_ADDR")) : 0x11
+#if( defined( MFI_AUTH_DEVICE_ADDRESS ) )
+	#define kMFiAuthDeviceAddress				MFI_AUTH_DEVICE_ADDRESS
+#else
+	#define kMFiAuthDeviceAddress				0x11
+#endif
 
 #define kMFiAuthRetryDelayMics					5000 // 5 ms.
 

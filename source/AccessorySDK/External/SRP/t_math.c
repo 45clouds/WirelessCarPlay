@@ -2,7 +2,7 @@
 	File:    	t_math.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -46,9 +46,9 @@
 	PROFITS; OR BUSINESS INTERRUPTION) ARISING IN ANY WAY OUT OF THE USE, REPRODUCTION, MODIFICATION 
 	AND/OR DISTRIBUTION OF THE APPLE SOFTWARE, HOWEVER CAUSED AND WHETHER UNDER THEORY OF CONTRACT, TORT
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
-	POSSIBILITY OF SUCH DAMAGE.}
+	POSSIBILITY OF SUCH DAMAGE.
 	
-	Portions Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Portions Copyright (C) 2007-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 /*
  * Copyright (c) 1997-2007  The Stanford SRP Authentication Project

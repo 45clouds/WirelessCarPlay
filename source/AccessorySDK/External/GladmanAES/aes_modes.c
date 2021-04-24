@@ -155,7 +155,8 @@ AES_RETURN aes_ecb_encrypt(const unsigned char *ibuf, unsigned char *obuf,
         }
         else
         {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-            uint_8t *ip, *op;
+			const uint_8t *ip;
+			uint_8t *op;
 
             while(nb)
             {
@@ -217,7 +218,8 @@ AES_RETURN aes_ecb_decrypt(const unsigned char *ibuf, unsigned char *obuf,
         }
         else
         {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-            uint_8t *ip, *op;
+			const uint_8t *ip;
+			uint_8t *op;
 
             while(nb)
             {
@@ -286,7 +288,8 @@ AES_RETURN aes_cbc_encrypt(const unsigned char *ibuf, unsigned char *obuf,
         }
         else
         {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-            uint_8t *ip, *op;
+			const uint_8t *ip;
+			uint_8t *op;
 
             while(nb)
             {
@@ -384,7 +387,8 @@ AES_RETURN aes_cbc_decrypt(const unsigned char *ibuf, unsigned char *obuf,
         }
         else
         {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-            uint_8t *ip, *op;
+			const uint_8t *ip;
+			uint_8t *op;
 
             while(nb)
             {
@@ -496,7 +500,8 @@ AES_RETURN aes_cfb_encrypt(const unsigned char *ibuf, unsigned char *obuf,
             }
             else    /* input, output or both are unaligned  */
             {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-                uint_8t *ip, *op;
+				const uint_8t *ip;
+				uint_8t *op;
 
                 while(nb)
                 {
@@ -624,7 +629,8 @@ AES_RETURN aes_cfb_decrypt(const unsigned char *ibuf, unsigned char *obuf,
             }
             else    /* input, output or both are unaligned  */
             {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-                uint_8t *ip, *op;
+				const uint_8t *ip;
+				uint_8t *op;
 
                 while(nb)
                 {
@@ -762,7 +768,8 @@ AES_RETURN aes_ofb_crypt(const unsigned char *ibuf, unsigned char *obuf,
             }
             else    /* input, output or both are unaligned  */
         {   aligned_auto(uint_8t, buf, BFR_BLOCKS * AES_BLOCK_SIZE, 16);
-            uint_8t *ip, *op;
+			const uint_8t *ip;
+			uint_8t *op;
 
                 while(nb)
                 {

@@ -2,7 +2,7 @@
 	File:    	DataBufferUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2008-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -382,33 +382,13 @@ OSStatus	DataBuffer_AppendF( DataBuffer *inDB, const char *inFormat, ... )
 {
 	OSStatus		err;
 	va_list			args;
-	
-	va_start( args, inFormat );
-	err = DataBuffer_AppendFVAList( inDB, inFormat, args );
-	va_end( args );
-	return( err );
-}
-
-OSStatus	DataBuffer_AppendFNested( DataBuffer *inDB, const char *inTemplate, const char *inFormat, ... )
-{
-	OSStatus		err;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	err = DataBuffer_AppendF( inDB, inTemplate, inFormat, &args );
-	va_end( args );
-	return( err );
-}
-
-OSStatus	DataBuffer_AppendFVAList( DataBuffer *inDB, const char *inFormat, va_list inArgs )
-{
-	OSStatus		err;
 	int				n;
 	
-	n = VCPrintF( __DataBuffer_PrintFCallBack, inDB, inFormat, inArgs );
+	va_start( args, inFormat );
+	n = VCPrintF( __DataBuffer_PrintFCallBack, inDB, inFormat, args );
+	va_end( args );
 	require_action( n >= 0, exit, err = n );
 	err = kNoErr;
-	
 exit:
 	return( err );
 }
@@ -589,12 +569,7 @@ OSStatus	DataBufferUtils_Test( void )
 	require_noerr( err, exit );
 	require_action( DataBuffer_GetLen( &db ) == 11, exit, err = kResponseErr );
 	require_action( memcmp( DataBuffer_GetPtr( &db ), "testing 123", 11 ) == 0, exit, err = kResponseErr );
-	
-	err = DataBuffer_AppendFNested( &db, " and %V more", "<%d, %d>", 234, 345 );
-	require_noerr( err, exit );
-	require_action( DataBuffer_GetLen( &db ) == 31, exit, err = kResponseErr );
-	require_action( memcmp( DataBuffer_GetPtr( &db ), "testing 123 and <234, 345> more", 31 ) == 0, exit, err = kResponseErr );
-	
+
 	err = DataBuffer_Commit( &db, NULL, NULL );
 	require_noerr( err, exit );
 	

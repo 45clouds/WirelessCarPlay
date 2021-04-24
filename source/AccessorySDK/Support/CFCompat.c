@@ -2,7 +2,7 @@
 	File:    	CFCompat.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2004-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2004-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "CommonServices.h"
@@ -1375,20 +1375,6 @@ CFDataRef
 		require( data, exit );
 	}
 #endif
-#if( CFL_BINARY_PLISTS_STREAMED )
-	else if( inFormat == kCFPropertyListBinaryFormat_Streamed )
-	{
-		data = CFBinaryPlistStreamedCreateData( inPropertyList, NULL );
-		require( data, exit );
-	}
-#endif
-#if( CFL_XML )
-	else if( inFormat == kCFPropertyListXMLFormat_v1_0 )
-	{
-		data = CFPropertyListCreateXMLData( inAllocator, inPropertyList );
-		require( data, exit );
-	}
-#endif
 	else
 	{
 		dlogassert( "Unsupported plist format: %d\n", (int) inFormat );
@@ -1429,23 +1415,6 @@ CFPropertyListRef
 		goto exit;
 	}
 #endif
-#if( CFL_BINARY_PLISTS_STREAMED )
-	plist = CFBinaryPlistStreamedCreateWithBytes( ptr, len, NULL );
-	if( plist )
-	{
-		if( outFormat ) *outFormat = kCFPropertyListBinaryFormat_Streamed;
-		goto exit;
-	}
-#endif
-#if( CFL_XML_PARSING )
-	plist = CFPropertyListCreateFromXMLData( inAllocator, inData, inOptions, NULL );
-	if( plist )
-	{
-		if( outFormat ) *outFormat = kCFPropertyListXMLFormat_v1_0;
-		goto exit;
-	}
-#endif
-	
 exit:
 	if( outError ) *outError = NULL;
 	return( plist );

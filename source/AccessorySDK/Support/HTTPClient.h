@@ -2,7 +2,7 @@
 	File:    	HTTPClient.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2011-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__HTTPClient_h__
@@ -124,7 +124,6 @@ void	HTTPClientSetDebugDelegate( HTTPClientRef inClient, const HTTPClientDebugDe
 /*!	@function	HTTPClientSetDelegate
 	@abstract	Sets a delegate to handle events, etc.
 */
-typedef void ( *HTTPClientHandleBinary_f )( uint8_t inChannelID, const uint8_t *inPtr, size_t inLen, void *inContext );
 typedef void ( *HTTPClientHandleEvent_f )( HTTPMessageRef inEvent, void *inContext );
 typedef void ( *HTTPClientInvalidated_f )( OSStatus inReason, void *inContext );
 
@@ -132,7 +131,6 @@ typedef struct
 {
 	void *						context;
 	HTTPClientInvalidated_f		invalidated_f;
-	HTTPClientHandleBinary_f	handleBinary_f;
 	HTTPClientHandleEvent_f		handleEvent_f;
 	
 }	HTTPClientDelegate;
@@ -191,28 +189,6 @@ void	HTTPClientSetConnectionLogging( HTTPClientRef me, LogCategory *inLogCategor
 void	HTTPClientSetLogging( HTTPClientRef inClient, LogCategory *inLogCategory );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		HTTPClientProperties
-	@abstract	Properties to get/set for the HTTPClient.
-*/
-
-// [Number:HTTPAuthorizationScheme] Auth schemes to allow. Defaults to none.
-#define kHTTPClientProperty_AllowedAuthSchemes		CFSTR( "allowedAuthSchemes" )
-
-// [String] Password to use for HTTP auth.
-#define kHTTPClientProperty_Password				CFSTR( "password" )
-
-// [Boolean] Use RFC 2617-style digest auth (i.e. lowercase hex). Defaults to true.
-#define kHTTPClientProperty_RFC2617DigestAuth		CFSTR( "rfc2617DigestAuth" )
-
-// [String] Username to use for HTTP auth.
-#define kHTTPClientProperty_Username				CFSTR( "username" )
-
-CFTypeRef	_HTTPClientCopyProperty( CFTypeRef inObject, CFStringRef inProperty, OSStatus *outErr );
-OSStatus	_HTTPClientSetProperty( CFTypeRef inObject, CFStringRef inProperty, CFTypeRef inValue );
-
-CFObjectDefineStandardAccessors( HTTPClientRef, HTTPClientProperty, _HTTPClientCopyProperty, _HTTPClientSetProperty )
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPClientSetTimeout
 	@abstract	Sets the seconds without any data before a response or event times out.
 	@discussion	For responses, if a message has a timeout, it override this value.
@@ -241,20 +217,6 @@ OSStatus
 		void *						inContext1, 
 		void *						inContext2, 
 		void *						inContext3 );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	HTTPClientSendBinaryBytes
-	@abstract	Sends a one-way message containing raw binary data and calls back when it has been written.
-*/
-OSStatus
-	HTTPClientSendBinaryBytes( 
-		HTTPClientRef					inClient, 
-		HTTPMessageFlags				inFlags, 
-		uint8_t							inChannelID, 
-		const void *					inPtr, 
-		size_t							inLen,  
-		HTTPMessageBinaryCompletion_f	inCompletion, 
-		void *							inContext );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HTTPClientSendMessage

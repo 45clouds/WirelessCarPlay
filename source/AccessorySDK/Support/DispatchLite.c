@@ -2,7 +2,7 @@
 	File:    	DispatchLite.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2008-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "DispatchLite.h"	// Include early for DISPATCH_LITE_*, etc. definitions.
@@ -89,7 +89,7 @@
 #if 0
 #pragma mark == Constants and Types ==
 #endif
-#include <glib.h>
+
 //===========================================================================================================================
 //	Constants and Types
 //===========================================================================================================================
@@ -218,23 +218,6 @@ struct dispatch_source_s
 	}	u;
 };
 
-// dispatch_group
-
-#define kDispatchGroup_MagicGood		0x64677270  // 'dgrp'
-#define kDispatchGroup_MagicBad			0x44475250  // 'DGRP'
-#define	DispatchGroupValid( OBJ )		\
-	( ( OBJ ) && ( ( OBJ )->base.magic == kDispatchGroup_MagicGood ) && ( ( OBJ )->base.refCount > 0 ) )
-
-struct dispatch_group_s
-{
-	struct dispatch_base_s		base;
-	int32_t						outstanding;
-	dispatch_semaphore_t		sem;
-	dispatch_queue_t			notifyQueue;
-	void *						notifyContext;
-	dispatch_function_t			notifyFunction;
-};
-
 // dispatch_select_packet
 
 #if( DISPATCH_LITE_USE_SELECT )
@@ -284,7 +267,6 @@ typedef union
 	struct dispatch_base_s			base;
 	struct dispatch_queue_s			queue;
 	struct dispatch_source_s		source;
-	struct dispatch_group_s			group;
 	struct dispatch_semaphore_s		sem;
 	
 }	dispatch_union;
@@ -2106,204 +2088,6 @@ exit:
 
 #if 0
 #pragma mark -
-#pragma mark == Groups ==
-#endif
-
-DEBUG_STATIC void	__dispatch_group_free( void *inObj );
-DEBUG_STATIC void	__dispatch_group_notify_callback( void *inContext );
-
-//===========================================================================================================================
-//	dispatch_group_create
-//===========================================================================================================================
-
-dispatch_group_t	dispatch_group_create( void )
-{
-	dispatch_group_t		group;
-	dispatch_group_t		obj;
-	
-	group = NULL;
-	
-	obj = (dispatch_group_t) calloc( 1, sizeof( *obj ) );
-	require( obj, exit );
-	
-	obj->base.magic		= kDispatchGroup_MagicGood;
-	obj->base.refCount	= 1;
-	obj->base.doFree	= __dispatch_group_free;
-	obj->outstanding	= 1;
-	
-	obj->sem = dispatch_semaphore_create( 0 );
-	require( obj->sem, exit );
-	
-	group = obj;
-	obj = NULL;
-	
-exit:
-	if( obj ) dispatch_release( obj );
-	return( group );
-}
-
-//===========================================================================================================================
-//	__dispatch_group_free
-//===========================================================================================================================
-
-DEBUG_STATIC void	__dispatch_group_free( void *inObj )
-{
-	dispatch_group_t const		obj = (dispatch_group_t) inObj;
-	
-	dispatch_forget( &obj->sem );
-	__dispatch_free_object( obj );
-}
-
-//===========================================================================================================================
-//	dispatch_group_async_f
-//===========================================================================================================================
-
-typedef struct
-{
-	dispatch_group_t		group;
-	void *					context;
-	dispatch_function_t		function;
-
-}	dispatch_group_async_params;
-
-DEBUG_STATIC void	__dispatch_group_async_callback( void *inContext );
-
-void
-	dispatch_group_async_f( 
-		dispatch_group_t	inGroup, 
-		dispatch_queue_t	inQueue, 
-		void *				inContext, 
-		dispatch_function_t	inFunction )
-{
-	dispatch_group_async_params *		params;
-	
-	params = NULL;
-	require( DispatchGroupValid( inGroup ), exit );
-	
-	params = (dispatch_group_async_params *) malloc( sizeof( *params ) );
-	require( params, exit );
-	params->group		= inGroup;
-	params->context		= inContext;
-	params->function	= inFunction;
-	
-	atomic_add_32( &inGroup->outstanding, 1 );
-	dispatch_async_f( inQueue, params, __dispatch_group_async_callback );
-	params = NULL;
-	
-exit:
-	if( params ) free( params );
-}
-
-DEBUG_STATIC void	__dispatch_group_async_callback( void *inContext )
-{
-	dispatch_group_async_params * const		params	= (dispatch_group_async_params *) inContext;
-	dispatch_group_t const					group	= params->group;
-	
-	params->function( params->context );
-	free( params );
-	
-	if( atomic_add_and_fetch_32( &group->outstanding, -1 ) == 0 )
-	{
-		if( group->notifyQueue )
-		{
-			dispatch_async_f( group->notifyQueue, group, __dispatch_group_notify_callback );
-		}
-		else
-		{
-			dispatch_semaphore_signal( group->sem );
-		}
-	}
-}
-
-//===========================================================================================================================
-//	dispatch_group_wait
-//===========================================================================================================================
-
-void	dispatch_group_wait( dispatch_group_t inGroup, uint64_t inTimeout )
-{
-	require( DispatchGroupValid( inGroup ), exit );
-	
-	if( atomic_add_and_fetch_32( &inGroup->outstanding, -1 ) != 0 )
-	{
-		dispatch_semaphore_wait( inGroup->sem, inTimeout );
-	}
-	
-	inGroup->outstanding = 1;
-	
-exit:
-	return;
-}
-
-//===========================================================================================================================
-//	dispatch_group_notify_f
-//===========================================================================================================================
-
-void
-	dispatch_group_notify_f( 
-		dispatch_group_t	inGroup, 
-		dispatch_queue_t	inQueue, 
-		void *				inContext, 
-		dispatch_function_t	inFunction )
-{
-	require( DispatchGroupValid( inGroup ), exit );
-	require( inGroup->notifyQueue == NULL, exit );
-	
-	dispatch_retain( inGroup ); // Retain because it's legal to release the group immediately after notify.
-	
-	inGroup->notifyQueue	= inQueue;
-	inGroup->notifyContext	= inContext;
-	inGroup->notifyFunction	= inFunction;
-	dispatch_retain( inQueue );
-	
-	if( atomic_add_and_fetch_32( &inGroup->outstanding, -1 ) == 0 )
-	{
-		dispatch_async_f( inQueue, inGroup, __dispatch_group_notify_callback );
-	}
-	
-exit:
-	return;
-}
-
-DEBUG_STATIC void	__dispatch_group_notify_callback( void *inContext )
-{
-	dispatch_group_t const			group		= (dispatch_group_t) inContext;
-	dispatch_function_t const		function	= group->notifyFunction;
-	void * const					context		= group->notifyContext;
-	
-	dispatch_release( group->notifyQueue );
-	group->notifyQueue		= NULL;
-	group->notifyFunction	= NULL;
-	group->outstanding		= 1;
-	
-	function( context );
-	
-	dispatch_release( group );
-}
-
-//===========================================================================================================================
-//	dispatch_group_enter
-//===========================================================================================================================
-
-void	dispatch_group_enter( dispatch_group_t inGroup )
-{
-	atomic_add_and_fetch_32( &inGroup->outstanding, 1 );
-}
-
-//===========================================================================================================================
-//	dispatch_group_leave
-//===========================================================================================================================
-
-void	dispatch_group_leave( dispatch_group_t inGroup )
-{
-	if( atomic_add_and_fetch_32( &inGroup->outstanding, -1 ) == 0 )
-	{
-		if( inGroup->notifyQueue )	dispatch_async_f( inGroup->notifyQueue, inGroup, __dispatch_group_notify_callback );
-		else						dispatch_semaphore_signal( inGroup->sem );
-	}
-}
-
-#if 0
-#pragma mark -
 #pragma mark == Once ==
 #endif
 
@@ -4027,8 +3811,6 @@ DEBUG_STATIC void	__LibDispatch_WindowsTimerEvent( void *inContext )
 
 void	DispatchLite_Test1( void *inContext );
 void	DispatchLite_Test2( void *inContext );
-void	DispatchLiteTest_GroupWork( void *inContext );
-void	DispatchLiteTest_GroupNotify( void *inContext );
 void	DispatchLite_OnceTest( void *inContext );
 void	DispatchLite_TestQueueFinalizerCallBack( void *inContext );
 void	DispatchLite_CancelCallBack( void *inContext );
@@ -4067,7 +3849,6 @@ OSStatus	DispatchLite_Test( void )
 {
 	OSStatus				err;
 	dispatch_queue_t		dq;
-	dispatch_group_t		group;
 	dispatch_semaphore_t	sem;
 #if( TARGET_OS_POSIX )
 	int						fd;
@@ -4126,57 +3907,6 @@ OSStatus	DispatchLite_Test( void )
 	
 	DispatchLiteTest_WaitUntilDone();
 	require_action( gDispatchLiteTest2 == 5555, exit, err = kResponseErr );
-	
-	// Group Test -- sync
-	
-	gcd_ulog( kLogLevelMax, "\n" );
-	gcd_ulog( kLogLevelMax, "== %s: group test sync\n", __ROUTINE__ );
-	
-	gDispatchLiteTest1 = 0;
-	
-	group = dispatch_group_create();
-	require_action( group, exit, err = -1 );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_LOW, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 3, DispatchLiteTest_GroupWork );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 30, DispatchLiteTest_GroupWork );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 300, DispatchLiteTest_GroupWork );
-	
-	dispatch_group_wait( group, DISPATCH_TIME_FOREVER );
-	require_action( gDispatchLiteTest1 == 333, exit, err = kResponseErr );
-	
-	dispatch_release( group );
-	
-	// Group Test -- async
-	
-	gcd_ulog( kLogLevelMax, "\n" );
-	gcd_ulog( kLogLevelMax, "== %s: serial test async\n", __ROUTINE__ );
-	
-	gDispatchLiteTest1 = 0;
-	
-	group = dispatch_group_create();
-	require_action( group, exit, err = -1 );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 3, DispatchLiteTest_GroupWork );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_DEFAULT, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 30, DispatchLiteTest_GroupWork );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_LOW, 0 );
-	dispatch_group_async_f( group, dq, (void *)(intptr_t) 300, DispatchLiteTest_GroupWork );
-	
-	dq = dispatch_get_global_queue( DISPATCH_QUEUE_PRIORITY_HIGH, 0 );
-	dispatch_group_notify_f( group, dq, NULL, DispatchLiteTest_GroupNotify );
-	
-	DispatchLiteTest_WaitUntilDone();
-	require_action( gDispatchLiteTest1 == 333, exit, err = -1 );
-	
-	dispatch_release( group );
 	
 	// Once Test
 	
@@ -4475,35 +4205,6 @@ void	DispatchLite_Test2( void *inContext )
 	
 exit:
 	return;
-}
-
-void	DispatchLiteTest_GroupWork( void *inContext )
-{
-	int32_t		x;
-	
-	x = (int32_t)(intptr_t) inContext;
-	if( x == 3 ) usleep( 10000 );
-	atomic_add_and_fetch_32( (int32_t *) &gDispatchLiteTest1, x );
-	
-	gcd_ulog( kLogLevelMax, "\t%s: pthread = %p, x = %5d\n", __ROUTINE__, (uintptr_t) pthread_self(), x );
-}
-
-void	DispatchLiteTest_GroupNotify( void *inContext )
-{
-	int32_t		x;
-	
-	(void) inContext; // Unused
-	
-	x = gDispatchLiteTest1;
-	if( x == 333 )
-	{
-		gDispatchLiteTestDone = true;
-	}
-	else
-	{
-		dlogassert( "group notify when not complete: %d", x );
-	}
-	gcd_ulog( kLogLevelMax, "\t%s: pthread = %p, x = %5d\n", __ROUTINE__, (uintptr_t) pthread_self(), x );
 }
 
 void	DispatchLite_OnceTest( void *inContext )

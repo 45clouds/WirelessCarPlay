@@ -1,0 +1,179 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{7826EA27-D4CC-4FAA-AD23-DF813823227B}</ProjectGuid>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseOfMfc>false</UseOfMfc>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC60.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">DNSSDService</TargetName>
+    <TargetName Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">DNSSDService</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Midl>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\$(OutDir)DNSSDService.tlb</TypeLibraryName>
+      <HeaderFileName>
+      </HeaderFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>MaxSpeed</Optimization>
+      <InlineFunctionExpansion>OnlyExplicitInline</InlineFunctionExpansion>
+      <AdditionalIncludeDirectories>..\..\mDNSShared;$(SRCROOT)\AppleInternal\XULRunner\include\xpcom;$(SRCROOT)\AppleInternal\XULRunner\include\nspr;$(SRCROOT)\AppleInternal\XULRunner\include\string;$(SRCROOT)\AppleInternal\XULRunner\include\pref;$(SRCROOT)\AppleInternal\XULRunner\sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NDEBUG;WIN32;_WINDOWS;_USRDLL;DNSSDSERVICE_EXPORTS;XP_WIN;XP_WIN32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <PrecompiledHeaderOutputFile>
+      </PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>$(IntDir)vc80.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <ForcedIncludeFiles>%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>../../mDNSWindows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE /SAFESEH %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>$(SRCROOT)\AppleInternal\XULRunner\lib\nspr4.lib;$(SRCROOT)\AppleInternal\XULRunner\lib\xpcom.lib;$(SRCROOT)\AppleInternal\XULRunner\lib\xpcomglue_s.lib;ws2_32.lib;../../mDNSWindows/DLLStub/$(Platform)/$(Configuration)/dnssdStatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)DNSSDService.dll</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <ProgramDatabaseFile>.\$(OutDir)DNSSDService.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\$(OutDir)DNSSDService.lib</ImportLibrary>
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\$(OutDir)DNSSDService.bsc</OutputFile>
+    </Bscmake>
+    <PostBuildEvent>
+      <Command>xcopy /I/Y $(Platform)\$(Configuration)\DNSSDService.dll extension\platform\WINNT\components
+if not "%RC_XBS%" == "YES" goto END
+if not exist "$(DSTROOT)\Program Files\Bonjour SDK\bin\$(Platform)\FirefoxExtension"                      mkdir "$(DSTROOT)\Program Files\Bonjour SDK\bin\$(Platform)\FirefoxExtension"
+xcopy /E/I/Y "extension"                                 "$(DSTROOT)\Program Files\Bonjour SDK\bin\$(Platform)\FirefoxExtension"
+:END
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Midl>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MkTypLibCompatible>true</MkTypLibCompatible>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <TargetEnvironment>Win32</TargetEnvironment>
+      <TypeLibraryName>.\$(OutDir)DNSSDService.tlb</TypeLibraryName>
+      <HeaderFileName>
+      </HeaderFileName>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>..\..\mDNSShared;$(SRCROOT)\AppleInternal\XULRunner\include\xpcom;$(SRCROOT)\AppleInternal\XULRunner\include\nspr;$(SRCROOT)\AppleInternal\XULRunner\include\string;$(SRCROOT)\AppleInternal\XULRunner\include\pref;$(SRCROOT)\AppleInternal\XULRunner\sdk\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;DNSSDSERVICE_EXPORTS;XP_WIN;XP_WIN32;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <MinimalRebuild>true</MinimalRebuild>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <PrecompiledHeaderOutputFile>
+      </PrecompiledHeaderOutputFile>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <ObjectFileName>$(IntDir)</ObjectFileName>
+      <ProgramDataBaseFileName>$(IntDir)vc80.pdb</ProgramDataBaseFileName>
+      <WarningLevel>Level3</WarningLevel>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <ForcedIncludeFiles>%(ForcedIncludeFiles)</ForcedIncludeFiles>
+    </ClCompile>
+    <ResourceCompile>
+      <PreprocessorDefinitions>_DEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <Culture>0x0409</Culture>
+      <AdditionalIncludeDirectories>../../mDNSWindows;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE /SAFESEH %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>$(SRCROOT)\AppleInternal\XULRunner\lib\nspr4.lib;$(SRCROOT)\AppleInternal\XULRunner\lib\xpcom.lib;$(SRCROOT)\AppleInternal\XULRunner\lib\xpcomglue_s.lib;ws2_32.lib;../../mDNSWindows/DLLStub/$(Platform)/$(Configuration)/dnssdStatic.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)DNSSDService.dll</OutputFile>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <AdditionalLibraryDirectories>%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>.\$(OutDir)DNSSDService.pdb</ProgramDatabaseFile>
+      <ImportLibrary>.\$(OutDir)DNSSDService.lib</ImportLibrary>
+      <TargetMachine>MachineX86</TargetMachine>
+    </Link>
+    <Bscmake>
+      <SuppressStartupBanner>true</SuppressStartupBanner>
+      <OutputFile>.\$(OutDir)DNSSDService.bsc</OutputFile>
+    </Bscmake>
+    <PostBuildEvent>
+      <Command>xcopy /I/Y $(Platform)\$(Configuration)\DNSSDService.dll extension\platform\WINNT\components</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="CDNSSDService.cpp" />
+    <ClCompile Include="CDNSSDServiceModule.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="CDNSSDService.h" />
+    <ClInclude Include="IDNSSDService.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuildStep Include="IDNSSDService.idl" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="FirefoxExtension.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\mDNSWindows\DLLStub\DLLStub.vcxproj">
+      <Project>{3a2b6325-3053-4236-84bd-aa9be2e323e5}</Project>
+      <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

@@ -1,8 +1,8 @@
 /*
 	File:    	airplayutil.c
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,27 +48,26 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
-#include <CoreUtils/CommonServices.h> // Include early to work around problematic system headers on some systems. 
-#include <CoreUtils/AsyncConnection.h>
-#include <CoreUtils/AudioUtils.h>
-#include <CoreUtils/CFUtils.h>
-#include <CoreUtils/CommandLineUtils.h>
-#include <CoreUtils/DebugIPCUtils.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/HTTPClient.h>
-#include <CoreUtils/HTTPMessage.h>
-#include <CoreUtils/HTTPUtils.h>
-#include <CoreUtils/MathUtils.h>
-#include <CoreUtils/MiscUtils.h>
-#include <CoreUtils/NetUtils.h>
-#include <CoreUtils/PrintFUtils.h>
-#include <CoreUtils/RandomNumberUtils.h>
-#include <CoreUtils/StringUtils.h>
-#include <CoreUtils/SystemUtils.h>
-#include <CoreUtils/TickUtils.h>
+#include "CommonServices.h" // Include early to work around problematic system headers on some systems.
+#include "AsyncConnection.h"
+#include "CFLiteBinaryPlist.h"
+#include "CFUtils.h"
+#include "CommandLineUtils.h"
+#include "DebugIPCUtils.h"
+#include "DebugServices.h"
+#include "HTTPClient.h"
+#include "HTTPMessage.h"
+#include "HTTPUtils.h"
+#include "MathUtils.h"
+#include "MiscUtils.h"
+#include "NetUtils.h"
+#include "PrintFUtils.h"
+#include "RandomNumberUtils.h"
+#include "StringUtils.h"
+#include "TickUtils.h"
 
 #include <stdio.h>
 
@@ -76,7 +75,6 @@
 #include <errno.h>
 
 #include "AirPlayCommon.h"
-#include "AirPlaySettings.h"
 #include "AirPlayVersion.h"
 
 #if( TARGET_OS_POSIX )
@@ -88,13 +86,9 @@
 	#include <sys/un.h>
 #endif
 
-	#include <CoreUtils/HIDUtils.h>
+#include "HIDUtils.h"
 
-#if( 1 && ( TARGET_OS_LINUX || TARGET_OS_QNX ) )
-	#include <CoreUtils/ScreenUtils.h>
-#endif
-
-	#include <CoreUtils/MFiSAP.h>
+#include "MFiSAP.h"
 
 //===========================================================================================================================
 //	Prototypes
@@ -102,14 +96,12 @@
 
 static void		cmd_control( void );
 static void		cmd_diagnostic_logging( void );
-	static void	cmd_hid( void );
 static void		cmd_http( void );
 static void		cmd_kill_all( void );
 static void		cmd_logging( void );
 	static void	cmd_mfi( void );
 static void		cmd_moved_to_cuutil ( void );
 
-static void		cmd_prefs( void );
 static void		cmd_show( void );
 static void		cmd_test( void );
 
@@ -155,16 +147,6 @@ static CLIOption		kHTTPOptions[] =
 	CLI_OPTION_STRING(  'm', "method",	&gHTTPMethod,	"method",	"HTTP method (e.g. GET, POST, etc.). Defaults to GET.", NULL ), 
 	CLI_OPTION_INTEGER( 'r', "repeat",	&gHTTPRepeatMs,	"ms",		"Delay between repeats. If not specified, it doesn't repeat.", NULL ), 
 	CLI_OPTION_STRING(  'u', "URL",		&gHTTPURL, 		"URL",		"URL to get. Maybe be relative if an address is specified", NULL ), 
-	CLI_OPTION_END()
-};
-
-// Prefs
-
-static const char *		gPrefsFilePath = NULL;
-
-static CLIOption		kPrefsOptions[] = 
-{
-	CLI_OPTION_STRING( 'f', "file", &gPrefsFilePath, "path", "Custom file to read or modify.", NULL ), 
 	CLI_OPTION_END()
 };
 
@@ -230,13 +212,11 @@ static CLIOption		kGlobalOptions[] =
 	CLI_COMMAND( "control",					cmd_control,				NULL,					"Control AirPlay internal state.", NULL ),
 	CLI_COMMAND_EX( "diagnostic-logging",	cmd_diagnostic_logging,		kDiagnosticLoggingOptions, kCLIOptionFlags_NotCommon, "Enable/disable diagnostic logging.", NULL ),
 	CLI_COMMAND_EX( "error",				cmd_moved_to_cuutil,		NULL, kCLIOptionFlags_NotCommon, kMovedToCUutil, NULL ),
-	CLI_COMMAND_EX( "hid",					cmd_hid,					NULL, kCLIOptionFlags_NotCommon, "Show HID devices.", NULL ),
 	CLI_COMMAND_HELP(), 
 	CLI_COMMAND( "http",					cmd_http,					kHTTPOptions,			"Download via HTTP.", NULL ),
 	CLI_COMMAND( "ka",						cmd_kill_all,				NULL,					"Does killall of all AirPlay-related processes.", NULL ), 
 	CLI_COMMAND( "logging",					cmd_logging,				NULL,					"Show or change the logging configuration.", NULL ), 
 	CLI_COMMAND( "mfi",						cmd_mfi,					NULL,					"Tests the MFi auth IC.", NULL ), 
-	CLI_COMMAND( "prefs",					cmd_prefs,					kPrefsOptions,			"Reads/writes/deletes AirPlay prefs.", NULL ), 
 	CLI_COMMAND( "show",					cmd_show,					kShowOptions,			"Shows state.", NULL ), 
 	CLI_COMMAND_EX( "test",					cmd_test,					kTestOptions, kCLIOptionFlags_NotCommon, "Tests network performance.", NULL ), 
 	CLI_COMMAND_VERSION( kAirPlayMarketingVersionStr, kAirPlaySourceVersionStr ),
@@ -403,190 +383,6 @@ exit:
 }
 
 //===========================================================================================================================
-//	cmd_hid
-//===========================================================================================================================
-
-static void	_cmd_hid_show( void );
-static void	_cmd_hid_browser_handler( HIDBrowserEventType inType, CFTypeRef inParam, void *inContext );
-static void
-	_cmd_hid_device_handler( 
-		HIDDeviceRef		inDevice, 
-		HIDDeviceEventType	inType, 
-		OSStatus			inStatus, 
-		const uint8_t *		inPtr, 
-		size_t				inLen, 
-		void *				inContext );
-
-static void	cmd_hid( void )
-{
-	const char *		arg;
-	OSStatus			err;
-	HIDBrowserRef		browser = NULL;
-		
-	arg = ( gArgI < gArgC ) ? gArgV[ gArgI++ ] : "";
-	if( stricmp( arg, "browse" ) == 0 )
-	{
-		err = HIDBrowserCreate( &browser );
-		require_noerr( err, exit );
-		
-		HIDBrowserSetEventHandler( browser, _cmd_hid_browser_handler, NULL );
-		err = HIDBrowserStart( browser );
-		require_noerr( err, exit );
-		
-		FPrintF( stderr, "HID browser running\n" );
-		CFRunLoopRun();
-		FPrintF( stderr, "HID browser stopped\n" );
-	}
-	else
-	{
-		_cmd_hid_show();
-		err = kNoErr;
-	}
-	
-exit:
-	if( browser ) HIDBrowserStopDevices( browser );
-	HIDBrowserForget( &browser );
-	if( err ) ErrQuit( 1, "error: %#m\n", err );
-}
-
-//===========================================================================================================================
-//	_cmd_hid_show
-//===========================================================================================================================
-
-static void	_cmd_hid_show( void )
-{
-	OSStatus			err;
-	CFArrayRef			devices;
-	CFIndex				i, n;
-	HIDDeviceRef		device;
-	int					width;
-	int					count;
-	CFStringRef			key;
-	CFTypeRef			prop;
-	
-	devices = HIDCopyDevices( &err );
-	require_noerr( err, exit );
-	
-	width = 13;
-	count = 0;
-	n = CFArrayGetCount( devices );
-	for( i = 0; i < n; ++i )
-	{
-		device = (HIDDeviceRef) CFArrayGetValueAtIndex( devices, i );
-		
-		key = kHIDDeviceProperty_DisplayUUID;
-		prop = HIDDeviceCopyProperty( device, key, NULL, NULL );
-		FPrintF( stdout, "%-*@ = %@\n", width, key, prop );
-		
-		key = kHIDDeviceProperty_Name;
-		prop = HIDDeviceCopyProperty( device, key, NULL, NULL );
-		FPrintF( stdout, "%-*@ = %@\n", width, key, prop );
-		
-		key = kHIDDeviceProperty_ReportDescriptor;
-		prop = HIDDeviceCopyProperty( device, key, NULL, NULL );
-		FPrintF( stdout, "%-*@ = %@\n", width, key, prop );
-		
-		key = kHIDDeviceProperty_SampleRate;
-		prop = HIDDeviceCopyProperty( device, key, NULL, NULL );
-		FPrintF( stdout, "%-*@ = %@\n", width, key, prop );
-		
-		key = kHIDDeviceProperty_UUID;
-		prop = HIDDeviceCopyProperty( device, key, NULL, NULL );
-		FPrintF( stdout, "%-*@ = %@\n", width, key, prop );
-	}
-	if( count == 0 ) FPrintF( stdout, "No HID devices found\n" );
-	
-exit:
-	CFReleaseNullSafe( devices );
-	if( err ) ErrQuit( 1, "error: %#m\n", err );
-}
-
-//===========================================================================================================================
-//	_cmd_hid_browser_handler
-//===========================================================================================================================
-
-static void	_cmd_hid_browser_handler( HIDBrowserEventType inType, CFTypeRef inParam, void *inContext )
-{
-	HIDDeviceRef		device;
-	OSStatus			err;
-	CFTypeRef			value;
-	
-	(void) inContext;
-	
-	FPrintF( stderr, "HID browser event: %d (%s)\n", inType, HIDBrowserEventToString( inType ) );
-	
-	if( inType == kHIDBrowserEventAttached )
-	{
-		device = (HIDDeviceRef) inParam;
-		
-		value = HIDDeviceCopyProperty( device, kHIDDeviceProperty_UUID, NULL, &err );
-		FPrintF( stderr, "    UUID: '%@'\n", value );
-		CFReleaseNullSafe( value );
-		
-		value = HIDDeviceCopyProperty( device, kHIDDeviceProperty_Name, NULL, &err );
-		FPrintF( stderr, "    Name: '%@'\n", value );
-		CFReleaseNullSafe( value );
-		
-		value = HIDDeviceCopyProperty( device, kHIDDeviceProperty_ReportDescriptor, NULL, &err );
-		FPrintF( stderr, "    Report Descriptor:\n%1@\n", value );
-		CFReleaseNullSafe( value );
-		
-		HIDDeviceSetEventHandler( device, _cmd_hid_device_handler, device );
-		err = HIDDeviceStart( device );
-		if( err ) FPrintF( stderr, "### HID device start failed: %#m\n", err );
-	}
-	else if( inType == kHIDBrowserEventDetached )
-	{
-		device = (HIDDeviceRef) inParam;
-		
-		value = HIDDeviceCopyProperty( device, kHIDDeviceProperty_UUID, NULL, &err );
-		FPrintF( stderr, "    UUID: '%@'\n", value );
-		CFReleaseNullSafe( value );
-		
-		value = HIDDeviceCopyProperty( device, kHIDDeviceProperty_Name, NULL, &err );
-		FPrintF( stderr, "    Name: '%@'\n", value );
-		CFReleaseNullSafe( value );
-	}
-}
-
-//===========================================================================================================================
-//	_cmd_hid_device_handler
-//===========================================================================================================================
-
-static void
-	_cmd_hid_device_handler( 
-		HIDDeviceRef		inDevice, 
-		HIDDeviceEventType	inType, 
-		OSStatus			inStatus, 
-		const uint8_t *		inPtr, 
-		size_t				inLen, 
-		void *				inContext )
-{
-	(void) inContext;
-	
-	if( inType == kHIDDeviceEventReport )
-	{
-		if( !inStatus )
-		{
-			FPrintF( stdout, "HID device report: %.3H\n", inPtr, (int) inLen, (int) inLen );
-		}
-		else
-		{
-			if( inStatus != kEndingErr ) FPrintF( stderr, "### HID device report error: %#m\n", inStatus );
-			HIDDeviceStop( inDevice );
-		}
-	}
-	else if( inType == kHIDDeviceEventStopped )
-	{
-		FPrintF( stderr, "HID device stopped\n" );
-	}
-	else
-	{
-		FPrintF( stderr, "HID device event: %d (%s)\n", inType, HIDDeviceEventToString( inType ) );
-	}
-}
-
-//===========================================================================================================================
 //	cmd_http
 //===========================================================================================================================
 
@@ -628,9 +424,9 @@ static void	cmd_http( void )
 		require_noerr( err, exit );
 	
 		HTTPHeader_InitRequest( &msg->header, gHTTPMethod, gHTTPURL, "HTTP/1.1" );
-		HTTPHeader_SetField( &msg->header, kHTTPHeader_CSeq, "1" ); // Required by some servers.
-		HTTPHeader_SetField( &msg->header, kHTTPHeader_UserAgent, kAirPlayUserAgentStr );
-		if( stricmp( gHTTPMethod, "GET" ) != 0 ) HTTPHeader_SetField( &msg->header, kHTTPHeader_ContentLength, "0" );
+		HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_CSeq, "1" ); // Required by some servers.
+		HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_UserAgent, kAirPlayUserAgentStr );
+		if( stricmp( gHTTPMethod, "GET" ) != 0 ) HTTPHeader_AddFieldF( &msg->header, kHTTPHeader_ContentLength, "0" );
 		t = CFAbsoluteTimeGetCurrent();
 		err = HTTPClientSendMessageSync( client, msg );
 		require_noerr( err, exit );
@@ -644,7 +440,7 @@ static void	cmd_http( void )
 			HTTPGetHeaderField( msg->header.buf, msg->header.len, kHTTPHeader_ContentType, NULL, NULL, &valuePtr, &valueLen, NULL );
 			if( MIMETypeIsPlist( valuePtr, valueLen ) )
 			{
-				obj = CFCreateWithPlistBytes( msg->bodyPtr, msg->bodyLen, 0, 0, NULL );
+				obj = CFBinaryPlistV0CreateWithData( msg->bodyPtr, msg->bodyLen, NULL );
 				if( obj )
 				{
 					FPrintF( stdout, "%@", obj );
@@ -759,227 +555,6 @@ static void	cmd_moved_to_cuutil( void )
 #endif
 
 //===========================================================================================================================
-//	cmd_prefs
-//===========================================================================================================================
-
-static void	cmd_prefs( void )
-{
-	CFMutableDictionaryRef		prefs = NULL;			
-	const char *				cmd;
-	const char *				arg;
-	CFArrayRef					keys;
-	CFIndex						i, n;
-	CFStringRef					key = NULL, key2;
-	CFTypeRef					value;
-	OSStatus					err;
-	CFMutableArrayRef			sortedKeys;
-	int							width, widest;
-	int							color;
-	
-	cmd = ( gArgI < gArgC ) ? gArgV[ gArgI++ ] : "";
-	
-	// Read
-	
-	if( ( *cmd == '\0' ) || strcmp( cmd, "read" ) == 0 )
-	{
-		if( gPrefsFilePath )
-		{
-			prefs = (CFMutableDictionaryRef) CFPropertyListCreateFromFilePath( gPrefsFilePath, 
-				kCFPropertyListMutableContainers, NULL );
-			if( prefs && !CFIsType( prefs, CFDictionary ) )
-			{
-				ErrQuit( 1, "error: Prefs file is not a dictionary\n" );
-				err = kNoErr;
-				goto exit;
-			}
-		}
-		
-		color = isatty( fileno( stdout ) );
-		if( gArgI >= gArgC ) // No key specified so print all keys.
-		{
-			if( prefs )	keys = CFDictionaryCopyKeys( prefs, &err );
-			else		keys = AirPlaySettings_CopyKeys( &err );
-			require_noerr( err, exit );
-			
-			sortedKeys = CFArrayCreateMutableCopy( NULL, 0, keys );
-			CFRelease( keys );
-			require_action( sortedKeys, exit, err = kNoMemoryErr );
-			CFArraySortValues( sortedKeys, CFRangeMake( 0, CFArrayGetCount( sortedKeys ) ), CFSortLocalizedStandardCompare, NULL );
-			
-			widest = 0;
-			n = CFArrayGetCount( sortedKeys );
-			for( i = 0; i < n; ++i )
-			{
-				key2 = (CFStringRef) CFArrayGetCFStringAtIndex( sortedKeys, i, NULL );
-				width = (int) CFStringGetLength( key2 );
-				if( width > widest ) widest = width;
-			}
-			
-			n = CFArrayGetCount( sortedKeys );
-			for( i = 0; i < n; ++i )
-			{
-				key2 = (CFStringRef) CFArrayGetCFStringAtIndex( sortedKeys, i, NULL );
-				if( !key2 ) continue;
-				
-				if( prefs )	value = CFDictionaryGetValue( prefs, key2 );
-				else		value = AirPlaySettings_CopyValue( NULL, key2, NULL );
-				if( !value ) continue;
-				
-				FPrintF( stdout, "%-*@ : %s%@%s\n", widest, key2, color ? kANSIMagenta : "", value, color ? kANSINormal : "" );
-				if( !prefs ) CFRelease( value );
-			}
-			if( n == 0 ) fprintf( stderr, "### No prefs found\n" );
-			CFRelease( sortedKeys );
-		}
-		while( gArgI < gArgC )
-		{
-			arg = gArgV[ gArgI++ ];
-			key = CFStringCreateWithCString( NULL, arg, kCFStringEncodingUTF8 );
-			require_action( key, exit, err = kNoMemoryErr );
-			
-			if( prefs )	value = CFDictionaryGetValue( prefs, key );
-			else		value = AirPlaySettings_CopyValue( NULL, key, NULL );
-			CFRelease( key );
-			key = NULL;
-			if( !value ) { FPrintF( stderr, "error: Key '%s' does not exist.\n", arg ); continue; }
-			
-			FPrintF( stdout, "%@\n", value );
-			if( !prefs ) CFRelease( value );
-		}
-	}
-	
-	// Write
-	
-	else if( strcmp( cmd, "write" ) == 0 )
-	{
-		if( gArgI >= gArgC ) { ErrQuit( 1, "error: No key specified\n" ); err = kNoErr; goto exit; }
-		arg = gArgV[ gArgI++ ];
-		key = CFStringCreateWithCString( NULL, arg, kCFStringEncodingUTF8 );
-		require_action( key, exit, err = kNoMemoryErr );
-		
-		if( gArgI >= gArgC ) { ErrQuit( 1, "error: No value specified\n" ); err = kNoErr; goto exit; }
-		arg = gArgV[ gArgI++ ];
-		
-		if( gPrefsFilePath )
-		{
-			prefs = (CFMutableDictionaryRef) CFPropertyListCreateFromFilePath( gPrefsFilePath, 
-				kCFPropertyListMutableContainers, NULL );
-			if( prefs && !CFIsType( prefs, CFDictionary ) )
-			{
-				ErrQuit( 1, "error: Prefs file is not a dictionary.\n" );
-				err = kNoErr;
-				goto exit;
-			}
-			if( !prefs )
-			{
-				prefs = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-				require_action( prefs, exit, err = kNoMemoryErr );
-			}
-			
-			err = CFDictionarySetCString( prefs, key, arg, kSizeCString );
-			require_noerr( err, exit );
-			
-			err = CFPropertyListWriteToFilePath( prefs, "binary1", gPrefsFilePath );
-			require_noerr( err, exit );
-		}
-		else
-		{
-			{
-			
-				err = AirPlaySettings_SetCString( key, arg, kSizeCString );
-				require_noerr( err, exit );
-			
-				AirPlaySettings_Synchronize();
-			}
-		}
-	}
-	
-	// Delete
-	
-	else if( strcmp( cmd, "delete" ) == 0 )
-	{
-		if( gPrefsFilePath )
-		{
-			prefs = (CFMutableDictionaryRef) CFPropertyListCreateFromFilePath( gPrefsFilePath, 
-				kCFPropertyListMutableContainers, NULL );
-			if( prefs && !CFIsType( prefs, CFDictionary ) )
-			{
-				ErrQuit( 1, "error: Prefs file is not a dictionary\n" );
-				err = kNoErr;
-				goto exit;
-			}
-		}
-		
-		if( gArgI >= gArgC ) // No key specified so delete all keys.
-		{
-			if( prefs )	keys = CFDictionaryCopyKeys( prefs, &err );
-			else		keys = AirPlaySettings_CopyKeys( &err );
-			require_noerr( err, exit );
-			
-			n = CFArrayGetCount( keys );
-			for( i = 0; i < n; ++i )
-			{
-				key2 = (CFStringRef) CFArrayGetCFStringAtIndex( keys, i, NULL );
-				if( !key2 ) continue;
-				
-				if( prefs )
-				{
-					CFDictionaryRemoveValue( prefs, key2 );
-				}
-				else
-				{
-					err = AirPlaySettings_RemoveValue( key2 );
-					if( err ) FPrintF( stderr, "### Remove pref '%@' failed: %#m\n", key2, err );
-				}
-			}
-			CFRelease( keys );
-			err = kNoErr;
-		}
-		while( gArgI < gArgC )
-		{
-			arg = gArgV[ gArgI++ ];
-			key = CFStringCreateWithCString( NULL, arg, kCFStringEncodingUTF8 );
-			require_action( key, exit, err = kNoMemoryErr );
-			
-			if( prefs )
-			{
-				CFDictionaryRemoveValue( prefs, key );
-			}
-			else
-			{
-				err = AirPlaySettings_RemoveValue( key );
-				if( err ) FPrintF( stderr, "### Remove pref '%s' failed: %#m\n", arg, err );
-			}
-			CFRelease( key );
-			key = NULL;
-		}
-		
-		if( gPrefsFilePath )
-		{
-			if( prefs )
-			{
-				err = CFPropertyListWriteToFilePath( prefs, "binary1", gPrefsFilePath );
-				require_noerr( err, exit );
-			}
-		}
-		else
-		{
-			AirPlaySettings_Synchronize();
-		}
-	}
-	else
-	{
-		ErrQuit( 1, "error: Bad command '%s'. Must be 'read', 'write', or 'delete'.\n", cmd );
-	}
-	err = kNoErr;
-	
-exit:
-	CFReleaseNullSafe( key );
-	CFReleaseNullSafe( prefs );
-	if( err ) ErrQuit( 1, "error: %#m\n", err );
-}
-
-//===========================================================================================================================
 //	cmd_show
 //===========================================================================================================================
 
@@ -1089,7 +664,7 @@ static void	cmd_test( void )
 		size = RandomRange( gTestMinSize, gTestMaxSize );
 		snprintf( url, sizeof( url ), "http://%s/test/%d", gTestAddress, (int) size );
 		HTTPHeader_InitRequest( &header, "PUT", url, "HTTP/1.1" );
-		HTTPHeader_SetField( &header, "Content-Length", "%zu", size );
+		HTTPHeader_AddFieldF( &header, "Content-Length", "%zu", size );
 		err = HTTPHeader_Commit( &header );
 		require_noerr( err, exit );
 		

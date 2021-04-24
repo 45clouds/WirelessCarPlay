@@ -2,7 +2,7 @@
 	File:    	CFLiteBinaryPlist.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2006-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2006-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__CFLiteBinaryPlist_h__
@@ -68,96 +68,17 @@ extern "C" {
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@typedef	CFBinaryPlistStreamedFlags
-	@abstract	Flags for controlling streamed binary plists.
-*/
-typedef uint32_t	CFBinaryPlistStreamedFlags;
-#define kCFBinaryPlistStreamedFlags_None		0
-#define kCFBinaryPlistStreamedFlag_Header		( 1 << 0 ) // Write the file header.
-#define kCFBinaryPlistStreamedFlag_Trailer		( 1 << 1 ) // Write the file trailer.
-#define kCFBinaryPlistStreamedFlag_Begin		( 1 << 2 ) // Only write up to the begin marker of an array/dict.
-#define kCFBinaryPlistStreamedFlag_End			( 1 << 3 ) // Only write the end marker of an array/dict.
-#define kCFBinaryPlistStreamedFlag_Body			( 1 << 4 ) // Body portion of object without any begin marker or end.
-#define kCFBinaryPlistStreamedFlag_NoCopy		( 1 << 5 ) // Try to point to input data instead of making a copy.
-#define kCFBinaryPlistStreamedFlag_Unique		( 1 << 6 ) // Use back references to write only unique objects.
-
-#define kCFBinaryPlistStreamedFlags_ReadDefault		( \
-	kCFBinaryPlistStreamedFlag_Header | \
-	kCFBinaryPlistStreamedFlag_Trailer | \
-	kCFBinaryPlistStreamedFlag_Body )
-
-#define kCFBinaryPlistStreamedFlags_Default	( \
-	kCFBinaryPlistStreamedFlag_Header | \
-	kCFBinaryPlistStreamedFlag_Trailer | \
-	kCFBinaryPlistStreamedFlag_Begin | \
-	kCFBinaryPlistStreamedFlag_End | \
-	kCFBinaryPlistStreamedFlag_Body )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFBinaryPlistStreamedCreateData
-	@abstract	Converts an object to a streamed binary plist.
-*/
-CF_RETURNS_RETAINED
-CFDataRef	CFBinaryPlistStreamedCreateData( CFTypeRef inObj, OSStatus *outErr );
-CFDataRef	CFBinaryPlistStreamedCreateDataEx( CFTypeRef inObj, CFBinaryPlistStreamedFlags inFlags, OSStatus *outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFBinaryPlistStreamedWriteBytes
-	@abstract	Writes raw bytes as a data element.
-	@discussion	Note that this does not produce a complete plist.
-				It's intended to be used with the BeginOnly/EndOnly features of CFBinaryPlistStreamedWriteObject.
-*/
-typedef OSStatus ( *CFBinaryPlistStreamedWrite_f )( const void *inData, size_t inLen, void *inContext );
-OSStatus
-	CFBinaryPlistStreamedWriteBytes( 
-		const void *					inData, 
-		size_t							inLen, 
-		CFBinaryPlistStreamedWrite_f	inCallback, 
-		void *							inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFBinaryPlistStreamedWriteObject
-	@abstract	Converts an object to a streamed binary plist.
-*/
-OSStatus
-	CFBinaryPlistStreamedWriteObject( 
-		CFTypeRef						inObj, 
-		CFBinaryPlistStreamedFlags		inFlags, 
-		CFBinaryPlistStreamedWrite_f	inCallback, 
-		void *							inContext );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFBinaryPlistStreamedCreateWithBytes
-	@abstract	Converts a streamed binary plist to an object.
-*/
-CF_RETURNS_RETAINED
-CFTypeRef	CFBinaryPlistStreamedCreateWithBytes( const void *inPtr, size_t inLen, OSStatus *outErr );
-
-CF_RETURNS_RETAINED
-CFTypeRef
-	CFBinaryPlistStreamedCreateWithBytesEx( 
-		const void *				inPtr, 
-		size_t						inLen, 
-		CFBinaryPlistStreamedFlags	inFlags, 
-		OSStatus *					outErr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CFBinaryPlistStreamedCreateWithData
-	@abstract	Converts a streamed binary plist to an object.
-*/
-CFTypeRef	CFBinaryPlistStreamedCreateWithData( CFDataRef inData, CFBinaryPlistStreamedFlags inFlags, OSStatus *outErr );
+/*!	@function	CFBinaryPlistV0Create
+ @abstract	Converts an object to a version 0 binary plist (i.e. compatible with Mac/iOS binary plists).
+ */
+const void* CFBinaryPlistV0Create( CFTypeRef inObj, size_t *outSize, OSStatus *outErr );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFBinaryPlistV0CreateData
-	@abstract	Converts an object to a version 0 binary plist (i.e. compatible with Mac/iOS binary plists).
-*/
-#define kCFBinaryPlistFlag_UTF8Strings		( 1 << 0 ) // Write non-ASCII strings as UTF-8 (incompatible with Darwin CF).
-
+ @abstract	Converts an object to a version 0 binary plist (i.e. compatible with Mac/iOS binary plists).
+ */
 CF_RETURNS_RETAINED
 CFDataRef	CFBinaryPlistV0CreateData( CFTypeRef inObj, OSStatus *outErr );
-
-CF_RETURNS_RETAINED
-CFDataRef	CFBinaryPlistV0CreateDataEx( CFTypeRef inObj, uint32_t inFlags, OSStatus *outErr );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	CFBinaryPlistV0CreateWithData

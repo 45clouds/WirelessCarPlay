@@ -2,7 +2,7 @@
 	File:    	RandomNumberUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 /*!
 	@header		Cryptographic random number API.
@@ -100,7 +100,7 @@ char *	RandomString( const char *inCharSet, size_t inCharSetSize, size_t inMinCh
 /*!	@function	RandomNumberUtilsTest
 	@abstract	Unit test.
 */
-void	RandomNumberUtilsTest( void );
+OSStatus RandomNumberUtilsTest( void );
 
 #ifdef __cplusplus
 }

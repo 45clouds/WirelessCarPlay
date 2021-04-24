@@ -1,8 +1,8 @@
 #
 #	File:    	Makefile
-#	Package: 	CarPlay Communications Plug-in.
+#	Package: 	Apple CarPlay Communication Plug-in.
 #	Abstract: 	n/a 
-#	Version: 	280.33.8
+#	Version: 	320.17
 #	
 #	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 #	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 #	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 #	POSSIBILITY OF SUCH DAMAGE.
 #	
-#	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+#	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 #
 #	Build options
 #	-------------
@@ -57,8 +57,9 @@
 #	nv			-- 1=Build for NVIDIA Jetson reference board.
 #	openssl		-- 1=Use OpenSSL for AES, SHA*, etc. 0=Compile in AES, SHA*, etc. code directly.
 #	qnx			-- 1=Build for QNX.
-#	stub		-- 1=Build AudioUtils/ScreenUtils stub DLLs.
+#	stub		-- 1=Build AudioUtils/ScreenUtils/AudioConverter stub DLLs.
 #	verbose		-- 1=Produce verbose output.
+#	hidbrowser  -- 1=Use legacy HIDBrowser & Screen Registration
 #
 
 INTERACTIVE := $(shell [ -t 0 ] && echo 1)
@@ -73,6 +74,7 @@ endif
 	hid					?= 1
 	nohidraw			?= 1
 	screen				?= 1
+	hidbrowser			?= 0
 ifeq ($(debug),1)
 	config				= Debug
 else
@@ -148,6 +150,7 @@ OBJDIR					= $(BUILDROOT)/obj
 COREUTILSROOT			?= $(SRCROOT)/AccessorySDK
 MDNSROOT				?= $(SRCROOT)/../mDNSResponder
 
+VPATH					+= $(SRCROOT)/Platform
 VPATH					+= $(SRCROOT)/PlatformPOSIX
 VPATH					+= $(SRCROOT)/Sources
 VPATH					+= $(SRCROOT)/Support
@@ -155,10 +158,8 @@ VPATH					+= $(SRCROOT)/Transport
 
 # Includes
 
-INCLUDES				+= -I$(SRCROOT)/Common
 INCLUDES				+= -I$(SRCROOT)/Sources
 INCLUDES				+= -I$(SRCROOT)/Support
-INCLUDES				+= -I$(SRCROOT)/Transport
 INCLUDES				+= -I$(BUILDROOT)
 INCLUDES				+= -I$(BUILDROOT)/CoreUtils
 INCLUDES				+= -I$(MDNSROOT)/mDNSShared
@@ -176,7 +177,7 @@ endif
 COMMON_WARNINGS			+= -W
 COMMON_WARNINGS			+= -Wall
 COMMON_WARNINGS			+= -Wempty-body
-COMMON_WARNINGS			+= -Werror
+#COMMON_WARNINGS			+= -Werror
 COMMON_WARNINGS			+= -Wextra
 COMMON_WARNINGS			+= -Wformat
 COMMON_WARNINGS			+= -Wmissing-braces
@@ -196,6 +197,7 @@ COMMON_WARNINGS			+= -Wunused-label
 COMMON_WARNINGS			+= -Wunused-parameter
 COMMON_WARNINGS			+= -Wunused-value
 COMMON_WARNINGS			+= -Wunused-variable
+COMMON_WARNINGS			+= -fPIC
 
 CWARNS					+= $(COMMON_WARNINGS)
 CWARNS					+= -Wmissing-prototypes
@@ -208,10 +210,6 @@ CXXWARNS				+= -Woverloaded-virtual
 
 COMMONFLAGS				+= -D__STDC_LIMIT_MACROS=1
 COMMONFLAGS				+= -D_GNU_SOURCE
-COMMONFLAGS				+= -DAIRPLAY_ALAC=0
-COMMONFLAGS				+= -DAUDIO_CONVERTER_ALAC=0
-COMMONFLAGS				+= -DAIRPLAY_MFI=1
-COMMONFLAGS				+= -DCFCOMPAT_NOTIFICATIONS_ENABLED=0
 COMMONFLAGS				+= -DCFL_BINARY_PLISTS=1
 COMMONFLAGS				+= -DCFLITE_ENABLED=1
 COMMONFLAGS				+= -DDEBUG_CF_OBJECTS_ENABLED=1
@@ -221,7 +219,6 @@ ifeq ($(debug),1)
 else
 	COMMONFLAGS			+= -DNDEBUG
 endif
-	COMMONFLAGS			+= -DAIRPLAY_HID_SERVER=1
 ifneq ($(openssl),1)
 	COMMONFLAGS			+= -DAES_UTILS_HAS_GLADMAN_GCM=0
 	COMMONFLAGS			+= -DAES_UTILS_USE_GLADMAN_AES=1
@@ -233,6 +230,9 @@ endif
 	COMMONFLAGS			+= -DAIRPLAY_SCREEN=1
 COMMONFLAGS				+= -DAUDIO_STREAM_DLL
 COMMONFLAGS				+= -DSCREEN_STREAM_DLL
+ifeq ($(hidbrowser),1)
+	COMMONFLAGS			+= -DLEGACY_REGISTER_SCREEN_HID
+endif
 
 # Compiler flags
 
@@ -250,6 +250,7 @@ TARGETS					+= $(BUILDROOT)/libAirPlay.so
 ifeq ($(stub),1)
 	TARGETS				+= $(BUILDROOT)/libAudioStream.so
 	TARGETS				+= $(BUILDROOT)/libScreenStream.so
+	TARGETS				+= $(BUILDROOT)/libAudioConverter.so
 endif
 TARGETS					+= $(BUILDROOT)/airplayutil
 
@@ -261,8 +262,6 @@ AirPlayCore_OBJS		+= $(OBJDIR)/AirPlayReceiverSession.o
 	AirPlayCore_OBJS	+= $(OBJDIR)/AirPlayReceiverSessionScreen.o
 AirPlayCore_OBJS		+= $(OBJDIR)/AirPlayUtils.o
 AirPlayCore_OBJS		+= $(OBJDIR)/AirTunesClock.o
-AirPlayCore_OBJS		+= $(OBJDIR)/APAdvertiser.o
-AirPlayCore_OBJS		+= $(OBJDIR)/APAdvertiserInfo.o
 AirPlayCore_OBJS		+= $(OBJDIR)/CarPlayControlClient.o
 
 # AirPlay
@@ -270,10 +269,12 @@ AirPlayCore_OBJS		+= $(OBJDIR)/CarPlayControlClient.o
 AirPlay_OBJS		+= $(AirPlayCore_OBJS)
 
 # AirPlay Support
-
-AirPlaySupport_OBJS		+= $(OBJDIR)/AirPlaySettings.so.o
-AirPlaySupport_OBJS		+= $(OBJDIR)/APSAudioConverterStub.so.o
-AirPlaySupport_OBJS		+= $(OBJDIR)/APSAudioSessionStub.so.o
+ifeq ($(hidbrowser),1)
+	AirPlaySupport_OBJS		+= $(OBJDIR)/ScreenUtils.so.o
+endif
+AirPlaySupport_OBJS		+= $(OBJDIR)/ScreenUtilsDLL.so.o
+AirPlaySupport_OBJS		+= $(OBJDIR)/AudioUtilsDLL.so.o
+AirPlaySupport_OBJS		+= $(OBJDIR)/AudioConverterDLL.so.o
 
 # AirPlayUtil
 
@@ -282,13 +283,15 @@ AirPlayUtil_OBJS		+= $(OBJDIR)/airplayutil.o
 # Audio / Screen
 
 Audio_OBJS				+= $(OBJDIR)/AudioUtilsStub.so.o
-	Screen_OBJS			+= $(OBJDIR)/ScreenUtilsStub.so.o
+Screen_OBJS				+= $(OBJDIR)/ScreenUtilsStub.so.o
+AudioConverter_OBJS		+= $(OBJDIR)/AudioConverterStub.so.o
 
 # Libraries
 
 ifeq ($(qnx),1)
 	LINKFLAGS			+= -lbacktrace
 	LINKFLAGS			+= -lsocket
+	LINKFLAGS			+= -lnbutil
 endif
 LINKFLAGS				+= -lc
 ifeq ($(openssl),1)
@@ -333,6 +336,12 @@ $(BUILDROOT)/libScreenStream.so: $(Screen_OBJS) $(BUILDROOT)/libAirPlaySupport.s
 	$(quiet)$(CC) -shared -Wl,-soname,libScreenStream.so -o $@ $(LINKFLAGS) -lAirPlaySupport $^
 	$(quiet)$(STRIP) $@
 	@echo "$(ColorCyan)=== BUILD COMPLETE: $(notdir $@) ($(os)-$(config))$(ColorEnd)"
+
+$(BUILDROOT)/libAudioConverter.so: $(AudioConverter_OBJS) $(BUILDROOT)/libAirPlaySupport.so
+	@echo "Linking ($(os)-$(config)) $(ColorMagenta)$(notdir $@)$(ColorEnd)"
+	$(quiet)$(CC) -shared -Wl,-soname,libAudioConverter.so -o $@ $(LINKFLAGS) -lAirPlaySupport $^
+	$(quiet)$(STRIP) $@
+	@echo "$(ColorCyan)=== BUILD COMPLETE: $(notdir $@) ($(os)-$(config))$(ColorEnd)"
 	
 .PHONY : clean
 clean:
@@ -343,6 +352,7 @@ $(AirPlaySupport_OBJS):	| $(BUILDROOT)/obj $(BUILDROOT)/CoreUtils
 $(AirPlayUtil_OBJS):	| $(BUILDROOT)/obj $(BUILDROOT)/CoreUtils
 $(Audio_OBJS):			| $(BUILDROOT)/obj $(BUILDROOT)/CoreUtils
 $(Screen_OBJS):			| $(BUILDROOT)/obj $(BUILDROOT)/CoreUtils
+$(AudioConverter_OBJS):	| $(BUILDROOT)/obj $(BUILDROOT)/CoreUtils
 
 $(BUILDROOT)/obj:
 	$(quiet)mkdir -p $@
@@ -377,7 +387,7 @@ mfi					= 1
 nvtools				= $(nv)
 qnxtools			= $(qnx)
 
-export arch arm debug nohidraw libtommath linux mfi nv nvtools openssl os qnx qnxtools
+export arch arm debug nohidraw hidbrowser libtommath linux mfi nv nvtools openssl os qnx qnxtools
 export BUILDROOT
 ifeq ($(debug),1)
 	export STRIP

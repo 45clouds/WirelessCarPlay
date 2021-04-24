@@ -1,0 +1,311 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration>
+      <Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectName>mDNSResponder</ProjectName>
+    <ProjectGuid>{C1D98254-BA27-4427-A3BE-A68CA2CC5F69}</ProjectGuid>
+    <RootNamespace>mDNSResponder</RootNamespace>
+    <Keyword>Win32Proj</Keyword>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <CharacterSet>MultiByte</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(VCTargetsPath)Microsoft.CPP.UpgradeFromVC71.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup>
+    <_ProjectFileVersion>10.0.30319.1</_ProjectFileVersion>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</LinkIncremental>
+    <OutDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\</OutDir>
+    <IntDir Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(Platform)\$(Configuration)\</IntDir>
+    <LinkIncremental Condition="'$(Configuration)|$(Platform)'=='Release|x64'">false</LinkIncremental>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>.;../;../../mDNSCore;../../mDNSShared;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;C:/Program Files/Microsoft SDKs/Windows/v6.1/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_WIN32_WINNT=0x0501;DEBUG=1;MDNS_DEBUGMSGS=0;TARGET_OS_WIN32;WIN32_LEAN_AND_MEAN;USE_TCP_LOOPBACK;PLATFORM_NO_STRSEP;PLATFORM_NO_EPIPE;PLATFORM_NO_RLIMIT;PID_FILE="";UNICODE;_UNICODE;_CRT_SECURE_NO_DEPRECATE;_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1;_LEGACY_NAT_TRAVERSAL_;_USE_32BIT_TIME_T;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <MinimalRebuild>true</MinimalRebuild>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <SmallerTypeCheck>true</SmallerTypeCheck>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CallingConvention>StdCall</CallingConvention>
+      <DisableSpecificWarnings>4127;4201;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+      <ShowIncludes>false</ShowIncludes>
+      <PrecompiledHeaderFile>
+      </PrecompiledHeaderFile>
+      <PrecompiledHeaderOutputFile>
+      </PrecompiledHeaderOutputFile>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>../;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE /SAFESEH %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;crypt32.lib;netapi32.lib;powrprof.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)mDNSResponder.exe</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(OutDir)mDNSResponder.pdb</ProgramDatabaseFile>
+      <SubSystem>Console</SubSystem>
+      <TargetMachine>MachineX86</TargetMachine>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>res\mDNSResponder.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <Optimization>Disabled</Optimization>
+      <AdditionalIncludeDirectories>.;../;../../mDNSCore;../../mDNSShared;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;C:/Program Files/Microsoft SDKs/Windows/v6.1/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;_WIN32_WINNT=0x0501;DEBUG=1;MDNS_DEBUGMSGS=0;TARGET_OS_WIN32;WIN32_LEAN_AND_MEAN;USE_TCP_LOOPBACK;PLATFORM_NO_STRSEP;PLATFORM_NO_EPIPE;PLATFORM_NO_RLIMIT;PID_FILE="";UNICODE;_UNICODE;_CRT_SECURE_NO_DEPRECATE;_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1;_LEGACY_NAT_TRAVERSAL_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <StringPooling>true</StringPooling>
+      <MinimalRebuild>true</MinimalRebuild>
+      <ExceptionHandling>
+      </ExceptionHandling>
+      <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
+      <SmallerTypeCheck>true</SmallerTypeCheck>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <BufferSecurityCheck>true</BufferSecurityCheck>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CallingConvention>StdCall</CallingConvention>
+      <DisableSpecificWarnings>4127;4201;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>../;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;crypt32.lib;netapi32.lib;powrprof.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)mDNSResponder.exe</OutputFile>
+      <IgnoreAllDefaultLibraries>false</IgnoreAllDefaultLibraries>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(OutDir)mDNSResponder.pdb</ProgramDatabaseFile>
+      <SubSystem>Console</SubSystem>
+      <TargetMachine>MachineX64</TargetMachine>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>res\mDNSResponder64.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;../;../../mDNSCore;../../mDNSShared;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;C:/Program Files/Microsoft SDKs/Windows/v6.1/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_WIN32_WINNT=0x0501;TARGET_OS_WIN32;WIN32_LEAN_AND_MEAN;USE_TCP_LOOPBACK;PLATFORM_NO_STRSEP;PLATFORM_NO_EPIPE;PLATFORM_NO_RLIMIT;PID_FILE="";UNICODE;_UNICODE;_CRT_SECURE_NO_DEPRECATE;_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1;_LEGACY_NAT_TRAVERSAL_;_USE_32BIT_TIME_T;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <CallingConvention>StdCall</CallingConvention>
+      <DisableSpecificWarnings>4127;4201;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>../;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE /SAFESEH %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;crypt32.lib;netapi32.lib;powrprof.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)mDNSResponder.exe</OutputFile>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(IntDir)$(ProjectName).pdb</ProgramDatabaseFile>
+      <SubSystem>Console</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX86</TargetMachine>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>res\mDNSResponder.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not "%RC_XBS%" == "YES" goto END
+if not exist "$(DSTROOT)\Program Files\Bonjour\$(Platform)"   mkdir "$(DSTROOT)\Program Files\Bonjour\$(Platform)"
+if not exist "$(DSTROOT)\AppleInternal"                                                   mkdir "$(DSTROOT)\AppleInternal"
+if not exist "$(DSTROOT)\AppleInternal\bin"                                            mkdir "$(DSTROOT)\AppleInternal\bin"
+xcopy /I/Y "$(TargetPath)"                                                                           "$(DSTROOT)\Program Files\Bonjour\$(Platform)"
+xcopy /I/Y "$(TargetDir)$(TargetName).pdb"                                          "$(DSTROOT)\AppleInternal\bin"
+:END
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Midl>
+      <TargetEnvironment>X64</TargetEnvironment>
+    </Midl>
+    <ClCompile>
+      <AdditionalIncludeDirectories>.;../;../../mDNSCore;../../mDNSShared;$(VCInstallDir)include;$(VCInstallDir)atlmfc\include;C:/Program Files/Microsoft SDKs/Windows/v6.1/Include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;_WIN32_WINNT=0x0501;TARGET_OS_WIN32;WIN32_LEAN_AND_MEAN;USE_TCP_LOOPBACK;PLATFORM_NO_STRSEP;PLATFORM_NO_EPIPE;PLATFORM_NO_RLIMIT;PID_FILE="";UNICODE;_UNICODE;_CRT_SECURE_NO_DEPRECATE;_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES=1;_LEGACY_NAT_TRAVERSAL_;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <PrecompiledHeader>
+      </PrecompiledHeader>
+      <AssemblerListingLocation>$(IntDir)</AssemblerListingLocation>
+      <WarningLevel>Level4</WarningLevel>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <DisableSpecificWarnings>4127;4201;%(DisableSpecificWarnings)</DisableSpecificWarnings>
+    </ClCompile>
+    <ResourceCompile>
+      <AdditionalIncludeDirectories>../;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ResourceCompile>
+    <Link>
+      <AdditionalOptions>/NXCOMPAT /DYNAMICBASE %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalDependencies>ws2_32.lib;iphlpapi.lib;netapi32.lib;powrprof.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OutputFile>$(OutDir)mDNSResponder.exe</OutputFile>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <ProgramDatabaseFile>$(IntDir)$(ProjectName).pdb</ProgramDatabaseFile>
+      <SubSystem>Console</SubSystem>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <TargetMachine>MachineX64</TargetMachine>
+      <UACExecutionLevel>RequireAdministrator</UACExecutionLevel>
+    </Link>
+    <Manifest>
+      <AdditionalManifestFiles>res\mDNSResponder64.manifest;%(AdditionalManifestFiles)</AdditionalManifestFiles>
+    </Manifest>
+    <PostBuildEvent>
+      <Command>if not "%RC_XBS%" == "YES" goto END
+if not exist "$(DSTROOT)\Program Files\Bonjour\$(Platform)"   mkdir "$(DSTROOT)\Program Files\Bonjour\$(Platform)"
+if not exist "$(DSTROOT)\AppleInternal"                                                   mkdir "$(DSTROOT)\AppleInternal"
+if not exist "$(DSTROOT)\AppleInternal\bin"                                            mkdir "$(DSTROOT)\AppleInternal\bin"
+xcopy /I/Y "$(TargetPath)"                                                                           "$(DSTROOT)\Program Files\Bonjour\$(Platform)"
+xcopy /I/Y "$(TargetDir)$(TargetName).pdb"                                          "$(DSTROOT)\AppleInternal\bin"
+:END
+</Command>
+    </PostBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="..\..\mDNSCore\anonymous.c" />
+    <ClCompile Include="..\..\mDNSCore\CryptoAlg.c" />
+    <ClCompile Include="..\..\mDNSShared\DebugServices.c" />
+    <ClCompile Include="..\..\mDNSCore\DNSCommon.c" />
+    <ClCompile Include="..\..\mDNSCore\DNSDigest.c" />
+    <ClCompile Include="..\..\mDNSShared\dnssd_ipc.c" />
+    <ClCompile Include="Firewall.cpp" />
+    <ClCompile Include="..\..\mDNSShared\GenLinkedList.c" />
+    <ClCompile Include="..\..\mDNSMacOSX\LegacyNATTraversal.c" />
+    <ClCompile Include="main.c" />
+    <ClCompile Include="..\..\mDNSCore\mDNS.c" />
+    <ClCompile Include="..\..\mDNSShared\mDNSDebug.c" />
+    <ClCompile Include="..\mDNSWin32.c" />
+    <ClCompile Include="..\Poll.c" />
+    <ClCompile Include="..\Secret.c" />
+    <ClCompile Include="Service.c" />
+    <ClCompile Include="..\..\mDNSCore\uDNS.c" />
+    <ClCompile Include="..\..\mDNSShared\uds_daemon.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <CustomBuild Include="EventLog.mc">
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compiling Message Resource</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">mc.exe EventLog.mc</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">EventLog.rc EventLog.h;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compiling Message Resource</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">mc.exe EventLog.mc</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">EventLog.rc EventLog.h;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compiling Message Resource</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">mc.exe EventLog.mc</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">EventLog.rc EventLog.h;%(Outputs)</Outputs>
+      <Message Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compiling Message Resource</Message>
+      <Command Condition="'$(Configuration)|$(Platform)'=='Release|x64'">mc.exe EventLog.mc</Command>
+      <Outputs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">EventLog.rc EventLog.h;%(Outputs)</Outputs>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\mDNSCore\anonymous.h" />
+    <ClInclude Include="..\..\mDNSCore\CryptoAlg.h" />
+    <ClInclude Include="..\..\mDNSShared\CommonServices.h" />
+    <ClInclude Include="..\..\mDNSShared\DebugServices.h" />
+    <ClInclude Include="..\..\mDNSCore\DNSCommon.h" />
+    <ClInclude Include="..\..\mDNSShared\dnssd_ipc.h" />
+    <ClInclude Include="..\..\mDNSShared\GenLinkedList.h" />
+    <ClInclude Include="..\..\mDNSCore\mDNSDebug.h" />
+    <ClInclude Include="..\..\mDNSCore\mDNSEmbeddedAPI.h" />
+    <ClInclude Include="..\mDNSWin32.h" />
+    <ClInclude Include="..\Poll.h" />
+    <ClInclude Include="Resource.h" />
+    <ClInclude Include="..\Secret.h" />
+    <ClInclude Include="Service.h" />
+    <ClInclude Include="..\..\mDNSCore\uDNS.h" />
+    <ClInclude Include="..\..\mDNSShared\uds_daemon.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="Service.rc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

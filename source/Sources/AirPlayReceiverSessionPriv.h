@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayReceiverSessionPriv.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,21 +48,21 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayReceiverSessionPriv_h__
 #define	__AirPlayReceiverSessionPriv_h__
 
-#include <CoreUtils/AESUtils.h>
-#include <CoreUtils/CommonServices.h>
-#include <CoreUtils/DebugServices.h>
-#include <CoreUtils/DataBufferUtils.h>
-#include <CoreUtils/HTTPClient.h>
-#include <CoreUtils/MathUtils.h>
-#include <CoreUtils/MiscUtils.h>
-#include <CoreUtils/NetUtils.h>
-#include <CoreUtils/ThreadUtils.h>
+#include "AESUtils.h"
+#include "CommonServices.h"
+#include "DebugServices.h"
+#include "DataBufferUtils.h"
+#include "HTTPClient.h"
+#include "MathUtils.h"
+#include "MiscUtils.h"
+#include "NetUtils.h"
+#include "ThreadUtils.h"
 
 #include "AirPlayCommon.h"
 #include "AirPlayReceiverServer.h"
@@ -79,7 +79,7 @@
 	#include <net/if.h>
 #endif
 
-		#include "APSAudioConverter.h"
+		#include "AudioConverter.h"
 
 #include CF_HEADER
 #include CF_RUNTIME_HEADER
@@ -201,27 +201,20 @@ typedef struct
 	double						rtcpTIClockRTTAvg;				// Avg round-trip time.
 	double						rtcpTIClockRTTMin;				// Min round-trip time.
 	double						rtcpTIClockRTTMax;				// Max round-trip time.
-	double						rtcpTIClockRTTLeastBad;			// Best RTT we've received that was still considered "bad".
-	int							rtcpTIClockRTTBadCount;			// Number of consecutive bad RTT's we've received.
-	uint32_t					rtcpTIClockRTTOutliers;			// Total number of huge RTT's we've received.
 	
-	double						rtcpTIClockOffsetArray[ 3 ];	// Last N NTP clock offsets between us and the server.
-	unsigned int				rtcpTIClockOffsetIndex;			// Circular index into the clock offset history array.
+	double						rtcpTIClockDelayArray[ 8 ];		// Last N NTP clock delays
+	double						rtcpTIClockOffsetArray[ 8 ];	// Last N NTP clock offsets between us and the server.
+	unsigned int				rtcpTIClockIndex;				// Circular index into the clock delay/offset history array.
+	unsigned int				rctpTIClockUsedIndex;			// Last index that was used to adjust the clock
 	double						rtcpTIClockOffsetAvg;			// Moving average of clock offsets.
 	double						rtcpTIClockOffsetMin;			// Minimum clock offset.
 	double						rtcpTIClockOffsetMax;			// Maximum clock offset.
-	double						rtcpTIClockOffsetLeastBad;		// Best clock offset we've received that was still considered "bad".
-	Boolean						rtcpTIResetStats;				// True if the clock offset stats need to be reset.
+	Boolean						rtcpTIForceStep;				// True during timing negotiate, so we step to the best measurement
 	
+	Boolean						rtpOffsetApply;					// True when we need to apply a new RTP offset.
 	uint32_t					rtpOffsetActive;				// RTP offset actively in use (different when deferring).
 	uint32_t					rtpOffset;						// Current RTP timestamp offset between us and the server.
-	Boolean						rtpOffsetApply;					// True when we need to apply a new RTP offset.
 	uint32_t					rtpOffsetApplyTimestamp;		// Sender timestamp when we should apply our new RTP offset.
-	uint32_t					rtpOffsetLast;					// Last RTP timestamp offset between us and the server.
-	uint32_t					rtpOffsetAvg;					// Avg RTP timestamp offset between us and the server.
-	uint32_t					rtpOffsetMaxDelta;				// Max delta between the last and instantaneous RTP offsets.
-	uint32_t					rtpOffsetMaxSkew;				// Max delta between the last and current RTP timestamp offsets.
-	uint32_t					rtpOffsetSkewResetCount;		// Number of timeline resets due to too much skew.
 	
 	// RTCP Retransmissions
 	
@@ -248,18 +241,18 @@ typedef struct
 	uint32_t					bigLossCount;					// Number of times we abort retransmits requests because the loss was too big.
 	
 }	AirTunesSource;
+	
+check_compile_time( sizeof_field( AirTunesSource, rtcpTIClockDelayArray ) == sizeof_field( AirTunesSource, rtcpTIClockOffsetArray ) );
 
 // AirPlayAudioStreamContext
 
 typedef struct
 {
 	uint64_t	hostTime;
+	uint64_t	hostTimeRaw;
 	uint32_t	sampleTime;
 	
 }	AirPlayTimestampTuple;
-
-typedef struct SendAudioContextList SendAudioContextList;
-TAILQ_HEAD( SendAudioContextList, SendAudioContext );
 
 typedef struct
 {
@@ -289,7 +282,6 @@ typedef struct
 	pthread_mutex_t *				zeroTimeLockPtr;			// Ptr to the zeroTime mutex. NULL if invalid.
 	uint32_t						sendErrors;					// Number of send errors that occurred.
 	ChaChaPolyCryptor				outputCryptor;				// ChaCha20_Poly1305 cryptor for incoming audio packets.
-	SendAudioContextList			sendAudioList;
 	pthread_t						sendAudioThread;            // Thread to offload sending audio data.
 	pthread_t *						sendAudioThreadPtr;         // Ptr to sendAudioThread when valid.
 	pthread_cond_t					sendAudioCond;              // Condition to signal when there is audio to send.
@@ -297,7 +289,7 @@ typedef struct
 	pthread_mutex_t					sendAudioMutex;             // Mutex for signaling audioSendCond.
 	pthread_mutex_t *				sendAudioMutexPtr;          // Ptr to sendAudioMutex when valid.
 	Boolean							sendAudioDone;              // Sentinal for terminating sendAudioThread.
-	MirroredRingBuffer				inputRing;					// Ring buffer for processing audio input.
+	MirroredRingBuffer *			inputRingRef;				// Ptr to a ring buffer for processing audio input.
 	sockaddr_ip						inputAddr;					// Address and port to send audio input packets to.
 	socklen_t						inputAddrLen;				// Valid length of inputAddr.
 	uint16_t						inputSeqNum;				// Last RTP sequence number we've sent.
@@ -352,11 +344,15 @@ struct AirPlayReceiverSessionPrivate
 	Boolean							sessionStarted;				// True if the session has been started (e.g. RECORD received).
 	dispatch_queue_t				eventQueue;					// Internal queue used by eventClient.
 	HTTPClientRef					eventClient;				// Client for sending RTSP events back to the sender.
+	int								eventPendingMessageCount;	// Number of outgoing event messages which haven't got corresponding replies.
+	dispatch_source_t				eventReplyTimer;			// Timer for waiting event replies.
 	SocketRef						eventSock;					// Socket for accepting an RTSP event connection from the sender.
 	int								eventPort;					// Port we're listening on for an RTSP event connection.
 	Boolean							sessionIdle;				// True if no stream is setup, ie. no audio and video.
+	Boolean							sessionIdleValid;			// True if sessionIdle is accurate
 	
 	PairingSessionRef				pairVerifySession;			// PairingSession to derive encryption/decription keys for individual streams
+	
 	// Main/AltAudio
 	
 	AirPlayAudioStreamContext		mainAudioCtx;				// Context for main audio input and output.
@@ -376,8 +372,7 @@ struct AirPlayReceiverSessionPrivate
 	sockaddr_ip						rtcpRemoteAddr;				// Address of the peer to send RTCP packets to.
 	socklen_t						rtcpRemoteLen;				// Length of the sockaddr for the RTCP peer.
 	Boolean							rtcpConnected;				// True if the RTCP socket is connected.
-    
-	uint32_t						platformAudioLatency;		// Samples of latency the platform introduces.
+	
 	uint32_t						minLatency;					// Minimum samples of latency.
 	uint32_t						maxLatency;					// Maximum samples of latency.
 	
@@ -421,8 +416,6 @@ struct AirPlayReceiverSessionPrivate
 	
 	uint32_t						audioLatencyOffset;			// Timestamp offset to compensate for latency.
 	Boolean							flushing;					// Flushing is in progress.
-	uint64_t						flushRecentTicks;			// Number of ticks to consider a flush "recent".
-	uint64_t						flushLastTicks;				// Ticks when the last flush occurred.
 	uint32_t						flushTimeoutTS;				// Stay in flush mode until this timestamp is received.
 	uint32_t						flushUntilTS;				// Flush packets with timestamps earlier than this.
 	uint16_t						lastRTPSeq;					// Last RTP sequence number received.
@@ -443,6 +436,8 @@ struct AirPlayReceiverSessionPrivate
 	int								glitchTotalPeriods;			// Number of periods (with or without glitches).
 	uint64_t						glitchNextTicks;			// Next ticks to check the glitch counter.
 	uint64_t						glitchIntervalTicks;		// Number of ticks between glitch counter checks.
+	MirroredRingBuffer				inputRing;					// Ring buffer for processing audio input.
+	MirroredRingBuffer *			inputRingRef;				// Ptr to the ring buffer
 	
 	// Screen
 	
@@ -453,23 +448,6 @@ struct AirPlayReceiverSessionPrivate
 	pthread_t *						screenThreadPtr;			// Ptr to the packet thread. NULL if thread isn't running.
 
 };
-
-void AirPlayReceiverSessionSetUserVersion( AirPlayReceiverSessionRef inSession, uint32_t userVersion );
-
-//===========================================================================================================================
-//	Debugging
-//===========================================================================================================================
-
-#if( DEBUG )
-	extern int		gAirTunesDebugLogAllSkew;
-	
-	OSStatus	AirTunesDebugControl( const char *inCmd, CFStringRef *outOutput );
-	void		AirTunesDebugControl_ResetDebugStats( void );
-	OSStatus	AirTunesDebugPerf( int inPollIntervalSeconds, AirPlayReceiverSessionRef inSession );
-#endif
-
-OSStatus	AirTunesDebugShow( const char *inCmd, CFStringRef *outOutput );
-OSStatus	AirTunesDebugAppendShowData( const char *inCmd, DataBuffer *inDB );
 
 #ifdef __cplusplus
 }

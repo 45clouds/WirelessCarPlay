@@ -2,7 +2,7 @@
 	File:    	AESUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2007-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2007-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "AESUtils.h"
@@ -934,7 +934,9 @@ exit:
 #endif
 
 #if( !EXCLUDE_UNIT_TESTS )
-#include "PrintFUtils.h"
+
+#define sixteenByteHexFormat "%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x"
+#define sixteenBytes(buffer) buffer[0], buffer[1], buffer[2], buffer[3], buffer[4], buffer[5], buffer[6], buffer[7], buffer[8], buffer[9], buffer[10], buffer[11], buffer[12], buffer[13], buffer[14], buffer[15]
 
 //===========================================================================================================================
 //	AES_GCM_Test
@@ -1377,8 +1379,8 @@ static OSStatus	_AES_GCM_TestPerfOne( size_t inLen, size_t inCount, Boolean inBa
 	d = ( (double) ticks ) / UpTicksPerSecond();
 	if( !inBad )
 	{
-		FPrintF( stderr, "\tAES-GCM encrypt (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-			inLen, d, ( 1000000 * d ) / i, ( i * inLen ) / ( d * 1048576.0 ), buf2, 16, 16, tag, 16, 16 );
+		fprintf( stderr, "\tAES-GCM encrypt (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+			inLen, d, ( 1000000 * d ) / i, ( i * inLen ) / ( d * 1048576.0 ), sixteenBytes(buf2), sixteenBytes(tag) );
 	}
 	
 	AES_GCM_Final( &gcm );
@@ -1411,8 +1413,8 @@ static OSStatus	_AES_GCM_TestPerfOne( size_t inLen, size_t inCount, Boolean inBa
 	}
 	ticks = UpTicks() - ticks;
 	d = ( (double) ticks ) / UpTicksPerSecond();
-	FPrintF( stderr, "\tAES-GCM decrypt %s (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: %.3H, MAC: %.3H\n", 
-		inBad ? "bad" : "good", inLen, d, ( 1000000 * d ) / i, ( i * inLen ) / ( d * 1048576.0 ), buf1, 16, 16, tag, 16, 16 );
+	fprintf( stderr, "\tAES-GCM decrypt %s (%zu bytes): %f (%f µs, %.2f MB/sec), BUF: " sixteenByteHexFormat ", MAC: " sixteenByteHexFormat "\n",
+		inBad ? "bad" : "good", inLen, d, ( 1000000 * d ) / i, ( i * inLen ) / ( d * 1048576.0 ), sixteenBytes(buf1), sixteenBytes(tag) );
 	
 	AES_GCM_Final( &gcm );
 	err = kNoErr;

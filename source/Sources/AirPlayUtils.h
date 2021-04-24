@@ -1,8 +1,8 @@
 /*
 	File:    	AirPlayUtils.h
-	Package: 	CarPlay Communications Plug-in.
+	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	280.33.8
+	Version: 	320.17
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,18 +48,16 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2012-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2012-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__AirPlayUtils_h_
 #define	__AirPlayUtils_h_
 
 #include "AirPlayCommon.h"
-
-#include <CoreUtils/ChaCha20Poly1305.h>
+#include "AudioConverter.h"
+#include "ChaCha20Poly1305.h"
 #include <sys/queue.h>
-
-	#include "APSAudioConverter.h"
 
 #include CF_HEADER
 #include COREAUDIO_HEADER
@@ -77,11 +75,6 @@ extern "C" {
 //	Prototypes
 //===========================================================================================================================
 
-OSStatus
-	ASBDToAirPlayAudioFormat(
-		const AudioStreamBasicDescription *	inASBD,
-		AirPlayAudioFormat *				outFormat );
-	
 OSStatus
 	AirPlayAudioFormatToASBD( 
 		AirPlayAudioFormat				inFormat, 

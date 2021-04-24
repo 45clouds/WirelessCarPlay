@@ -2,7 +2,7 @@
 	File:    	StringUtils.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2001-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef	__StringUtils_h__
@@ -189,25 +189,6 @@ char *	IPv6AddressToCString( const uint8_t inAddr[ 16 ], uint32_t inScope, int i
 char *	IPv4AddressToCString( uint32_t inIP, int inPort, char *inBuffer );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	BCDTextToInt
-				BCDTextFromInt
-	@abstract	Functions to convert between integer values and BCD strings.
-*/
-uint64_t	BCDTextToInt( const char *inSrc, size_t inLen, const char **outSrc );
-char *		BCDTextFromInt( uint64_t inValue, char *inBuf, size_t inLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	BitListString_Make
-	@abstract	Makes a comma-separated string out of bits (e.g. 0x5 -> "0,2" since bit 0 and bit 2 are set).
-	
-	@param		inBuffer	Buffer to hold the resulting string. Must be at least 86 bytes for when all bits are set.
-	@param		outSize		Receives the number of bytes in the resulting string (excluding the null terminator). May be NULL.
-	
-	@result		Ptr to the input buffer.
-*/
-char *	BitListString_Make( uint32_t inBits, char *inBuffer, size_t *outSize );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	BitListString_Parse
 	@abstract	Parses a comma-separated string of bit numbers (e.g. "0,2" -> 0x5 since bit 0 and bit 2 are set).
 */
@@ -249,14 +230,12 @@ uint32_t	TextToFourCharCode( const void *inText, size_t inSize );
 		"AA:BB:CC:00:11:22:33:44"	-> AA:BB:CC:00:11:22:33:44 (Fibre Channel MAC Address)
 */
 OSStatus	TextToHardwareAddress( const void *inText, size_t inTextSize, size_t inSize, void *outAddr );
-uint64_t	TextToHardwareAddressScalar( const void *inText, size_t inTextSize, size_t inAddrSize );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TextToMACAddress
 	@abstract	Parses MAC address text (e.g. AA:BB:CC:00:11:22) to a 48-bit/6-byte array. See TextToHardwareAddress.
 */
 #define	TextToMACAddress( TEXT, SIZE, ADDR )	TextToHardwareAddress( TEXT, SIZE, 6, ADDR )
-#define	TextToMACAddressScalar( TEXT, SIZE )	TextToHardwareAddressScalar( TEXT, SIZE, 6 )
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	HardwareAddressToCString
@@ -289,17 +268,6 @@ char *	HardwareAddressToCString( const void *inAddr, size_t inSize, char *outStr
 	@param		outVersion	Receives parsed 32-bit NumVersion-style version.
 */
 OSStatus	TextToNumVersion( const void *inText, size_t inSize, uint32_t *outVersion );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NumVersionToCString
-	@abstract	Converts a 32-bit NumVersion-style value into a textual C string such as "1.2.3b4".
-
-	@param		inVersion	Version to convert.
-	@param		inString	Receives textual version. Must be at least 14 bytes (biggest string is 255.15.15b255\0).
-	
-	@result		Ptr to beginning of textual string (same as input buffer).
-*/
-char *	NumVersionToCString( uint32_t inVersion, char *inString );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TextToSourceVersion
@@ -593,7 +561,7 @@ int	strnicmpx( const void *inS1, size_t inN, const char *inS2 );
 	This routine works whether or not the string is null terminated. It is best suited for situations where
 	the string may be null terminated, but is not required to be null terminated.
 */
-#if( !TARGET_VISUAL_STUDIO_2005_OR_LATER && !TARGET_OS_LINUX && ( QNX_VERSION < 660 ) )
+#if( !TARGET_OS_DARWIN && !TARGET_VISUAL_STUDIO_2005_OR_LATER && !TARGET_OS_LINUX && ( QNX_VERSION < 660 ) )
 	size_t	strnlen( const char *inStr, size_t inMaxLen );
 #endif
 
@@ -601,11 +569,9 @@ int	strnicmpx( const void *inS1, size_t inN, const char *inS2 );
 /*!	@group		strstr variants.
 	@discussion
 	
-	stristr:		Case-insensitive version of ANSI C strstr.
 	strnstr:		Find the first occurrence of find in s, where the search is limited to the first slen characters of s.
 	strncasestr:	Case-insensitive version of strnstr.
 */
-char *	stristr( const char *str, const char *pat );
 char *	strnstr(const char *s, const char *find, size_t slen);
 char *	strncasestr(const char *s, const char *find, size_t slen);
 
@@ -707,51 +673,6 @@ char *	toupperstr( const void *inSrc, void *inDst, size_t inMaxLen );
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	BoyerMooreSearch
-	@abstract	Searches for a pattern in a buffer using the Boyer-Moore algorithm.
-	@result		Ptr to the first instance of the pattern in the buffer or NULL if not found.
-*/
-const uint8_t *	BoyerMooreSearch( const void *inBuffer, size_t inBufferSize, const void *inPattern, size_t inPatternSize );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CleanseDiskString
-	@abstract	Cleans up a string from a disk by skipping leading/traiing spaces/non-printables, etc.
-	@result		Ptr to beginning of textual string (same as destination buffer).
-*/
-char *	CleanseDiskString( const void *inSrc, size_t inSrcSize, char *inDst, size_t inDstSize );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	CleanseHFSVolumeName
-	@abstract	Cleans up a string for use as an HFS volume name for use by AFP, etc.
-	
-	@param		inSrc			String to cleanse. Not modified. Doesn't need to be null-terminated.
-	@param		inSrcLen		Length of string to cleanse. If kSizeCString, inSrc will be strlen'd to get the size.
-	@param		inDst			Optional destination buffer to receive the cleansed string. May be NULL.
-	@param		inDstMaxLen		Length of destination buffer. May be 0.
-	
-	@result		true if inSrc was not clean (i.e. it needed to be cleansed). false otherwise.
-	
-	@discussion
-	
-	We previously limited this to 27 bytes of 7-bit printable ASCII with no colons or slashes.
-	As of Firmware 7.4, we are restricting strings to 27 bytes of UTF-8 with no colons, slashes, or beginning periods.
-*/
-Boolean	CleanseHFSVolumeName( const void *inSrc, size_t inSrcLen, void *inDst, size_t inDstMaxLen );
-
-#define StringIsAFPVolumeNameSafe( STR )		( !CleanseHFSVolumeName( STR, kSizeCString, NULL, 0 ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ConvertUTF8StringToRFC1034LabelString
-	@abstract	Converts a UTF-8 string to a valid RFC-1034 host label string.
-	
-	@param		inSrcString		Source UTF-8 string to convert.
-	@param		inDstBuffer		Buffer to receive the converted, null-terminated string. Must be at least 64 bytes.
-	
-	@result		Ptr to beginning of converted string (same as destination buffer).
-*/
-char *	ConvertUTF8StringToRFC1034LabelString( const char *inSrcString, char *inDstBuffer );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	GetLastFilePathSegment
 	@abstract	Finds the last segment of a file path.
 	@discussion	For example, if the path is "a/b/c/d.txt", "d.txt" is returned.
@@ -764,28 +685,6 @@ const char *	GetLastFilePathSegment( const char *inPtr, size_t inLen, size_t *ou
 	@discussion	For example, if the path is "a/b/c/d.txt", "a/b/c" is returned.
 */
 OSStatus	GetParentPath( const char *inPathPtr, size_t inPathLen, char *inBuffer, size_t inMaxLen, size_t *outLen );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	INIFindSection
-	@abstract	Parses INI file-formatted text to find a section.
-	
-	@param		inSrc			Current pointer within the INI data.
-	@param		inEnd			Pointer to the end of the INI data.
-	@param		inName			Name of the section to find. Case insensitive.
-	@param		outValuePtr		Receives pointer to name of section. NULL if there is no value.
-	@param		outValueLen		Receives length of name of section.
-	@param		outSrc			Receives pointer after the parsed data (suitable for calling this function in a loop).
-	
-	@result		True if the section was found.
-*/
-Boolean
-	INIFindSection( 
-		const char *	inSrc, 
-		const char *	inEnd, 
-		const char *	inName, 
-		const char **	outValuePtr, 
-		size_t *		outValueLen, 
-		const char **	outSrc );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	INIGetNext
@@ -816,12 +715,6 @@ Boolean
 		const char **	outValuePtr, 
 		size_t *		outValueLen, 
 		const char **	outSrc );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	IsASCII7PrintableString
-	@abstract	Returns false if the string contains any byte <0x20 or >0x7F
-*/
-Boolean	IsASCII7PrintableString( const char *inStr, const size_t inSize );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	IsTrueString
@@ -879,367 +772,6 @@ Boolean	IsASCII7PrintableString( const char *inStr, const size_t inSize );
 	Result: i == 3
 */
 int	MapStringToValue( const char *inString, int inDefaultValue, ... );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	MapValueToString
-	@abstract	Maps a value to a string using a variable argument list containing pairs of string/integer, terminated by a 
-				single NULL.
-	
-	@param		inValue				Value to match against.
-	@param		inDefaultFormat		sprintf-compatible format string to use if the value cannot be found. The only argument
-									passed to sprintf is the input int value to match against. WARNING: If this contains
-									a format specifier, but the input buffer is NULL then the format string itself will be
-									returned rather than it be used with snprintf.
-	@param		inBuffer			Optional buffer to use with snprintf if no value is found.
-	@param		inBufferSize		Size of optional buffer to use with snprintf if no value is found.
-	param		VA_ARGS				const char * & int pairs terminated by a single NULL. The int portion of each pair is 
-									compared to the input value and if it matches then its paired string is returned.
-	
-	@discussion
-	
-	Examples:
-	
-	const char *	s;
-	char			buf[ 32 ];
-	
-	s = MapValueToString( 3, "<%d unknown>", buf, sizeof( buf ), 
-		"red", 		1, 
-		"green", 	2, 
-		"blue", 	3, 
-		NULL );
-	
-	Result: s == "blue"
-
-	s = MapValueToString( 8, "<%d unknown>", buf, sizeof( buf ), 
-		"red", 		1, 
-		"green", 	2, 
-		"blue", 	3, 
-		NULL );
-	
-	Result: s == "<8 unknown>"
-*/
-const char *	MapValueToString( int inValue, const char *inDefaultFormat, char *inBuffer, size_t inBufferSize, ... );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	MIMETypeToExtension
-	@abstract	Maps a MIME type to a filename extension (without the dot). For example: "image/jpeg" -> "jpg".
-*/
-const char *	MIMETypeToExtension( const char *inMIMEType );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	group		NameValueList
-	@abstract	Linked list of name/value pairs.
-*/
-typedef struct NameValueListItem	NameValueListItem;
-struct NameValueListItem
-{
-	NameValueListItem *		next;
-	char *					name;
-	char *					value;
-};
-
-void	NameValueListFree( NameValueListItem *inList );
-
-#if 0
-#pragma mark -
-#pragma mark == NMEA ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	group		NMEA Parsing
-	@abstract	Parses NMEA sentence strings. See <http://en.wikipedia.org/wiki/NMEA_0183>.
-	@discussion
-	
-	See the following web sites:
-	
-	<http://aprs.gids.nl/nmea/>
-	<http://www.gpsinformation.org/dale/nmea.htm>
-	<http://www.hemispheregps.com/gpsreference/GPRMC.htm>
-*/
-typedef uint32_t		NMEAFlags;
-#define kNMEAFlags_None				0
-#define kNMEAFlag_HasStart			( 1 << 0 ) // String started with '$'.
-#define kNMEAFlag_ValidChecksum		( 1 << 1 ) // Checksum was present at the end and matched the calculated checksum.
-#define kNMEAFlag_Parsed			( 1 << 2 ) // TalkerID and SentenceID are supported and the string was parsed successfully.
-#define kNMEAFlag_SkipUntilStart	( 1 << 3 ) // When parsing, ignore any text until it gets to a '$'.
-#define kNMEAFlag_AllowMalloc		( 1 << 4 ) // When parsing, allow malloc to be used if data exceeds fixed buffers.
-
-#define kNMEAType_GPGGA				"GPGGA"	// NMEA standard. Global Positioning System Fix Data.
-#define kNMEAType_GPGLL				"GPGLL"	// NMEA standard. Geographic Latitude and Longitude.
-#define kNMEAType_GPGSA				"GPGSA"	// NMEA standard. GPS DOP and active satellites.
-#define kNMEAType_GPGSV				"GPGSV"	// NMEA standard. Satellites in View.
-#define kNMEAType_GPHDT				"GPHDT"	// NMEA standard. Heading, True.
-#define kNMEAType_GPRMC				"GPRMC"	// NMEA standard. Recommended Minimum Navigation Information.
-#define kNMEAType_GPVTG				"GPVTG"	// NMEA standard. Course Over Ground and Ground Speed.
-#define kNMEAType_GPZDA				"GPZDA"	// NMEA standard. Time & Date.
-#define kNMEAType_OHPR				"OHPR"	// Proprietary. OceanServer Compass.
-#define kNMEAType_PAACD				"PAACD"	// Proprietary. Apple. Vehicle accelerometer data.
-#define kNMEAType_PAGCD				"PAGCD"	// Proprietary. Apple. Vehicle gyro data.
-#define kNMEAType_PASCD				"PASCD"	// Proprietary. Apple. Vehicle speed data.
-
-#define kNMEA_Active				'A'
-#define kNMEA_Void					'V'
-
-#define kNMEA_North					'N'
-#define kNMEA_South					'S'
-#define kNMEA_East					'E'
-#define kNMEA_West					'W'
-
-#define kNMEAMode_NotPresent		0
-#define kNMEAMode_Invalid			'N'
-#define kNMEAMode_Autonomous		'A'
-#define kNMEAMode_DGPS				'D'
-#define kNMEAMode_Estimate			'E' // Approximation
-
-#define kNMEAFixQuality_NotPresent					0
-#define kNMEAFixQuality_Invalid						'0'
-#define kNMEAFixQuality_GPS							'1' // GPS fix.
-#define kNMEAFixQuality_DGPS						'2' // Differential GPS fix.
-#define kNMEAFixQuality_PPS							'3'
-#define kNMEAFixQuality_RealTimeKinematicFixed		'4'
-#define kNMEAFixQuality_RealTimeKinematicFloat		'5'
-#define kNMEAFixQuality_Estimated					'6' // Dead reckoned.
-#define kNMEAFixQuality_ManualInput					'7'
-#define kNMEAFixQuality_SimulationMode				'8'
-
-#define kNMEASensorType_Combined			'C' // Combined left and right wheel sensor.
-
-#define kNMEATransmissionState_Drive		'D'
-#define kNMEATransmissionState_Neutral		'N'
-#define kNMEATransmissionState_Park			'P'
-#define kNMEATransmissionState_Reverse		'R'
-#define kNMEATransmissionState_Unknown		'U'
-
-typedef struct
-{
-	double		timeOffset;	// Time offset in seconds from the reference time of this sentence.
-	double		xAxis;		// X-axis g-force.
-	double		yAxis;		// Y-axis g-force.
-	double		zAxis;		// Z-axis g-force.
-	
-}	PAACDSample;
-
-typedef struct
-{
-	double		timeOffset;	// Time offset in seconds from the reference time of this sentence.
-	double		xAxis;		// X-axis in degrees/second.
-	double		yAxis;		// Y-axis in degrees/second.
-	double		zAxis;		// Z-axis in degrees/second.
-	
-}	PAGCDSample;
-
-typedef struct
-{
-	double		timeOffset;	// Time offset in seconds from the reference time of this sentence.
-	double		speed;		// Vehicle speed in meters/second for this sample.
-	
-}	PASCDSample;
-
-typedef struct
-{
-	uint32_t		flags;			// Flags. See kNMEAFlags_*.
-	char			type[ 8 ];		// Type of sentence. See kNMEAType_*.
-	union
-	{
-		// GPGGA
-		
-		struct
-		{
-			double			time;				// UTC time of position in seconds (converted from hhmmss.sss).
-			double			latitude;			// Latitude in decimal degrees (converted from ddmm.mmmmm).
-			char			nsLatitude;			// 'N' = North, 'S' = South.
-			double			longitude;			// Longitude in decimal degrees (converted from dddmm.mmmm).
-			char			ewLongitude;		// 'E' = East, 'W' = West.
-			char			fixQuality;			// See kNMEAFixQuality_*.
-			int				satellites;			// Number of satellites in use.
-			double			hdop;				// Horizontal Dilution of Precision (HDOP) 1.0 to 9.9.
-			double			altitude;			// Antenna altitude above mean seal level.
-			char			altitudeUnits;		// Unit of measure for altitude. 'M' = meters.
-			double			geoidalSeparation;	// Geoidal separation.
-			char			geoidalUnits;		// Unit of measure for geoidal separation. 'M' = meters.
-			double			dgpsAge;			// Seconds since last DGPS update.
-			char			stationID[ 8 ];		// Differential reference station ID.
-			
-		}	GPGGA;
-		
-		// GPGLL
-		
-		struct
-		{
-			double			latitude;		// Latitude in decimal degrees (converted from ddmm.mmmmm).
-			char			nsLatitude;		// 'N' = North, 'S' = South.
-			double			longitude;		// Longitude in decimal degrees (converted from dddmm.mmmm).
-			char			ewLongitude;	// 'E' = East, 'W' = West.
-			double			time;			// UTC time in seconds (converted from hhmmss.sss). Relative to "date".
-			char			status;			// 'A' = active/valid, 'V' = void/invalid.
-			char			mode;			// Mode indicator. See kNMEAMode_*.
-			
-		}	GPGLL;
-		
-		// GPGSA
-		
-		struct
-		{
-			char			acquisitionMode;	// 'A' = auto. 'M' = manual.
-			char			positionMode;		// 1 = No Fix, 2 = 2D, 3 = 3D.
-			int				satellite[ 12 ];	// Satellite used on channels 1-12.
-			double			pdop;				// Position Dilution of Precision (PDOP) = 1.0 to 9.9.
-			double			hdop;				// Horizontal Dilution of Precision (HDOP) 1.0 to 9.9.
-			double			vdop;				// Vertical Dilution of Precision (VDOP) = 1.0 to 9.9
-			
-		}	GPGSA;
-		
-		// GPGSV
-		
-		struct
-		{
-			int					totalSentences;		// Total number of sentences in this cycle.
-			int					sentenceNumber;		// Sentence number.
-			int					satellitesInView;	// Number of satellites in view.
-			int					satellitesCount;	// Number of satellite entries in this data.
-			struct
-			{
-				int				satelliteNumber;	// Satellite number. PRN number.
-				double			elevation;			// Elevation in degrees. 0-90.
-				double			azimuth;			// Azimuth in degrees. True. 0-359.
-				double			snr;				// Carrier to noise density ratio in dB-Hz. 0-99. 0 when not tracking.
-				
-			}	satellites[ 4 ];
-			
-		}	GPGSV;
-		
-		// GPHDT
-		
-		struct
-		{
-			double			heading;		// Heading angle in degrees. 0-359.
-			char			degreesTrue;	// Degrees true. 'T' means true.
-			
-		}	GPHDT;
-		
-		// GPRMC
-		
-		struct
-		{
-			double			time;			// UTC time in seconds (converted from hhmmss.sss). Relative to "date".
-			char			status;			// 'A' = active/valid, 'V' = void/invalid.
-			double			latitude;		// Latitude in decimal degrees (converted from ddmm.mmmmm).
-			char			nsLatitude;		// 'N' = North, 'S' = South.
-			double			longitude;		// Longitude in decimal degrees (converted from dddmm.mmmm).
-			char			ewLongitude;	// 'E' = East, 'W' = West.
-			double			speed;			// Speed over ground in knots.
-			double			track;			// Track angle in degrees (true).
-			uint32_t		date;			// Days since 0/0/0.
-			double			variation;		// Magnetic variation in degrees.
-			char			ewVariation;	// 'E' = East, 'W' = West.
-			char			mode;			// Mode indicator. See kNMEAMode_*.
-			
-			double			dateTime;		// Seconds since 2001/01/01 00:00:00 (calculated from date and time).
-			
-		}	GPRMC;
-		
-		// GPVTG
-		
-		struct
-		{
-			double			courseTrue;			// Course over ground in degrees. True.
-			char			courseTrueType;		// Type of course over ground. Must be 'T' for True.
-			double			courseMagnetic;		// Course over ground in degrees. Magnetic.
-			char			courseMagneticType;	// Type of course over ground. Must be 'T' for True.
-			double			speedKnots;			// Speed in knots.
-			char			speedKnotsUnit;		// Unit for speed in knots. Must be 'N' for knots.
-			double			speedKPH;			// Speed in kilometers/hour.
-			char			speedKPHUnit;		// Unit for speed. Must be 'K' for knots.
-			char			mode;				// Mode indicator. See kNMEAMode_*. NMEA 2.3 and later.
-			
-		}	GPVTG;
-		
-		// GPZDA
-		
-		struct
-		{
-			int				hour;			// Hour of the day. 0-23.
-			int				minute;			// Minute of the hour. 0-59.
-			double			second;			// Second of the minute. 0-59.
-			int				day;			// Day of the month. 1-31.
-			int				month;			// Month. 1-12.
-			int				year;			// Year.
-			int				zoneHours;		// Local zone hour offset from GMT. -13 to 13.
-			int				zoneMinutes;	// Local zone minute offset from GMT. 0-59.
-			
-			double			dateTime;		// Seconds since 2001/01/01 00:00:00 (calculated from date and time).
-			
-		}	GPZDA;
-		
-		// OHPR
-		
-		struct
-		{
-			double			heading;		// Heading in degrees (corrected for declination if possible).
-			double			pitch;			// Pitch angle in degrees.
-			double			roll;			// Roll angle in degrees.
-			double			temperature;	// Temperature of the compass board in degrees C.
-			double			depth;			// Depth in feet.
-			
-		}	OHPR;
-		
-		// PAACD
-		
-		struct
-		{
-			double			timestamp;					// Reference time in seconds. May roll over.
-			double			gValue;						// Reference gravity magnitude in meters per second per second.
-			int				sampleCountExpected;		// Number of sensor samples expected in this sentence. 1-50.
-			int				sampleCountActual;			// Number of sensor samples parsed in this sentence. 1-50.
-			PAACDSample *	samples;					// Sensor samples.
-			PAACDSample		sampleFixedStorage[ 8 ];	// Fixed storage for sensor samples.
-			PAACDSample *	sampleDynamicStorage;		// malloc'd storage for samples.
-			
-		}	PAACD;
-		
-		// PAGCD
-		
-		struct
-		{
-			double			timestamp;					// Reference time in seconds. May roll over.
-			int				sampleCountExpected;		// Number of sensor samples expected in this sentence. 1-50.
-			int				sampleCountActual;			// Number of sensor samples parsed in this sentence. 1-50.
-			PAGCDSample *	samples;					// Sensor samples.
-			PAGCDSample		sampleFixedStorage[ 8 ];	// Fixed storage for sensor samples.
-			PAGCDSample *	sampleDynamicStorage;		// malloc'd storage for samples.
-			
-		}	PAGCD;
-		
-		// PASCD
-		
-		struct
-		{
-			double			timestamp;					// Reference time in seconds. May roll over.
-			char			sensorType;					// Type of sensor. See kNMEASensorType_.*.
-			char			transmissionState;			// State of transmission. See kNMEATransmissionState_*.
-			int				slipDetect;					// 1 = wheel slippage detected. 0 = no slip was detected.
-			int				sampleCountExpected;		// Number of sensor samples expected in this sentence. 1-50.
-			int				sampleCountActual;			// Number of sensor samples parsed in this sentence. 1-50.
-			PASCDSample *	samples;					// Sensor samples.
-			PASCDSample		sampleFixedStorage[ 8 ];	// Fixed storage for sensor samples.
-			PASCDSample *	sampleDynamicStorage;		// malloc'd storage for samples.
-			
-		}	PASCD;
-		
-	}	u;
-	
-}	NMEAData;
-
-#define		NMEAInit( DATA_PTR )	memset( (DATA_PTR), 0, sizeof( NMEAData ) )
-OSStatus	NMEAGenerate( const NMEAData *inData, char *inBuf, size_t inMaxLen );
-OSStatus	NMEAParse( NMEAData *outData, NMEAFlags inFlags, const char *inPtr, size_t inLen, const char **outNext );
-void		NMEAFree( NMEAData *inData );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	NumberToOrdinalSuffixCString
-	@abstract	Converts a number to an ordinal string (e.g. 1="st" (1st), 2="nd" (2nd), 3="rd" (3rd), 8="th" (8th), etc.)
-*/
-const char *	NumberToOrdinalSuffixCString( int inNumber );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	ParseCommandLineIntoArgV/FreeCommandLineArgs
@@ -1302,13 +834,6 @@ OSStatus
 		size_t *		outCopiedLen, 
 		size_t *		outTotalLen, 
 		const char **	outSrc );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ParseLine
-	@abstract	Parses a line from a string.
-	@discussion	Line may use either LF, CR, or CRLF line endings. Returned line doesn't contain line ending characters.
-*/
-Boolean	ParseLine( const char *inSrc, const char *inEnd, const char **outLinePtr, size_t *outLineLen, const char **outNext );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	ParseQuotedEscapedString
@@ -1377,44 +902,11 @@ OSStatus	ReplaceDifferentString( char **ioString, const char *inNewString );
 OSStatus	ReplaceString( char **ioStr, size_t *ioLen, const void *inStr, size_t inLen );
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SplitText
-	@abstract	Splits text into an array of segments using a set of delimiters.
-*/
-void
-	SplitText( 
-		const char *	inSrc, 
-		const char *	inEnd, 
-		const char *	inDelims, 
-		size_t			inMaxPairs, 
-		size_t *		outPairs, 
-		const char **	inPtrs, 
-		size_t *		inLens );
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	group		StringArray
 	@abstract	Maintains a dynamically-sized array of strings.
 */
 OSStatus	StringArray_Append( char ***ioArray, size_t *ioCount, const char *inStr );
 void		StringArray_Free( char **inArray, size_t inCount );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	group		StringList
-	@abstract	Linked list of strings.
-*/
-typedef struct StringListItem		StringListItem;
-struct StringListItem
-{
-	StringListItem *		next;
-	char *					str;
-};
-
-void	StringListFree( StringListItem *inList );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	GetFileExtensionFromString
-	@abstract	Get a file extension in a string.
-*/
-const char *	GetFileExtensionFromString( const char *inString );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TextCompareNatural
@@ -1431,28 +923,6 @@ int
 		const char *	inRightPtr, 
 		size_t			inRightLen, 
 		Boolean			inCaseSensitive );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	TextSep
-	@abstract	Separates text at delimiters without modifying the text.
-	
-	@param		inSrc		Text to separate.
-	@param		inEnd		End of text.
-	@param		inDelims	Delimiter characters to use to separate the text.
-	@param		outStr		Receives ptr to delimited text.
-	@param		outLen		Receives length of delimited text.
-	@param		outNext		Optionally receives ptr for the next iteration.
-	
-	@result		true if delimiter was found, false otherwise.
-*/
-Boolean
-	TextSep( 
-		const char *	inSrc, 
-		const char *	inEnd, 
-		const char *	inDelims, 
-		const char **	outStr, 
-		size_t *		outLen, 
-		const char **	outNext );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	TruncateUTF8
@@ -1474,31 +944,6 @@ Boolean
 */
 size_t	TruncateUTF8( const void *inSrcPtr, size_t inSrcLen, void *inDstPtr, size_t inMaxLen, Boolean inNullTerminate );
 size_t	TruncatedUTF8Length(const void *str, size_t length, size_t max);
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	UTF16strlen
-	@abstract	Returns the number of UTF-16 characters in a 0x0000-terminated UTF-16 string. Multiply by 2 to get a byte count.	
-	@discussion	Note: Any BOM is included in the count.
-*/
-size_t	UTF16strlen( const void *inString );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ValidDNSName
-	@abstract	Returns kNoErr if the string is a valid DNS name or an error code if it is not valid.
-	@discussion Supports escaping with the usual DNS '\' notation.
-*/
-OSStatus	ValidDNSName( const char *inStr );
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	XMLEscape / XMLEscapeCopy
-	@abstract	Escapes UTF-8 text for use in HTML, XHTML, or XML.
-	@discussion
-	
-	XMLEscape() allows "inBuf" to be NULL to calculate the size needed to escape.
-	XMLEscapeCopy() allows "outLen" to be NULL if you don't care about the length (result is null terminated).
-*/
-void		XMLEscape( const void *inSrc, size_t inLen, void *inBuf, size_t *outLen );
-OSStatus	XMLEscapeCopy( const void *inSrc, size_t inLen, char **outStr, size_t *outLen );
 
 #if 0
 #pragma mark -
@@ -1522,27 +967,6 @@ OSStatus
 	@result		Returns the end of the written data or NULL if there's a failure.
 */
 uint8_t *	MakeDomainNameFromDNSNameString( uint8_t * const outName, const char *inStr );
-
-#if 0
-#pragma mark == Numeric Suffixes ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		Numeric Suffix Utilities
-
-	@discussion
-	
-	These utilities test, append, remove, and increment numeric suffixes in UTF-8 strings.
-	For rich text strings, numeric suffixes are whitespace followed by a number in parenthesis (e.g. "My Name (3)").
-	For DNS-compatible strings, numeric suffixes are a hypen followed by a number (e.g. "my-name-3").
-	When a string needs to be truncated, care is taken to avoid truncating in the middle of a multi-byte UTF-8 character 
-	sequence or between the UTF-8 equivalent of a UTF-16 surrogate pair (not legal in UTF-8, but still possible). 
-*/
-void		AppendNumericSuffix(void *str, size_t len, size_t maxLen, size_t val, Boolean RichText, size_t *newLen);
-Boolean		ContainsNumericSuffix(const void *str, size_t len, Boolean RichText);
-void		IncrementNumericSuffix(void *str, size_t len, size_t maxLen, Boolean RichText, size_t *newLen);
-void		IncrementNumericSuffixEx(void *str, size_t len, size_t maxLen, Boolean RichText, size_t *newLen, uint32_t maxVal);
-uint32_t	RemoveNumericSuffix(void *str, size_t len, Boolean RichText, size_t *newLen);
 
 #if 0
 #pragma mark == SNScanF ==
@@ -1576,7 +1000,7 @@ uint32_t	RemoveNumericSuffix(void *str, size_t len, Boolean RichText, size_t *ne
 	
 	- wchar_t support (e.g. %ls).
 */
-int	SNScanF( const void *inString, size_t inSize, const char *inFormat, ... );
+int	SNScanF( const void *inString, size_t inSize, const char *inFormat, ... ) SCANF_STYLE_FUNCTION( 3, 4 );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	VSNScanF

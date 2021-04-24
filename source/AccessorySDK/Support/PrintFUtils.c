@@ -2,7 +2,7 @@
 	File:    	PrintFUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 1997-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 // Microsoft deprecated standard C APIs like fopen so disable those warnings because the replacement APIs are not portable.
@@ -59,7 +59,6 @@
 
 #include "PrintFUtils.h"
 
-#include "ChecksumUtils.h"
 #include "CommonServices.h"
 #include "DebugServices.h"
 #include "RandomNumberUtils.h"
@@ -89,10 +88,6 @@
 #endif
 
 #include LIBDISPATCH_HEADER
-
-#if( XPC_ENABLED )
-	#include XPC_HEADER
-#endif
 
 //===========================================================================================================================
 //	Constants
@@ -127,31 +122,15 @@ struct PrintFContext
 	void *					userContext;
 };
 
-typedef struct PrintFExtension	PrintFExtension;
-struct PrintFExtension
-{
-	PrintFExtension *				next;
-	PrintFExtensionHandler_f		handler_f;
-	void *							context;
-	char							name[ 1 ]; // Variable length.
-};
-
 //===========================================================================================================================
 //	Prototypes
 //===========================================================================================================================
 
 static int		PrintFWriteAddr( const uint8_t *inAddr, PrintFFormat *inFormat, char *outStr );
-static int		PrintFWriteAudioStreamBasicDescription( PrintFContext *inContext, const AudioStreamBasicDescription *inASBD );
-static int		PrintFWriteCEC( PrintFContext *ctx, const uint8_t *inData, size_t inLen );
 static int		PrintFWriteBits( uint64_t inX, PrintFFormat *inFormat, char *outStr );
 #if( DEBUG_CF_OBJECTS_ENABLED )
 	static int	PrintFWriteCFObject( PrintFContext *inContext, PrintFFormat *inFormat, CFTypeRef inObj, char *inBuffer );
 #endif
-#if( DEBUG_CF_OBJECTS_ENABLED && ( !CFLITE_ENABLED || CFL_XML ) )
-	static int	PrintFWriteCFXMLObject( PrintFContext *inContext, PrintFFormat *inFormat, CFTypeRef inObj );
-#endif
-static int		PrintFWriteFill( PrintFContext *inContext, int inC, size_t inCount, char *inBuf );
-static int		PrintFWriteFlags( PrintFContext *inContext, PrintFFormat *inFormat, const char *inDescriptors, uint64_t inX );
 static int
 	PrintFWriteHex( 
 		PrintFContext *	inContext, 
@@ -163,23 +142,9 @@ static int
 static int		PrintFWriteHexOneLine( PrintFContext *inContext, PrintFFormat *inFormat, const uint8_t *inData, size_t inSize );
 static int		PrintFWriteHexByteStream( PrintFContext *inContext, Boolean inUppercase, const uint8_t *inData, size_t inSize );
 static int		PrintFWriteMultiLineText( PrintFContext *inContext, PrintFFormat *inFormat, const char *inStr, size_t inLen );
-static int		PrintFWriteNumVersion( uint32_t inVersion, char *outStr );
-static int		PrintFWriteSingleLineText( PrintFContext *inContext, const char *inStr, size_t inLen );
-static int		PrintFWriteObfuscatedPtr( PrintFContext *inContext, const void *inPtr );
-static void		_PrintFWriteObfuscatedPtrInit( void *inArg );
 static int		PrintFWriteString( const char *inStr, PrintFFormat *inFormat, char *inBuf, const char **outStrPtr );
 static int		PrintFWriteText( PrintFContext *inContext, PrintFFormat *inFormat, const char *inText, size_t inSize );
-static int		PrintFWriteTimeDuration( uint64_t inSeconds, int inAltMode, char *inBuf );
-static int
-	PrintFWriteTLV8( 
-		PrintFContext *	inContext, 
-		PrintFFormat *	inFormat, 
-		const char *	inDescriptors, 
-		const uint8_t *	inPtr, 
-		size_t			inLen );
-static int		PrintFWriteTXTRecord( PrintFContext *inContext, PrintFFormat *inFormat, const void *inPtr, size_t inLen );
 static int		PrintFWriteUnicodeString( const uint8_t *inStr, PrintFFormat *inFormat, char *inBuf );
-static int		PrintFWriteXMLEscaped( PrintFContext *inContext, const char *inPtr, size_t inLen );
 
 #define	print_indent( CONTEXT, N )	PrintFCore( ( CONTEXT ), "%*s", (int)( ( N ) * 4 ), "" )
 
@@ -187,116 +152,9 @@ static int		PrintFCallBackFixedString( const char *inStr, size_t inSize, PrintFC
 static int		PrintFCallBackAllocatedString( const char *inStr, size_t inSize, PrintFContext *inContext );
 static int		PrintFCallBackUserCallBack( const char *inStr, size_t inSize, PrintFContext *inContext );
 
-//===========================================================================================================================
-//	Globals
-//===========================================================================================================================
-
-MinimalMutexDefine( gPrintFUtilsLock );
-
-static PrintFExtension *		gExtensionList = NULL;
-
 #if 0
 #pragma mark -
 #endif
-
-//===========================================================================================================================
-//	PrintFRegisterExtension
-//===========================================================================================================================
-
-OSStatus	PrintFRegisterExtension( const char *inName, PrintFExtensionHandler_f inHandler, void *inContext )
-{
-	OSStatus				err;
-	size_t					len;
-	PrintFExtension *		extension;
-	
-	MinimalMutexEnsureInitialized( gPrintFUtilsLock );
-	MinimalMutexLock( gPrintFUtilsLock );
-	
-	for( extension = gExtensionList; extension; extension = extension->next )
-	{
-		if( stricmp( extension->name, inName ) == 0 )
-		{
-			break;
-		}
-	}
-	require_action( !extension, exit, err = kDuplicateErr );
-	
-	len = strlen( inName ) + 1;
-	extension = (PrintFExtension *) malloc( offsetof( PrintFExtension, name ) + len );
-	require_action( extension, exit, err = kNoMemoryErr );
-	extension->handler_f	= inHandler;
-	extension->context		= inContext;
-	memcpy( extension->name, inName, len );
-	
-	extension->next = gExtensionList;
-	gExtensionList = extension;
-	err = kNoErr;
-	
-exit:
-	MinimalMutexUnlock( gPrintFUtilsLock );
-	return( err );
-}
-
-//===========================================================================================================================
-//	PrintFDeregisterExtension
-//===========================================================================================================================
-
-OSStatus	PrintFDeregisterExtension( const char *inName )
-{
-	PrintFExtension *		curr;
-	PrintFExtension **		next;
-	
-	MinimalMutexEnsureInitialized( gPrintFUtilsLock );
-	MinimalMutexLock( gPrintFUtilsLock );
-	for( next = &gExtensionList; ( curr = *next ) != NULL; next = &curr->next )
-	{
-		if( stricmp( curr->name, inName ) == 0 )
-		{
-			*next = curr->next;
-			free( curr );
-			MinimalMutexUnlock( gPrintFUtilsLock );
-			return( kNoErr );
-		}
-	}
-	MinimalMutexUnlock( gPrintFUtilsLock );
-	return( kNotFoundErr );
-}
-
-#if 0
-#pragma mark -
-#endif
-
-#if( COMPILER_OBJC )
-//===========================================================================================================================
-//	NSPrintF
-//===========================================================================================================================
-
-NSString *	NSPrintF( const char *inFormat, ... )
-{
-	NSString *		result;
-	va_list			args;
-	
-	va_start( args, inFormat );
-	result = NSPrintV( inFormat, args );
-	va_end( args );
-	return( result );
-}
-
-//===========================================================================================================================
-//	NSPrintV
-//===========================================================================================================================
-
-NSString *	NSPrintV( const char *inFormat, va_list inArgs )
-{
-	NSString *		result;
-	char *			cptr = NULL;
-	
-	VASPrintF( &cptr, inFormat, inArgs );
-	result = cptr ? @(cptr) : @"";
-	FreeNullSafe( cptr );
-	return( result );
-}
-#endif // COMPILER_OBJC
 
 //===========================================================================================================================
 //	SNPrintF
@@ -868,9 +726,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 			}
 		#endif
 		
-		#if( TARGET_OS_WINDOWS && !defined( UNICODE ) && !defined( _UNICODE ) )
-			case 'T':	// %T: TCHAR string (Windows only)
-		#endif
 			case 's':	// %s: String
 				src = va_arg( vaArgs.args, const char * );
 				if( F.suppress ) continue;
@@ -885,9 +740,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 				else if( F.group == 2 ) { F.prefix = '"';  F.suffix = '"'; }
 				break;
 		
-		#if( TARGET_OS_WINDOWS && ( defined( UNICODE ) || defined( _UNICODE ) ) )
-			case 'T':	// %T: TCHAR string (Windows only)
-		#endif
 			case 'S':	// %S: Unicode String
 				a = va_arg( vaArgs.args, uint8_t * );
 				if( F.suppress ) continue;
@@ -922,10 +774,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 					if(      F.group == 1 ) { F.prefix = '\''; F.suffix = '\''; }
 					else if( F.group == 2 ) { F.prefix = '"';  F.suffix = '"'; }
 					
-					#if( !CFLITE_ENABLED || CFL_XML )
-						if( F.altForm ) err = PrintFWriteCFXMLObject( inContext, &F, cfObj );
-						else
-					#endif
 					err = PrintFWriteCFObject( inContext, &F, cfObj, buf );
 					if( err < 0 ) goto error;
 					total += err;
@@ -1147,13 +995,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 				s = buf;
 				break;
 			
-			case 'v' :	// %v: NumVersion
-				x = va_arg( vaArgs.args, unsigned int );
-				if( F.suppress ) continue;
-				i = PrintFWriteNumVersion( (uint32_t) x, buf );
-				s = buf;
-				break;
-			
 			case 'V':	// %V: Nested PrintF format string and va_list.
 			{
 				const char *		nestedFormat;
@@ -1190,142 +1031,10 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 			{
 				const char *			extensionPtr;
 				size_t					extensionLen;
-				PrintFExtension *		extension;
 				
 				extensionPtr = ++fmt;
 				while( ( c != '\0' ) && ( c != '}' ) ) c = *++fmt;
 				extensionLen = (size_t)( fmt - extensionPtr );
-				
-				// %{asbd}: AudioStreamBasicDescription
-				
-				if( strnicmpx( extensionPtr, extensionLen, "asbd" ) == 0 )
-				{
-					const AudioStreamBasicDescription * const		absd = va_arg( vaArgs.args, const AudioStreamBasicDescription * );
-					
-					if( F.suppress ) continue;
-					err = PrintFWriteAudioStreamBasicDescription( inContext, absd );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{cec}: HDMI CEC message.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "cec" ) == 0 )
-				{
-					a    = va_arg( vaArgs.args, uint8_t * );
-					size = (size_t) va_arg( vaArgs.args, int );
-					if( F.suppress ) continue;
-					err = PrintFWriteCEC( inContext, a, size );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{dur}:  Time Duration (e.g. 930232 seconds prints "10d 18h 23m 52s").
-				// %#{dur}: Time Duration (e.g. 930232 seconds prints "10d 18:23:52").
-				
-				if( strnicmpx( extensionPtr, extensionLen, "dur" ) == 0 )
-				{
-					if(      F.lSize == 1 )	x = va_arg( vaArgs.args, unsigned long );
-					else if( F.lSize == 2 )	x = va_arg( vaArgs.args, uint64_t );
-					else					x = va_arg( vaArgs.args, unsigned int );
-					if(      F.hSize == 1 )	x = (unsigned short)( x & 0xFFFF );
-					else if( F.hSize == 2 )	x = (unsigned char)( x & 0xFF );
-					if( F.suppress ) continue;
-					i = PrintFWriteTimeDuration( x, F.altForm, buf );
-					s = buf;
-					break;
-				}
-				
-				// %{end}: End printing (used with ? for conditional suppression).
-				
-				if( strnicmpx( extensionPtr, extensionLen, "end" ) == 0 )
-				{
-					if( F.suppress ) continue;
-					goto exit;
-				}
-				
-				// %{fill}: Repeat a single character N times.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "fill" ) == 0 )
-				{
-					c    = va_arg( vaArgs.args, int );
-					size = (size_t) va_arg( vaArgs.args, int );
-					if( F.suppress ) continue;
-					
-					err = PrintFWriteFill( inContext, c, size, buf );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{flags}: Bit flags (e.g. "0x43 <POWER LINK ERROR>").
-				
-				if( strnicmpx( extensionPtr, extensionLen, "flags" ) == 0 )
-				{
-					if(      F.lSize == 1 )	x = va_arg( vaArgs.args, unsigned long );
-					else if( F.lSize == 2 )	x = va_arg( vaArgs.args, uint64_t );
-					else					x = va_arg( vaArgs.args, unsigned int );
-					if(      F.hSize == 1 )	x = (unsigned short)( x & 0xFFFF );
-					else if( F.hSize == 2 )	x = (unsigned char)( x & 0xFF );
-					s    = va_arg( vaArgs.args, const char * ); 
-					if( F.suppress ) continue;
-					
-					err = PrintFWriteFlags( inContext, &F, s ? s : "\x00", x );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{pid}: Process name (with optional numeric PID).
-				
-				if( strnicmpx( extensionPtr, extensionLen, "pid" ) == 0 )
-				{
-					#if( TARGET_OS_POSIX )
-						pid_t		pid;
-						
-						if(  sizeof( pid_t ) > sizeof( int ) )	pid = (pid_t) va_arg( vaArgs.args, int64_t );
-						else									pid = (pid_t) va_arg( vaArgs.args, int );
-						if( F.suppress ) continue;
-						*buf = '\0';
-						GetProcessNameByPID( pid, buf, sizeof( buf ) );
-						if( F.altForm ) err = PrintFCore( inContext, "%s:%lld", buf, (int64_t) pid );
-						else			err = PrintFCore( inContext, "%s", buf );
-					#else
-						err = PrintFCore( inContext, "<< ERROR: %%{pid} not supported on this platform >>" );
-					#endif
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{ptr}: Obfuscated pointer.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "ptr" ) == 0 )
-				{
-					a = va_arg( vaArgs.args, uint8_t * );
-					if( F.suppress ) continue;
-					err = PrintFWriteObfuscatedPtr( inContext, a );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{sline}: Single line string. \r and \n are replaced with ⏎. Arg=ptr to string.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "sline" ) == 0 )
-				{
-					s    = va_arg( vaArgs.args, const char * );
-					size = va_arg( vaArgs.args, size_t );
-					if( F.suppress ) continue;
-					if( size == kSizeCString ) size = strlen( s );
-					
-					err = PrintFWriteSingleLineText( inContext, s, size );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
 				
 				// %{text}: Multi-line text (with optional indenting).
 				
@@ -1341,94 +1050,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 					total += err;
 					continue;
 				}
-				
-				// %{tlv8}: 8-bit Type-Length-Value (TLV) data.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "tlv8" ) == 0 )
-				{
-					s    = va_arg( vaArgs.args, const char * ); 
-					a    = va_arg( vaArgs.args, uint8_t * );
-					size = (size_t) va_arg( vaArgs.args, int );
-					if( F.suppress ) continue;
-					err = PrintFWriteTLV8( inContext, &F, s ? s : "\x00", a, size );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{tpl}: EFI Task Priority Level (TPL).
-				
-				
-				// %{txt}: DNS TXT record name=value pairs.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "txt" ) == 0 )
-				{
-					a    = va_arg( vaArgs.args, uint8_t * );
-					size = va_arg( vaArgs.args, size_t );
-					if( F.suppress ) continue;
-					err = PrintFWriteTXTRecord( inContext, &F, a, size );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{xml}: XML-escaped text.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "xml" ) == 0 )
-				{
-					s    = va_arg( vaArgs.args, const char * );
-					size = va_arg( vaArgs.args, size_t );
-					if( F.suppress ) continue;
-					err = PrintFWriteXMLEscaped( inContext, s, size );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				
-				// %{xpc}: XPC Object.
-				
-				if( strnicmpx( extensionPtr, extensionLen, "xpc" ) == 0 )
-				{
-					a = va_arg( vaArgs.args, uint8_t * );
-					if( F.suppress ) continue;
-					if( !a ) { s = "<<NULL>>"; i = 8; break; }
-					
-					#if( XPC_ENABLED )
-						p = xpc_copy_description( (xpc_object_t) a );
-						if( !p ) { s = "<<NULL XPC DESC>>"; i = 17; break; }
-						
-						err = PrintFWriteMultiLineText( inContext, &F, p, strlen( p ) );
-						free( p );
-						if( err < 0 ) goto error;
-						total += err;
-						continue;
-					#else
-						s = "<<NO XPC SUPPORT>>";
-						i = 18;
-						break;
-					#endif
-				}
-				
-				// Search extensions.
-				
-				MinimalMutexEnsureInitialized( gPrintFUtilsLock );
-				MinimalMutexLock( gPrintFUtilsLock );
-				for( extension = gExtensionList; extension; extension = extension->next )
-				{
-					if( strnicmpx( extensionPtr, extensionLen, extension->name ) == 0 )
-					{
-						break;
-					}
-				}
-				if( extension )
-				{
-					err = extension->handler_f( inContext, &F, &vaArgs, extension->context );
-					MinimalMutexUnlock( gPrintFUtilsLock );
-					if( err < 0 ) goto error;
-					total += err;
-					continue;
-				}
-				MinimalMutexUnlock( gPrintFUtilsLock );
 				
 				// Unknown extension.
 				
@@ -1450,7 +1071,6 @@ int	PrintFCoreVAList( PrintFContext *inContext, const char *inFormat, va_list in
 		total += err;
 	}
 	
-exit:
 	return( total );
 	
 error:
@@ -1607,101 +1227,6 @@ static int	PrintFWriteAddr( const uint8_t *inAddr, PrintFFormat *inFormat, char 
 }
 
 //===========================================================================================================================
-//	PrintFWriteAudioStreamBasicDescription
-//===========================================================================================================================
-
-static int	PrintFWriteAudioStreamBasicDescription( PrintFContext *inContext, const AudioStreamBasicDescription *inASBD )
-{
-	int					total = 0;
-	int					n;
-	char				buf[ 32 ];
-	const char *		str;
-	uint32_t			u32;
-	
-	if(      inASBD->mFormatID == kAudioFormatMPEG4AAC_ELD )	str = "ELD,";
-	else if( inASBD->mFormatID == kAudioFormatMPEG4AAC )		str = "AAC,";
-	else if( inASBD->mFormatID == kAudioFormatAppleLossless )	str = "ALAC,";
-	else if( inASBD->mFormatID == kAudioFormatLinearPCM )		str = "PCM,";
-	else { SNPrintF( buf, sizeof( buf ), "%C,", inASBD->mFormatID ); str = buf; }
-	
-	n = PrintFCore( inContext, "%-5s %5u Hz", str, (uint32_t) inASBD->mSampleRate );
-	require_action_quiet( n >= 0, exit, total = n );
-	total += n;
-	
-	if( inASBD->mBitsPerChannel > 0 )
-	{
-		n = PrintFCore( inContext, ", %2u-bit", inASBD->mBitsPerChannel );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	else if( inASBD->mFormatID == kAudioFormatAppleLossless )
-	{
-		if(      inASBD->mFormatFlags == kAppleLosslessFormatFlag_16BitSourceData ) str = "16-bit";
-		else if( inASBD->mFormatFlags == kAppleLosslessFormatFlag_20BitSourceData ) str = "20-bit";
-		else if( inASBD->mFormatFlags == kAppleLosslessFormatFlag_24BitSourceData ) str = "24-bit";
-		else if( inASBD->mFormatFlags == kAppleLosslessFormatFlag_32BitSourceData ) str = "32-bit";
-		else																		str = "\?\?-bit";
-		n = PrintFCore( inContext, ", %s", str );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-	if(      inASBD->mChannelsPerFrame == 1 ) str = "Mono";
-	else if( inASBD->mChannelsPerFrame == 2 ) str = "Stereo";
-	else { SNPrintF( buf, sizeof( buf ), "%u ch", inASBD->mChannelsPerFrame ); str = buf; }
-	n = PrintFCore( inContext, ", %s", str );
-	require_action_quiet( n >= 0, exit, total = n );
-	total += n;
-	
-	if( inASBD->mFormatFlags & kAudioFormatFlagIsNonInterleaved )
-	{
-		n = PrintFCore( inContext, ", Non-interleaved" );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-	if( inASBD->mFormatID == kAudioFormatLinearPCM )
-	{
-		#if( TARGET_RT_LITTLE_ENDIAN )
-		if( inASBD->mFormatFlags & kLinearPCMFormatFlagIsBigEndian )
-		#else
-		if( !( inASBD->mFormatFlags & kLinearPCMFormatFlagIsBigEndian ) )
-		#endif
-		{
-			n = PrintFCore( inContext, ", Swapped" );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-		
-		if( inASBD->mFormatFlags & kAudioFormatFlagIsFloat )
-		{
-			n = PrintFCore( inContext, ", Float" );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-		else if( ( inASBD->mBitsPerChannel > 0 ) && ( inASBD->mFormatFlags & kLinearPCMFormatFlagIsSignedInteger ) && 
-				 ( inASBD->mFormatFlags & kLinearPCMFormatFlagsSampleFractionMask ) )
-		{
-			u32 = ( inASBD->mFormatFlags & kLinearPCMFormatFlagsSampleFractionMask ) >> kLinearPCMFormatFlagsSampleFractionShift;
-		
-			n = PrintFCore( inContext, ", %u.%u", inASBD->mBitsPerChannel - u32, u32 );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-	}
-	
-	if( inASBD->mFramesPerPacket > 1 )
-	{
-		n = PrintFCore( inContext, ", %u samples/packet", inASBD->mFramesPerPacket );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-exit:
-	return( total );	
-}
-
-//===========================================================================================================================
 //	PrintFWriteBits
 //===========================================================================================================================
 
@@ -1759,210 +1284,6 @@ static int	PrintFWriteBits( uint64_t inX, PrintFFormat *inFormat, char *outStr )
 		}
 	}
 	return( (int)( dst - outStr ) );
-}
-
-//===========================================================================================================================
-//	PrintFWriteCEC
-//===========================================================================================================================
-
-#define CECAddressToString( X )	( \
-	( (X) == 0 )	? "TV"			: \
-	( (X) == 1 )	? "Record 1" 	: \
-	( (X) == 2 )	? "Record 2" 	: \
-	( (X) == 3 )	? "Tuner 1"		: \
-	( (X) == 4 )	? "Player1" 	: \
-	( (X) == 5 )	? "Audio"		: \
-	( (X) == 6 )	? "Tuner 2"		: \
-	( (X) == 7 )	? "Tuner 3"		: \
-	( (X) == 8 )	? "Player 2"	: \
-	( (X) == 9 )	? "Record 3"	: \
-	( (X) == 10 )	? "Tuner 4"		: \
-	( (X) == 11 )	? "Player 3"	: \
-	( (X) == 12 )	? "Backup 1"	: \
-	( (X) == 13 )	? "Backup 2"	: \
-	( (X) == 14 )	? "Extra"		: \
-	( (X) == 15 )	? "Broadcast"	: \
-					  "?" )
-
-static int	PrintFWriteCEC( PrintFContext *ctx, const uint8_t *inData, size_t inLen )
-{
-	int							total	= 0;
-	const uint8_t *				src		= inData;
-	const uint8_t * const		end		= src + inLen;
-	OSStatus					err;
-	uint8_t						srcAddr, dstAddr;
-	uint8_t						opcode;
-	const char *				label;
-	const char *				params = NULL;
-	char						labelBuf[ 32 ];
-	char						paramsBuf[ 32 ];
-	size_t						len;
-	
-	require_action_quiet( ( end - src ) >= 1, exit, err = kUnderrunErr );
-	srcAddr = *src >> 4;
-	dstAddr = *src & 0xF;
-	src += 1;
-	
-	if( ( end - src ) >= 1 )
-	{
-		opcode = *src++;
-		switch( opcode )
-		{
-			case 0x04: // ImageViewOn
-				label = "<Image View On>";
-				break;
-			
-			case 0x0D: // TextViewOn
-				label = "<Text View On>";
-				break;
-			
-			case 0x82: // ActiveSource
-				require_action_quiet( ( end - src ) >= 2, exit, err = kMalformedErr );
-				label = "<Active Source>";
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "%.2a", src );
-				params = paramsBuf;
-				break;
-			
-			case 0x9D: // InactiveSource
-				label = "<Inactive Source>";
-				break;
-			
-			case 0x85: // RequestActiveSource
-				label = "<Request Active Source>";
-				break;
-			
-			case 0x80: // RoutingChange
-				require_action_quiet( ( end - src ) >= 4, exit, err = kMalformedErr );
-				label = "<Routing Change>";
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "%.2a -> %.2a", src, src + 2 );
-				params = paramsBuf;
-				break;
-			
-			case 0x8F: // GivePowerStatus
-				label = "<Give Power Status>";
-				break;
-			
-			case 0x90: // ReportPowerStatus
-				label = "<Report Power Status>";
-				break;
-			
-			case 0x36: // Standby
-				label = "<Standby>";
-				break;
-			
-			case 0x9F: // GetCECVersion
-				label = "<Get CEC Version>";
-				break;
-			
-			case 0x9E: // CECVersion
-				label = "<CEC Version>";
-				require_action_quiet( ( end - src ) >= 1, exit, err = kMalformedErr );
-				if(      src[ 0 ] == 4 ) params = "1.3a";
-				else if( src[ 0 ] == 5 ) params = "1.4";
-				else if( src[ 0 ] == 6 ) params = "2.0";
-				else
-				{
-					len = (size_t)( end - src );
-					SNPrintF( paramsBuf, sizeof( paramsBuf ), "Other %H", src, (int) len, (int) len );
-					params = paramsBuf;
-				}
-				break;
-			
-			case 0x83: // GivePhysicalAddress
-				label = "<Give Physical Address>";
-				break;
-			
-			case 0x84: // ReportPhysicalAddress
-				label = "<Report Physical Address>";
-				break;
-			
-			case 0x8C: // GiveDeviceVendorID
-				label = "<Give Device Vendor ID>";
-				break;
-			
-			case 0x87: // DeviceVendorID
-				label = "<Device Vendor ID>";
-				require_action_quiet( ( end - src ) >= 3, exit, err = kMalformedErr );
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "%02X-%02X-%02X", src[ 0 ], src[ 1 ], src[ 2 ] );
-				params = paramsBuf;
-				break;
-			
-			case 0x86: // SetStreamPath
-				label = "<Set Stream Path>";
-				require_action_quiet( ( end - src ) >= 2, exit, err = kMalformedErr );
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "%.2a", src );
-				params = paramsBuf;
-				break;
-			
-			case 0x46: // GetOSDName
-				label = "<Get OSD Name>";
-				break;
-			
-			case 0x47: // SetOSDName
-				label = "<Set OSD Name>";
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "'%.*s'", (int)( end - src ), (const char *) src );
-				params = paramsBuf;
-				break;
-			
-			case 0x32: // SetMenuLanguage
-				label = "<Set Menu Language>";
-				SNPrintF( paramsBuf, sizeof( paramsBuf ), "'%.*s'", (int)( end - src ), (const char *) src );
-				params = paramsBuf;
-				break;
-			
-			case 0x8D: // MenuRequest
-				label = "<Menu Request>";
-				break;
-			
-			case 0x8E: // MenuStatus
-				label = "<Menu Status>";
-				break;
-			
-			case 0x44: // UserControlPressed
-				label = "<User Control Pressed>";
-				break;
-			
-			case 0x45: // UserControlReleased
-				label = "<User Control Released>";
-				break;
-			
-			case 0x00: // FeatureAbort
-				label = "<Feature Abort>";
-				break;
-			
-			case 0x1A: // GiveDeckStatus
-				label = "<Give Deck Status>";
-				break;
-			
-			case 0xA0: // VendorCommandWithID
-				label = "<Vendor Command with ID>";
-				break;
-			
-			default:
-				SNPrintF( labelBuf, sizeof( labelBuf ), "<<? 0x%02X>>", opcode );
-				label = labelBuf;
-				break;
-		}
-	}
-	else
-	{
-		label  = "<Poll>";
-		params = "";
-	}
-	if( !params )
-	{
-		len = (size_t)( end - src );
-		SNPrintF( paramsBuf, sizeof( paramsBuf ), "%H", src, (int) len, (int) len );
-		params = paramsBuf;
-	}
-	err = PrintFCore( ctx, "%-9s -> %9s: %s %s", CECAddressToString( srcAddr ), CECAddressToString( dstAddr ), label, params );
-	require_quiet( err >= 0, exit );
-	total += err;
-	err = kNoErr;
-	
-exit:
-	if( err ) total = PrintFCore( ctx, "<< MALFORMED CEC: %H >>", inData, (int) inLen, 64 );
-	return( total );
 }
 
 #if( DEBUG_CF_OBJECTS_ENABLED )
@@ -2540,114 +1861,7 @@ exit:
 	if( err < 0 ) context->error = err;
 }
 
-//===========================================================================================================================
-//	PrintFWriteCFXMLObject
-//===========================================================================================================================
-
-#if( !CFLITE_ENABLED || CFL_XML )
-static int	PrintFWriteCFXMLObject( PrintFContext *inContext, PrintFFormat *inFormat, CFTypeRef inObj )
-{
-	int				total = 0, err;
-	CFDataRef		xmlData;
-	const char *	xmlPtr;
-	size_t			xmlLen;
-	
-	xmlData = CFPropertyListCreateData( NULL, inObj, kCFPropertyListXMLFormat_v1_0, 0, NULL );
-	if( !xmlData )
-	{
-		err = PrintFCore( inContext, "<<PLIST NOT XML-ABLE>>" );
-		require_action_quiet( err >= 0, exit, total = err );
-		total += err;
-		goto exit;
-	}
-	xmlPtr = (const char *) CFDataGetBytePtr( xmlData );
-	xmlLen = (size_t) CFDataGetLength( xmlData );
-	
-	err = PrintFWriteMultiLineText( inContext, inFormat, xmlPtr, xmlLen );
-	CFRelease( xmlData );
-	require_action_quiet( err >= 0, exit, total = err );
-	total += err;
-	
-exit:
-	return( total );
-}
-#endif // !CFLITE_ENABLED || CFL_XML
 #endif // DEBUG_CF_OBJECTS_ENABLED
-
-//===========================================================================================================================
-//	PrintFWriteFill
-//===========================================================================================================================
-
-static int	PrintFWriteFill( PrintFContext *inContext, int inC, size_t inCount, char *inBuf )
-{
-	int			total = 0, n;
-	size_t		len;
-	
-	while( inCount > 0 )
-	{
-		len = Min( inCount, kPrintFBufSize );
-		memset( inBuf, inC, len );
-		inCount -= len;
-		
-		n = inContext->callback( inBuf, len, inContext );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-exit:
-	return( total );
-}
-
-//===========================================================================================================================
-//	PrintFWriteFlags
-//===========================================================================================================================
-
-static int	PrintFWriteFlags( PrintFContext *inContext, PrintFFormat *inFormat, const char *inDescriptors, uint64_t inX )
-{
-	int					total = 0, n;
-	uint64_t			mask;
-	uint8_t				i, bit;
-	const char *		descPtr;
-	size_t				len;
-	
-	if( inFormat->altForm )
-	{
-		n = PrintFCore( inContext, "0x%llX ", inX );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-	n = PrintFCore( inContext, "<" );
-	require_action_quiet( n >= 0, exit, total = n );
-	total += n;
-	
-	for( i = 0; ( i < 64 ) && inX; ++i )
-	{
-		mask = UINT64_C( 1 ) << i;
-		if( !( inX & mask ) ) continue;
-		inX &= ~mask;
-		
-		for( descPtr = inDescriptors; ; descPtr += ( len + 1 ) )
-		{
-			bit = (uint8_t)( *descPtr++ );
-			len = strlen( descPtr );
-			if( len == 0 ) break;
-			if( bit != i ) continue;
-			
-			n = PrintFCore( inContext, " %s", descPtr );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-			break;
-		}
-	}
-	
-	n = PrintFCore( inContext, " >" );
-	require_action_quiet( n >= 0, exit, total = n );
-	total += n;
-	
-exit:
-	return( total );
-}
 
 //===========================================================================================================================
 //	PrintFWriteHex
@@ -3002,127 +2216,6 @@ exit:
 }
 
 //===========================================================================================================================
-//	PrintFWriteNumVersion
-//===========================================================================================================================
-
-static int	PrintFWriteNumVersion( uint32_t inVersion, char *outStr )
-{
-	char *		dst;
-	char *		lim;
-	uint8_t		majorRev;
-	uint8_t		minor;
-	uint8_t		bugFix;
-	uint8_t		stage;
-	uint8_t		revision;
-		
-	majorRev 	= (uint8_t)( ( inVersion >> 24 ) & 0xFF );
-	minor		= (uint8_t)( ( inVersion >> 20 ) & 0x0F );
-	bugFix		= (uint8_t)( ( inVersion >> 16 ) & 0x0F );
-	stage 		= (uint8_t)( ( inVersion >>  8 ) & 0xFF );
-	revision 	= (uint8_t)(   inVersion         & 0xFF );
-	
-	// Convert the major, minor, and bugfix numbers. Bugfix only added if it is non-zero (i.e. print 6.2 and not 6.2.0).
-	
-	dst  = outStr;
-	lim  = dst + kPrintFBufSize;
-	SNPrintF_Add( &dst, lim, "%u", majorRev );
-	SNPrintF_Add( &dst, lim, ".%u", minor );
-	if( bugFix != 0 ) SNPrintF_Add( &dst, lim, ".%u", bugFix );
-	
-	// Convert the version stage and non-release revision number.
-	
-	switch( stage )
-	{
-		case kVersionStageDevelopment:	SNPrintF_Add( &dst, lim, "d%u", revision ); break;
-		case kVersionStageAlpha:		SNPrintF_Add( &dst, lim, "a%u", revision ); break;
-		case kVersionStageBeta:			SNPrintF_Add( &dst, lim, "b%u", revision ); break;
-		case kVersionStageFinal:
-			
-			// A non-release revision of zero is a special case indicating the software is GM (at the golden master 
-			// stage) and therefore, the non-release revision should not be added to the string.
-			
-			if( revision != 0 ) SNPrintF_Add( &dst, lim, "f%u", revision );
-			break;
-		
-		default:
-			SNPrintF_Add( &dst, lim, "<< ERROR: invalid NumVersion stage: 0x%02X >>", revision );
-			break;
-	}
-	return( (int)( dst - outStr ) );
-}
-
-//===========================================================================================================================
-//	PrintFWriteObfuscatedPtr
-//===========================================================================================================================
-
-static int	PrintFWriteObfuscatedPtr( PrintFContext *inContext, const void *inPtr )
-{
-	static dispatch_once_t		sOnce = 0;
-	static uint8_t				sKey[ 16 ];
-	int							n;
-	uint64_t					hash;
-	
-	dispatch_once_f( &sOnce, sKey, _PrintFWriteObfuscatedPtrInit );
-	hash = inPtr ? SipHash( sKey, &inPtr, sizeof( inPtr ) ) : 0;
-	n = PrintFCore( inContext, "0x%04X", (uint16_t)( hash & 0xFFFF ) );
-	return( ( n >= 0 ) ? n : 0 );
-}
-
-//===========================================================================================================================
-//	_PrintFWriteObfuscatedPtrInit
-//===========================================================================================================================
-
-static void	_PrintFWriteObfuscatedPtrInit( void *inArg )
-{
-	uint8_t * const		key = (uint8_t *) inArg;
-	OSStatus			err;
-	
-	DEBUG_USE_ONLY( err );
-	
-	err = RandomBytes( key, 16 );
-	check_noerr( err );
-}
-
-//===========================================================================================================================
-//	PrintFWriteSingleLineText
-//===========================================================================================================================
-
-static int	PrintFWriteSingleLineText( PrintFContext *inContext, const char *inStr, size_t inLen )
-{
-	int					total = 0, err;
-	const char *		src;
-	const char *		end;
-	const char *		ptr;
-	size_t				len;
-	
-	src = inStr;
-	end = inStr + inLen;
-	while( src < end )
-	{
-		for( ptr = src; ( src < end ) && ( *src != '\r' ) && ( *src != '\n' ); ++src ) {}
-		if( ptr < src )
-		{
-			len = (size_t)( src - ptr );
-			err = inContext->callback( ptr, len, inContext );
-			require_action_quiet( err >= 0, exit, total = err );
-			total += (int) len;
-		}
-		
-		for( ptr = src; ( src < end ) && ( ( *src == '\r' ) || ( *src == '\n' ) ); ++src ) {}
-		if( ( ptr < src ) && ( src < end ) )
-		{
-			len = sizeof_string( " ⏎ " );
-			err = inContext->callback( " ⏎ ", len, inContext );
-			require_action_quiet( err >= 0, exit, total = err );
-			total += (int) len;
-		}
-	}
-	
-exit:
-	return( total );
-}
-
-//===========================================================================================================================
 //	PrintFWriteString
 //===========================================================================================================================
 
@@ -3328,285 +2421,6 @@ error:
 }
 
 //===========================================================================================================================
-//	PrintFWriteTimeDuration
-//
-//	Converts seconds into a days, hours, minutes, and seconds string. For example: 930232 -> "10d 18h 23m 52s".
-//===========================================================================================================================
-
-static int	PrintFWriteTimeDuration( uint64_t inSeconds, int inAltForm, char *inBuf )
-{
-	unsigned int		years;
-	unsigned int		remain;
-	unsigned int		days;
-	unsigned int		hours;
-	unsigned int		minutes;
-	unsigned int		seconds;
-	unsigned int		x;
-	char *				dst;
-	
-	years	= (unsigned int)( inSeconds / kSecondsPerYear );
-	remain	= (unsigned int)( inSeconds % kSecondsPerYear );
-	days    = remain / kSecondsPerDay;
-	remain	= remain % kSecondsPerDay;
-	hours	= remain / kSecondsPerHour;
-	remain	= remain % kSecondsPerHour;
-	minutes	= remain / kSecondsPerMinute;
-	seconds	= remain % kSecondsPerMinute;
-	
-	dst = inBuf;
-	if( years != 0 )
-	{
-		append_decimal_string( years, dst );
-		*dst++ = 'y';
-	}
-	if( days != 0 )
-	{
-		if( dst != inBuf ) *dst++ = ' ';
-		append_decimal_string( days, dst );
-		*dst++ = 'd';
-	}
-	x = hours;
-	if( x != 0 )
-	{
-		if( dst != inBuf ) *dst++ = ' ';
-		if( inAltForm && ( x < 10 ) ) *dst++ = '0';
-		append_decimal_string( x, dst );
-		*dst++ = inAltForm ? ':' : 'h';
-	}
-	x = minutes;
-	if( ( x != 0 ) || inAltForm )
-	{
-		if( !inAltForm && ( dst != inBuf ) )				*dst++ = ' ';
-		if( inAltForm  && ( x < 10 ) && ( hours != 0 ) )	*dst++ = '0';
-		append_decimal_string( x, dst );
-		*dst++ = inAltForm ? ':' : 'm';
-	}
-	x = seconds;
-	if( ( x != 0 ) || ( dst == inBuf ) || inAltForm )
-	{
-		if( !inAltForm && ( dst != inBuf ) ) *dst++ = ' ';
-		if( inAltForm  && ( x < 10 ) )		 *dst++ = '0';
-		append_decimal_string( x, dst );
-		if( !inAltForm ) *dst++ = 's';
-	}
-	*dst = '\0';
-	return( (int)( dst - inBuf ) );
-}
-
-//===========================================================================================================================
-//	PrintFWriteTLV8
-//===========================================================================================================================
-
-static int
-	PrintFWriteTLV8( 
-		PrintFContext *	inContext, 
-		PrintFFormat *	inFormat, 
-		const char *	inDescriptors, 
-		const uint8_t *	inPtr, 
-		size_t			inLen )
-{
-	int							total	= 0, n;
-	const uint8_t * const		end		= inPtr + inLen;
-	const uint8_t *				src;
-	const uint8_t *				ptr;
-	const uint8_t *				ptr2;
-	const uint8_t *				next;
-	unsigned int				len, len2;
-	uint8_t						type, type2;
-	unsigned int				widestDesc, widestLen;
-	const char *				descPtr;
-	const char *				label;
-	Boolean						isText;
-	
-	// Determine the widest pieces.
-	
-	widestDesc = 0;
-	widestLen  = 0;
-	for( src = inPtr; ( end - src ) >= 2; src = next )
-	{
-		type = src[ 0 ];
-		len  = src[ 1 ];
-		ptr  = &src[ 2 ];
-		next = ptr + len;
-		if( ( next < src ) || ( next > end ) ) break;
-		if( len > widestLen ) widestLen = len;
-		
-		for( descPtr = inDescriptors; ; descPtr += ( len2 + 1 ) )
-		{
-			type2 = (uint8_t)( *descPtr++ );
-			len2 = (unsigned int) strlen( descPtr );
-			if( len2 == 0 ) break;
-			if( type2 != type ) continue;
-			if( len2 > widestDesc ) widestDesc = len2;
-		}
-	}
-	widestLen = ( widestLen < 10 ) ? 1 : ( widestLen < 100 ) ? 2 : 3;
-	
-	// Print each item.
-	
-	for( src = inPtr; ( end - src ) >= 2; src = next )
-	{
-		type = src[ 0 ];
-		len  = src[ 1 ];
-		ptr  = &src[ 2 ];
-		next = ptr + len;
-		if( ( next < src ) || ( next > end ) ) break;
-		
-		// Search for a label for this type.
-		
-		label = NULL;
-		for( descPtr = inDescriptors; ; descPtr += ( len2 + 1 ) )
-		{
-			type2 = (uint8_t)( *descPtr++ );
-			len2 = (unsigned int) strlen( descPtr );
-			if( len2 == 0 ) break;
-			if( type2 != type ) continue;
-			label = descPtr;
-			break;
-		}
-		
-		// Print the item.
-		
-		for( ptr2 = ptr; ( ptr2 != next ) && PrintFIsPrintable( *ptr2 ); ++ptr2 ) {}
-		isText = ( ptr2 == next ) ? true : false;
-		
-		n = PrintFCore( inContext, "%*s0x%02X", inFormat->fieldWidth * 4, "", type );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-		
-		if( label )
-		{
-			n = PrintFCore( inContext, " (%s)", label );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-		
-		len2 = label ? ( widestDesc - ( (unsigned int) strlen( label ) ) ) : ( 3 + widestDesc );
-		if( len == 0 )			n = PrintFCore( inContext, ", %*s%*u bytes\n", len2, "", widestLen, 0 );
-		else if( isText )		n = PrintFCore( inContext, ", %*s%*u bytes, \"%.*s\"\n", len2, "", widestLen, len, len, ptr );
-		else if( len <= 16 )	n = PrintFCore( inContext, ", %*s%*u bytes, %#H\n", len2, "", widestLen, len, ptr, len, len );
-		else					n = PrintFCore( inContext, "\n%*.1H", inFormat->fieldWidth + 1, ptr, len, len );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-exit:
-	return( total );
-}
-
-
-//===========================================================================================================================
-//	PrintFWriteTXTRecord
-//===========================================================================================================================
-
-static int	PrintFWriteTXTRecord( PrintFContext *inContext, PrintFFormat *inFormat, const void *inPtr, size_t inLen )
-{
-	const unsigned int		kIndent = inFormat->fieldWidth * 4;
-	int						total   = 0;
-	int						n;
-	const uint8_t *			buf;
-	const uint8_t *			src;
-	const uint8_t *			end;
-	size_t					len;
-	uint8_t					c;
-	const char *			seperator;
-	
-	buf = (const uint8_t *) inPtr;
-	src = buf;
-	end = src + inLen;
-	
-	// AltForm prints the TXT record on a single line.
-	
-	if( inFormat->altForm )
-	{
-		seperator = "";
-		for( ; src < end; src += len )
-		{
-			len = *src++;
-			if( ( (size_t)( end - src ) ) < len ) break;
-			
-			n = PrintFCore( inContext, "%s%.*s", seperator, (int) len, src );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-			seperator = " | ";
-		}
-	}
-	else
-	{
-		// Handle AirPort TXT records that are one big entry with comma-separated name=value pairs.
-		
-		if( ( inLen >= 6 ) && ( memcmp( &src[ 1 ], "waMA=", 5 ) == 0 ) )
-		{
-			uint8_t			tempBuf[ 256 ];
-			uint8_t *		tempPtr;
-			
-			len = *src++;
-			if( ( src + len ) != end )
-			{
-				n = PrintFCore( inContext, "%*s### bad TXT record length byte (%zu, %zu expected)\n", 
-					kIndent, "", len, (size_t)( end - src ) );
-				require_action_quiet( n >= 0, exit, total = n );
-				total += n;
-				goto exit;
-			}
-			while( src < end )
-			{
-				tempPtr = tempBuf;
-				while( src < end )
-				{
-					c = *src++;
-					if( c == ',' ) break;
-					if( c == '\\' )
-					{
-						if( src >= end )
-						{
-							n = PrintFCore( inContext, "%*s### bad TXT escape: %.*s\n", kIndent, "", 
-								(int)( inLen - 1 ), buf + 1 );
-							require_action_quiet( n >= 0, exit, total = n );
-							total += n;
-							goto exit;
-						}
-						c = *src++;
-					}
-					*tempPtr++ = c;
-				}
-				
-				n = PrintFCore( inContext, "%*s%.*s\n", kIndent, "", (int)( tempPtr - tempBuf ), tempBuf );
-				require_action_quiet( n >= 0, exit, total = n );
-				total += n;
-			}
-		}
-		else
-		{
-			for( ; src < end; src += len )
-			{
-				len = *src++;
-				if( ( src + len ) > end )
-				{
-					n = PrintFCore( inContext, "%*s### TXT record length byte too big (%zu, %zu max)\n", 
-						kIndent, "", len, (size_t)( end - src ) );
-					require_action_quiet( n >= 0, exit, total = n );
-					total += n;
-					goto exit;
-				}
-				n = PrintFCore( inContext, "%*s%.*s\n", kIndent, "", (int) len, src );
-				require_action_quiet( n >= 0, exit, total = n );
-				total += n;
-			}
-		}
-		if( ( inLen == 0 ) || ( buf[ 0 ] == 0 ) )
-		{
-			n = PrintFCore( inContext, "\n" );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-	}
-	
-exit:
-	return( total );
-}
-
-//===========================================================================================================================
 //	PrintFWriteUnicodeString
 //===========================================================================================================================
 
@@ -3654,67 +2468,6 @@ static int	PrintFWriteUnicodeString( const uint8_t *inStr, PrintFFormat *inForma
 			break;
 	}
 	return( i );
-}
-
-//===========================================================================================================================
-//	PrintFWriteXMLEscaped
-//===========================================================================================================================
-
-static int	PrintFWriteXMLEscaped( PrintFContext *inContext, const char *inPtr, size_t inLen )
-{
-	const char * const		end		= inPtr + ( ( inLen == kSizeCString ) ? strlen( inPtr ) : inLen );
-	int						total	= 0;
-	int						n;
-	char					c;
-	const char *			run;
-	size_t					len;
-	const char *			replace;
-	
-	run = inPtr;
-	while( inPtr < end )
-	{
-		c = *inPtr;
-		switch( c )
-		{
-			case '&':	replace = "&amp;";	break;
-			case '"':	replace = "&quot;";	break;
-			case '\'':	replace = "&#39;";	break; // No &apos; in HTML 4, but &#39; works in HTML, XHTML, and XML.
-			case '<':	replace = "&lt;";	break;
-			case '>':	replace = "&gt;";	break;
-			default:	replace = NULL;		break;
-		}
-		if( replace )
-		{
-			len = (size_t)( inPtr - run );
-			++inPtr;
-			if( len > 0 )
-			{
-				n = inContext->callback( run, len, inContext );
-				require_action_quiet( n >= 0, exit, total = n );
-				total += n;
-			}
-			run = inPtr;
-			
-			n = PrintFCore( inContext, "%s", replace );
-			require_action_quiet( n >= 0, exit, total = n );
-			total += n;
-		}
-		else
-		{
-			++inPtr;
-		}
-	}
-	
-	len = (size_t)( inPtr - run );
-	if( len > 0 )
-	{
-		n = inContext->callback( run, len, inContext );
-		require_action_quiet( n >= 0, exit, total = n );
-		total += n;
-	}
-	
-exit:
-	return( total );
 }
 
 #if 0
@@ -3814,8 +2567,6 @@ static int	PrintFCallBackUserCallBack( const char *inStr, size_t inSize, PrintFC
 //	PrintFUtils_Test
 //===========================================================================================================================
 
-static int		_PrintFTestExtension1( PrintFContext *ctx, PrintFFormat *inFormat, PrintFVAList *inArgs, void *inUserContext );
-static int		_PrintFTestExtension2( PrintFContext *ctx, PrintFFormat *inFormat, PrintFVAList *inArgs, void *inUserContext );
 static OSStatus	_PrintFTestString( const char *inMatch, const char *inFormat, ... );
 static OSStatus	_PrintFTestVAList( const char *inMatch, const char *inFormat, ... );
 
@@ -4055,9 +2806,6 @@ OSStatus	PrintFUtils_Test( void )
 	PFTEST2( "abc", "%#.*S", 3, "\x00" "a" "\x00" "b" "\x00" "c" "\x00" "d" );	// Big Endian
 	PFTEST2( "abc", "%##.*S", 3, "a" "\x00" "b" "\x00" "c" "\x00" "d" "\x00" );	// Little Endian
 
-#if( TARGET_OS_WINDOWS )
-	PFTEST1( "Testing", "%T", TEXT( "Testing" ) );
-#endif
 
 	// Other Tests.
 	
@@ -4067,8 +2815,6 @@ OSStatus	PrintFUtils_Test( void )
 	PFTEST1( "'AbCd'", "%'C", 0x41624364 /* 'AbCd' */ );
 	PFTEST1( "6ba7b810-9dad-11d1-80b4-00c04fd430c8", "%U",  "\x10\xb8\xa7\x6b" "\xad\x9d" "\xd1\x11" "\x80\xb4" "\x00\xc0\x4f\xd4\x30\xc8" );
 	PFTEST1( "10b8a76b-ad9d-d111-80b4-00c04fd430c8", "%#U", "\x10\xb8\xa7\x6b" "\xad\x9d" "\xd1\x11" "\x80\xb4" "\x00\xc0\x4f\xd4\x30\xc8" );
-	
-	PFTEST2( "Player1   -> Broadcast: <Poll> ", "%{cec}", "\x4F", 1 );
 	
 #if( DEBUG || DEBUG_EXPORT_ERROR_STRINGS )
 	PFTEST1( "noErr", "%m", 0 );
@@ -4119,7 +2865,6 @@ OSStatus	PrintFUtils_Test( void )
 }
 #endif
 	
-	PFTEST1( "1.2.3b4", "%v", (uint32_t) 0x01236004 );
 	PFTEST1( "%5", "%%%d", 5 );
 	
 	err = _PrintFTestString( "Test 123 hello, world", "Test %d %s%n", 123, "hello, world", &n );
@@ -4129,9 +2874,6 @@ OSStatus	PrintFUtils_Test( void )
 	err = _PrintFTestVAList( "begin 123 test 456 end", "%d test %s%n", 123, "456", &n );
 	require_noerr( err, exit );
 	require_action( n == 12, exit, err = kResponseErr );
-	
-	PFTEST1( "0s", "%{dur}", 0 );
-	PFTEST1( "10d 18h 23m 52s", "%{dur}", 930232 );
 	
 	PFTEST1( "a", "%c", 'a' );
 	
@@ -4193,115 +2935,6 @@ OSStatus	PrintFUtils_Test( void )
 	
 	err = _PrintFTestString( ":abc123:", ":%?s%?d%?d%?s:", true, "abc", true, 123, false, 456, false, "xyz" );
 	require_noerr( err, exit );
-	
-	// %{fill}
-	
-	PFTEST2( "", "%{fill}", '*', 0 );
-	PFTEST2( "*", "%{fill}", '*', 1 );
-	PFTEST2( "*******", "%{fill}", '*', 7 );
-	PFTEST2( "\t\t\t", "%{fill}", '\t', 3 );
-	memset( buf, 'z', 400 );
-	buf[ 400 ] = '\0';
-	PFTEST2( buf, "%{fill}", 'z', 400 );
-	
-	// %{flags}
-	
-	PFTEST2( "< >", "%{flags}", 0, 
-		"\x02" "FLAG2\0"
-		"\x08" "FLAG8\0"
-		"\x00" );
-	PFTEST2( "< FLAG2 FLAG8 >", "%{flags}", 0x1F4, 
-		"\x02" "FLAG2\0"
-		"\x08" "FLAG8\0"
-		"\x00" );
-	PFTEST2( "0xFF < FLAG0 FLAG1 FLAG2 FLAG3 FLAG4 FLAG5 FLAG6 FLAG7 >", "%#{flags}", 0xFF, 
-		"\x00" "FLAG0\0"
-		"\x01" "FLAG1\0"
-		"\x02" "FLAG2\0"
-		"\x03" "FLAG3\0"
-		"\x04" "FLAG4\0"
-		"\x05" "FLAG5\0"
-		"\x06" "FLAG6\0"
-		"\x07" "FLAG7\0"
-		"\x00" );
-	PFTEST2( "0x800000000022 < FLAG1 FLAG5 FLAG47 >", "%#ll{flags}", UINT64_C( 0x800000000022 ), 
-		"\x00" "FLAG0\0"
-		"\x01" "FLAG1\0"
-		"\x05" "FLAG5\0"
-		"\x2F" "FLAG47\0"
-		"\x30" "FLAG48\0"
-		"\x00" );
-	
-	// %{ptr}
-	
-	n = SNPrintF( buf, sizeof( buf ), "%{ptr}", buf );
-	require_action( n == 6, exit, err = kSizeErr );
-	require_action( buf[ 0 ] == '0', exit, err = kMismatchErr );
-	require_action( buf[ 1 ] == 'x', exit, err = kMismatchErr );
-	
-	n = SNPrintF( buf, sizeof( buf ), "%{ptr}", NULL );
-	require_action( n == 6, exit, err = kSizeErr );
-	require_action( strcmp( buf, "0x0000" ) == 0, exit, err = kMismatchErr );
-	
-	// %#{txt}
-	
-	n = SNPrintF( buf, sizeof( buf ), "%#{txt}", NULL, (size_t) 0 );
-	require_action( n == 0, exit, err = kSizeErr );
-	require_action( strcmp( buf, "" ) == 0, exit, err = kMismatchErr );
-	
-	n = SNPrintF( buf, sizeof( buf ), "%#{txt}", "\x03" "a=b", (size_t) 4 );
-	require_action( n == 3, exit, err = kSizeErr );
-	require_action( strcmp( buf, "a=b" ) == 0, exit, err = kMismatchErr );
-	
-	n = SNPrintF( buf, sizeof( buf ), "%#{txt}", "\x06" "a=1234" "\x05" "abc=x", (size_t) 13 );
-	require_action( n == 14, exit, err = kSizeErr );
-	require_action( strcmp( buf, "a=1234 | abc=x" ) == 0, exit, err = kMismatchErr );
-	
-	// %{xml}
-	
-	PFTEST2( "",										"%{xml}", "", 0 );
-	PFTEST2( "test",									"%{xml}", "test", 4 );
-	PFTEST2( "&lt;test&gt;",							"%{xml}", "<test>", kSizeCString );
-	PFTEST2( "&amp;&quot;&#39;&lt;&gt;",				"%{xml}", "&\"'<>", kSizeCString );
-	PFTEST2( " &amp; &quot; &#39; &lt; &gt; ",			"%{xml}", " & \" ' < > ", kSizeCString );
-	PFTEST2( "&lt;test",								"%{xml}", "<test", kSizeCString );
-	PFTEST2( "test&gt;",								"%{xml}", "test>", kSizeCString );
-	PFTEST2( "Test of a &quot;string&quot; of text",	"%{xml}", "Test of a \"string\" of text", kSizeCString );
-	
-	// Extension tests.
-	
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test1'>> >", "< %{test1} >", 123 );
-	err = PrintFRegisterExtension( "test1", _PrintFTestExtension1, NULL );
-	require_noerr( err, exit );
-	PFTEST2( "< Alt=0, a=123, b='xyz' >", "< %{test1} >", 123, "xyz" );
-	PrintFDeregisterExtension( "test1" );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test1'>> >", "< %{test1} >", 123 );
-	
-	err = PrintFRegisterExtension( "test1", _PrintFTestExtension1, NULL );
-	require_noerr( err, exit );
-	err = PrintFRegisterExtension( "test2", _PrintFTestExtension2, NULL );
-	require_noerr( err, exit );
-	PFTEST2( "< Alt=1, a=456, b='ABC' >", "< %#{test1} >", 456, "ABC" );
-	PFTEST1( "< NoArgsExtension >", "< %{test2} >", 123 );
-	PrintFDeregisterExtension( "test1" );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test1'>> >", "< %{test1} >", 123 );
-	PFTEST1( "< NoArgsExtension >", "< %{test2} >", 123 );
-	PrintFDeregisterExtension( "test2" );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test1'>> >", "< %{test1} >", 123 );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test2'>> >", "< %{test2} >", 123 );
-	
-	err = PrintFRegisterExtension( "test1", _PrintFTestExtension1, NULL );
-	require_noerr( err, exit );
-	err = PrintFRegisterExtension( "test2", _PrintFTestExtension2, NULL );
-	require_noerr( err, exit );
-	PFTEST2( "< Alt=1, a=456, b='ABC' >", "< %#{test1} >", 456, "ABC" );
-	PFTEST1( "< NoArgsExtension >", "< %{test2} >", 123 );
-	PrintFDeregisterExtension( "test2" );
-	PFTEST2( "< Alt=1, a=456, b='ABC' >", "< %#{test1} >", 456, "ABC" );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test2'>> >", "< %{test2} >", 123 );
-	PrintFDeregisterExtension( "test1" );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test1'>> >", "< %{test1} >", 123 );
-	PFTEST1( "< <<UNKNOWN PRINTF EXTENSION 'test2'>> >", "< %{test2} >", 123 );
 	
 	// Bounds Tests.
 	
@@ -4372,51 +3005,11 @@ OSStatus	PrintFUtils_Test( void )
 	require_action( err != kNoErr, exit, err = -1 );
 	require_action( strcmp( lim, "abc" ) == 0, exit, err = -1 );
 	
-#if( COMPILER_OBJC )
-@autoreleasepool
-{
-	require_action( [NSPrintF( "Test %d", 123 ) isEqual:@"Test 123"], exit, err = -1 );
-	require_action( [NSPrintF( "abc" ) isEqual:@"abc"], exit, err = -1 );
-	require_action( [NSPrintF( "%m", kNoErr ) isEqual:@"noErr"], exit, err = -1 );
-}
-#endif
-	
 	err = kNoErr;
 	
 exit:
-	PrintFDeregisterExtension( "test1" );
-	PrintFDeregisterExtension( "test2" );
 	printf( "PrintFUtils: %s\n", !err ? "PASSED" : "FAILED" );
 	return( err );
-}
-
-//===========================================================================================================================
-//	_PrintFTestExtension1
-//===========================================================================================================================
-
-static int	_PrintFTestExtension1( PrintFContext *ctx, PrintFFormat *inFormat, PrintFVAList *inArgs, void *inUserContext )
-{
-	int					a;
-	const char *		b;
-	
-	(void) inUserContext;
-	
-	a = va_arg( inArgs->args, int );
-	b = va_arg( inArgs->args, const char * );
-	return( PrintFCore( ctx, "Alt=%d, a=%d, b='%s'", inFormat->altForm, a, b ) );
-}
-
-//===========================================================================================================================
-//	_PrintFTestExtension2
-//===========================================================================================================================
-
-static int	_PrintFTestExtension2( PrintFContext *ctx, PrintFFormat *inFormat, PrintFVAList *inArgs, void *inUserContext )
-{
-	(void) inFormat;
-	(void) inArgs;
-	(void) inUserContext;
-	
-	return( PrintFCore( ctx, "NoArgsExtension" ) );
 }
 
 //===========================================================================================================================

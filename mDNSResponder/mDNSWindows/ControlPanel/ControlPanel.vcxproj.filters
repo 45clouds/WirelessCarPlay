@@ -1,0 +1,130 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{d534a12a-5d97-4d9e-87ba-898c97da20fb}</UniqueIdentifier>
+      <Extensions>cpp;c;cxx;rc;def;r;odl;idl;hpj;bat</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{e7514699-1b61-4910-a465-8950dd4c3fad}</UniqueIdentifier>
+      <Extensions>h;hpp;hxx;hm;inl</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{dad601b4-0fa4-4692-8c01-8cbb407b5a32}</UniqueIdentifier>
+      <Extensions>ico;cur;bmp;dlg;rc2;rct;bin;cnt;rtf;gif;jpg;jpeg;jpe</Extensions>
+    </Filter>
+    <Filter Include="Support">
+      <UniqueIdentifier>{ada5b5c6-cf44-4574-94a0-0e576fda469d}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ConfigDialog.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ConfigPropertySheet.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ControlPanelExe.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ServicesPage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="RegistrationPage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\loclibrary.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="stdafx.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="BrowsingPage.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\Clients\ClientCommon.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\mDNSShared\DebugServices.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\Secret.c">
+      <Filter>Support</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WinServices.cpp">
+      <Filter>Support</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="ConfigDialog.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ConfigPropertySheet.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ControlPanelExe.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ServicesPage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="RegistrationPage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\loclibrary.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="BrowsingPage.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\Clients\ClientCommon.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\mDNSShared\CommonServices.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\mDNSShared\DebugServices.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\mDNSShared\dns_sd.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\Secret.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WinServices.h">
+      <Filter>Support</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="res\configurator.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\controlpanel.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\ControlPanel.rc2">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\EnergySaver.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\failure.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="res\success.ico">
+      <Filter>Resource Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="ControlPanel.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+</Project>

@@ -2,7 +2,7 @@
 	File:    	CFCompat.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2004-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2004-2015 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #ifndef __CFCompat_h__
@@ -73,39 +73,8 @@
 //	Configuration
 //===========================================================================================================================
 
-// CFL_SORT_DICTIONARY_XML: 1=Sort Dictionaries by key when outputting XML. 0=Don't sort.
-// When building for non-Embedded platforms, sort the XML output of dictionaries by key (for Mac CF parity).
-
-#if( !defined( CFL_SORT_DICTIONARY_XML ) )
-	#if( TARGET_OS_VXWORKS )
-		#define	CFL_SORT_DICTIONARY_XML		0
-	#else
-		#define	CFL_SORT_DICTIONARY_XML		1
-	#endif
-#endif
-
-// CFL_XML_PARSING: 1=Support XML property lists, 0=Don't support XML. Requires expat library and headers.
-
-#if( !defined( CFL_XML_PARSING ) )
-	#if( TARGET_OS_DARWIN )
-		#define	CFL_XML_PARSING		1
-	#else
-		#define	CFL_XML_PARSING		0
-	#endif
-#endif
-
 #if( CFLITE_ENABLED )
 	#include "CFLite.h"
-#endif
-
-// CFCOMPAT_NOTIFICATIONS_ENABLED: 1=Include CFLite notification stuff.
-
-#if( !defined( CFCOMPAT_NOTIFICATIONS_ENABLED ) )
-	#if( CFLITE_ENABLED )
-		#define	CFCOMPAT_NOTIFICATIONS_ENABLED		1
-	#else
-		#define	CFCOMPAT_NOTIFICATIONS_ENABLED		0
-	#endif
 #endif
 
 // CFCOMPAT_PREFERENCES_ENABLED: 1=Include CFPreferences stuff.
@@ -579,28 +548,7 @@ CFTypeRef
 			CFOptionFlags			inOptions, 
 			CFPropertyListFormat *	outFormat, 
 			CFErrorRef *			outError );
-	
-	CFPropertyListRef
-		CFPropertyListCreateFromXMLData( 
-			CFAllocatorRef	inAllocator, 
-			CFDataRef 		inXML, 
-			CFOptionFlags	inOptions, 
-			CFStringRef *	outErrorString );
-	
-	CFDataRef	CFPropertyListCreateXMLData( CFAllocatorRef inAllocator, CFPropertyListRef inPlist );
 #endif
-
-#if( DEBUG )
-	OSStatus	CFLogXML( CFPropertyListRef inObj );
-	
-	#define cflogxml_debug( OBJ )		CFLogXML( OBJ )
-#else
-	#define cflogxml_debug( OBJ )
-#endif
-
-#define cfl_debug_dump_object( OBJ )	cflogxml_debug( OBJ ) // DEPRECATED -- Use cflogxml_debug instead.
-
-OSStatus	CFLiteXMLTest( Boolean inPrint );
 
 #if 0
 #pragma mark == Preferences ==
@@ -983,10 +931,6 @@ OSStatus	CFCompatTest( void );
 //
 //	Includes that rely on stuff earlier in this file must come after everything else.
 //===========================================================================================================================
-
-#if( CFCOMPAT_NOTIFICATIONS_ENABLED )
-	#include "CFLiteNotifications.h"
-#endif
 
 #if( CFCOMPAT_PREFERENCES_ENABLED )
 	#if( TARGET_OS_WINDOWS )

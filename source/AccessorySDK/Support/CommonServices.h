@@ -2,7 +2,7 @@
 	File:    	CommonServices.h
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2002-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2002-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 	
 	See <http://sourceforge.net/p/predef/wiki/Home/> for a decent list of predefined macros for various environments.
 */
@@ -106,22 +106,6 @@
 	#define COMPILER_GCC			( ( __GNUC__ * 10000 ) + ( __GNUC_MINOR__ * 100 ) + __GNUC_PATCHLEVEL__ )
 #else
 	#define COMPILER_GCC			0
-#endif
-
-#if( defined( __BLOCKS__ ) && __BLOCKS__ )
-	#define COMPILER_HAS_BLOCKS		1
-#else
-	#define COMPILER_HAS_BLOCKS		0
-#endif
-
-#if( defined( __OBJC__ ) && __OBJC__ )
-	#if( defined( __OBJC2__ ) && __OBJC2__ )
-		#define COMPILER_OBJC		2
-	#else
-		#define COMPILER_OBJC		1
-	#endif
-#else
-	#define COMPILER_OBJC			0
 #endif
 
 #if( defined( _MSC_VER ) )
@@ -690,9 +674,8 @@
 		#include <MacTypes.h>
 		#include <TargetConditionals.h>
 	#else
+		#include <CoreAudio/CoreAudio.h>
 		#include <CoreFoundation/CoreFoundation.h>
-		
-			#include <CoreServices/CoreServices.h>
 	#endif
 	
 	#include <CommonCrypto/CommonCrypto.h>
@@ -784,6 +767,7 @@
 	#include <unistd.h>
 	
 	#include <sys/neutrino.h>
+	#include <nbutil.h>
 
 #elif( TARGET_OS_THREADX )
 // ThreadX
@@ -882,11 +866,29 @@
 #else
 	#define	TARGET_OS_BSD				0
 #endif
+#if( !defined( TARGET_OS_EMBEDDED ) )
+	#define TARGET_OS_EMBEDDED			0
+#endif
+#if( !defined( TARGET_OS_IOS ) )
+	#define TARGET_OS_IOS				0
+#endif
+#if( !defined( TARGET_OS_IPHONE ) )
+	#define TARGET_OS_IPHONE			0
+#endif
+#if( !defined( TARGET_OS_SIMULATOR ) )
+	#define TARGET_OS_SIMULATOR			0
+#endif
+#if( !defined( TARGET_OS_TV ) )
+	#define TARGET_OS_TV				0
+#endif
+#if( !defined( TARGET_OS_WATCH ) )
+	#define TARGET_OS_WATCH				0
+#endif
 
 // TARGET_OS_MACOSX -- Mac OS X (but not iOS or the iOS Simulator).
 
 #if( !defined( TARGET_OS_MACOSX ) )
-	#if( TARGET_OS_MAC )
+	#if( TARGET_OS_MAC && !TARGET_OS_IPHONE )
 		#define TARGET_OS_MACOSX		1
 	#else
 		#define TARGET_OS_MACOSX		0
@@ -965,12 +967,6 @@
 	#define	CFL_BINARY_PLISTS		1
 #endif
 
-// CFL_BINARY_PLISTS_STREAMED: 1=Support binary property lists using the streamed format.
-
-#if( !defined( CFL_BINARY_PLISTS_STREAMED ) )
-	#define	CFL_BINARY_PLISTS_STREAMED		1
-#endif
-
 // CFLITE_ENABLED: 1=Use CFLite. 0=Strip out CFLite code.
 
 #if( !defined( CFLITE_ENABLED ) )
@@ -989,12 +985,6 @@
 	#else
 		#define	CF_ENABLED		0
 	#endif
-#endif
-
-// CFL_XML: 1=Support XML property lists, 0=Don't support XML.
-
-#if( !defined( CFL_XML ) )
-	#define	CFL_XML		0
 #endif
 
 // DEBUG/NDEBUG
@@ -1030,12 +1020,6 @@
 	#endif
 #endif
 
-#if( defined( OS_OBJECT_USE_OBJC ) && OS_OBJECT_USE_OBJC )
-	#define DISPATCH_UNSAFE_UNRETAINED		__unsafe_unretained
-#else
-	#define DISPATCH_UNSAFE_UNRETAINED
-#endif
-
 // EXCLUDE_UNIT_TESTS -- Controls whether unit tests are stripped out.
 
 #if( !defined( EXCLUDE_UNIT_TESTS ) )
@@ -1066,23 +1050,6 @@
 		#define QNX_VERSION		_NTO_VERSION
 	#else
 		#define QNX_VERSION		0
-	#endif
-#endif
-
-// XPC_LITE_ENABLED -- Controls whether to emulate XPC or not.
-
-#if( !defined( XPC_LITE_ENABLED ) )
-	#if( ( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES ) || TARGET_PLATFORM_WICED )
-		#define XPC_LITE_ENABLED		0
-	#else
-		#define XPC_LITE_ENABLED		1
-	#endif
-#endif
-#if( !defined( XPC_ENABLED ) )
-	#if( XPC_LITE_ENABLED || ( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES && !TARGET_KERNEL ) )
-		#define	XPC_ENABLED		1
-	#else
-		#define	XPC_ENABLED		0
 	#endif
 #endif
 
@@ -1275,13 +1242,6 @@
 	#define SHA512_Final( DIGEST, CTX )			SHA512_Final_compat( (DIGEST), (CTX) )
 	#define SHA512( PTR, LEN, DIGEST )			SHA512_compat( (PTR), (LEN), DIGEST )
 #endif
-
-#define SHA3_DIGEST_LENGTH						64
-#define SHA3_CTX								SHA3_CTX_compat
-#define SHA3_Init( CTX )						SHA3_Init_compat( (CTX) )
-#define SHA3_Update( CTX, PTR, LEN )			SHA3_Update_compat( (CTX), (PTR), (LEN) )
-#define SHA3_Final( DIGEST, CTX )				SHA3_Final_compat( (DIGEST), (CTX) )
-#define SHA3( PTR, LEN, DIGEST )				SHA3_compat( (PTR), (LEN), DIGEST )
 
 // Curve25519
 
@@ -2435,7 +2395,6 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 		#else
 			extern char *			__progname;
 		#endif
-		STATIC_INLINE const char *	getprogname( void ) { return( __progname ); }
 	#endif
 	
 	#if( TARGET_OS_THREADX )
@@ -2491,25 +2450,6 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 			(IOV)->iov_len  = (LEN); \
 		\
 		}	while( 0 )
-#endif
-
-// Path Delimiters
-
-#define kHFSPathDelimiterChar				':'
-#define kHFSPathDelimiterString				":"
-
-#define	kPOSIXPathDelimiterChar				'/'
-#define	kPOSIXPathDelimiterString			"/"
-
-#define	kWindowsPathDelimiterChar			'\\'
-#define	kWindowsPathDelimiterString			"\\"
-
-#if( TARGET_OS_WINDOWS )
-	#define kNativePathDelimiterChar		kWindowsPathDelimiterChar
-	#define kNativePathDelimiterString		kWindowsPathDelimiterString
-#else
-	#define kNativePathDelimiterChar		kPOSIXPathDelimiterChar
-	#define kNativePathDelimiterString		kPOSIXPathDelimiterString
 #endif
 
 // FDRef for File Handles/Descriptors
@@ -2866,6 +2806,13 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 
 // COREAUDIO_HEADER -- Header file to include for CoreAudio types.
 
+#if( !defined( HAS_COREAUDIO_HEADERS ) )
+	#if( defined( COREAUDIOTYPES_VERSION ) && ( ( COREAUDIOTYPES_VERSION + 0 ) > 0 ) )
+		#define HAS_COREAUDIO_HEADERS                1
+	#else
+		#define HAS_COREAUDIO_HEADERS                0
+	#endif
+#endif
 #if( TARGET_OS_DARWIN )
 	#define COREAUDIO_HEADER		<CoreAudio/CoreAudio.h>
 #elif( FRAMEWORK_STYLE_INCLUDES )
@@ -3000,16 +2947,6 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 	#else
 		#define SHA_HEADER	"CommonServices.h"
 	#endif
-#endif
-
-// XPC_HEADER -- Header file to include for XPC support.
-
-#if( !XPC_LITE_ENABLED && TARGET_OS_DARWIN )
-	#define XPC_HEADER		<xpc/xpc.h>
-#elif( FRAMEWORK_STYLE_INCLUDES )
-	#define XPC_HEADER		<CoreUtils/XPCLite.h>
-#else
-	#define XPC_HEADER		"XPCLite.h"
 #endif
 
 #if 0
@@ -3209,10 +3146,6 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 #define kDNSServiceFlagsThresholdOne_compat			0x2000000U	// Added in version 504 of dns_sd.h
 #define kDNSServiceFlagsThresholdReached_compat		0x2000000U	// Added in version 504 of dns_sd.h
 
-#if( !defined( kSecAttrAccessibleAlways_compat ) )
-		#define kSecAttrAccessibleAlways_compat		kSecAttrAccessibleAlways
-#endif
-
 #if 0
 #pragma mark -
 #pragma mark == Compatibility - CoreAudio ==
@@ -3239,11 +3172,6 @@ STATIC_INLINE void		WriteLittleFloat64( void *p, Float64 x )	{ Value64 v64; v64.
 
 #define kAudioConverterDecompressionMagicCookie		0x646D6763 // 'dmgc'
 
-#define kAudioFormatAppleLossless					0x616C6163 // 'alac'
-	#define kAppleLosslessFormatFlag_16BitSourceData	1
-	#define kAppleLosslessFormatFlag_20BitSourceData	2
-	#define kAppleLosslessFormatFlag_24BitSourceData	3
-	#define kAppleLosslessFormatFlag_32BitSourceData	4
 #define kAudioFormatLinearPCM						0x6C70636D // 'lpcm'
 	#define kLinearPCMFormatFlagIsFloat					kAudioFormatFlagIsFloat
 	#define kLinearPCMFormatFlagIsBigEndian				kAudioFormatFlagIsBigEndian
@@ -3278,8 +3206,6 @@ typedef struct
 #define kAudioMillisecondsPerPacket_Opus			20
 #define kAudioSamplesPerPacket_AAC_ELD				480
 #define kAudioSamplesPerPacket_AAC_LC				1024
-#define kAudioSamplesPerPacket_ALAC_Small			352  // Sized for sending one frame per UDP packet.
-#define kAudioSamplesPerPacket_ALAC_Default			4096
 
 #define ASBD_FillAAC_ELD( FMT, RATE, CHANNELS ) \
 	do \
@@ -3307,41 +3233,6 @@ typedef struct
 		(FMT)->mBytesPerFrame		= 0; \
 		(FMT)->mChannelsPerFrame	= (CHANNELS); \
 		(FMT)->mBitsPerChannel		= 0; \
-		(FMT)->mReserved			= 0; \
-		\
-	}	while( 0 )
-
-#define ASBD_FillALAC( FMT, RATE, BITS, CHANNELS ) \
-	do \
-	{ \
-		(FMT)->mSampleRate			= (RATE); \
-		(FMT)->mFormatID			= kAudioFormatAppleLossless; \
-		(FMT)->mFormatFlags			= ( (BITS) == 16 ) ? kAppleLosslessFormatFlag_16BitSourceData : \
-									  ( (BITS) == 20 ) ? kAppleLosslessFormatFlag_20BitSourceData : \
-									  ( (BITS) == 24 ) ? kAppleLosslessFormatFlag_24BitSourceData : 0; \
-		(FMT)->mBytesPerPacket		= 0; \
-		(FMT)->mFramesPerPacket		= kAudioSamplesPerPacket_ALAC_Small; \
-		(FMT)->mBytesPerFrame		= 0; \
-		(FMT)->mChannelsPerFrame	= (CHANNELS); \
-		(FMT)->mBitsPerChannel		= 0; \
-		(FMT)->mReserved			= 0; \
-		\
-	}	while( 0 )
-
-#define ASBD_FillAUCanonical( FMT, CHANNELS ) \
-	do \
-	{ \
-		(FMT)->mSampleRate			= 48000; \
-		(FMT)->mFormatID			= kAudioFormatLinearPCM; \
-		(FMT)->mFormatFlags			= kAudioFormatFlagIsFloat | \
-									  kAudioFormatFlagsNativeEndian | \
-									  kAudioFormatFlagIsPacked | \
-									  kAudioFormatFlagIsNonInterleaved; \
-		(FMT)->mBytesPerPacket		= 4; \
-		(FMT)->mFramesPerPacket		= 1; \
-		(FMT)->mBytesPerFrame		= 4; \
-		(FMT)->mChannelsPerFrame	= (CHANNELS); \
-		(FMT)->mBitsPerChannel		= 32; \
 		(FMT)->mReserved			= 0; \
 		\
 	}	while( 0 )
@@ -3395,22 +3286,6 @@ typedef struct
 		/* mBitsPerChannel		*/	(VALID_BITS), \
 		/* mReserved			*/	0 \
 	}
-
-typedef struct // From ACAppleLosslessCodec.h.
-{
-	uint32_t		frameLength;		// Note: AudioConverter expects this in big endian byte order.
-	uint8_t			compatibleVersion;
-	uint8_t			bitDepth;			// max 32
-	uint8_t			pb;					// 0 <= pb <= 255
-	uint8_t			mb;
-	uint8_t			kb;
-	uint8_t			numChannels;
-	uint16_t		maxRun;				// Note: AudioConverter expects this in big endian byte order.
-	uint32_t		maxFrameBytes;		// Note: AudioConverter expects this in big endian byte order.
-	uint32_t		avgBitRate;			// Note: AudioConverter expects this in big endian byte order.
-	uint32_t		sampleRate;			// Note: AudioConverter expects this in big endian byte order.
-	
-}	ALACParams;
 
 #if 0
 #pragma mark -
@@ -3561,8 +3436,10 @@ typedef struct // From ACAppleLosslessCodec.h.
 #endif
 #if( CHECK_PRINTF_STYLE_FUNCTIONS && defined( __GNUC__ ) )
 	#define PRINTF_STYLE_FUNCTION( FORMAT_INDEX, ARGS_INDEX )	__attribute__( ( format( printf, FORMAT_INDEX, ARGS_INDEX ) ) )
+	#define SCANF_STYLE_FUNCTION( FORMAT_INDEX, ARGS_INDEX )	__attribute__( ( format( scanf, FORMAT_INDEX, ARGS_INDEX ) ) )
 #else
 	#define PRINTF_STYLE_FUNCTION( FORMAT_INDEX, ARGS_INDEX )
+	#define SCANF_STYLE_FUNCTION( FORMAT_INDEX, ARGS_INDEX )
 #endif
 
 //---------------------------------------------------------------------------------------------------------------------------
@@ -4105,87 +3982,6 @@ typedef struct // From ACAppleLosslessCodec.h.
 	}	while( 0 )
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	BitArray
-	@abstract	Macros for working with bit arrays.
-	@discussion
-	
-	Bit numbers start from the left so bit 0 is 0x80 in byte 0, bit 1 is 0x40 in byte 0, bit 8 is 0x80 in byte 1, etc. 
-	This minimizes the number of bytes, allows new bits to be added later, and supports an unlimited number of bits.
-	The following ASCII art shows how the bits are arranged:
-	
-			                     1 1 1 1 1 1 1 1 1 1 2 2 2 2 
-	Bit		 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 
-			+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-			|    a          |b              |  c           d| = Bytes 0x20 0x80 0x41 (bits a=2, b=8, c=17, and d=23).
-			+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-	Byte	0               1               2
-*/
-#define BitArray_MinBytes( ARRAY, N_BYTES )			memrlen( (ARRAY), (N_BYTES) )
-#define BitArray_MaxBytes( BITS )					( ( (BITS) + 7 ) / 8 )
-#define BitArray_MaxBits( ARRAY_BYTES )				( (ARRAY_BYTES) * 8 )
-#define BitArray_Clear( ARRAY_PTR, ARRAY_BYTES )	memset( (ARRAY_PTR), 0, (ARRAY_BYTES) );
-#define BitArray_GetBit( PTR, LEN, BIT ) \
-	( ( (BIT) < BitArray_MaxBits( (LEN) ) ) && ( (PTR)[ (BIT) / 8 ] & ( 1 << ( 7 - ( (BIT) & 7 ) ) ) ) )
-#define BitArray_SetBit( ARRAY, BIT )				( (ARRAY)[ (BIT) / 8 ] |=  ( 1 << ( 7 - ( (BIT) & 7 ) ) ) )
-#define BitArray_ClearBit( ARRAY, BIT )				( (ARRAY)[ (BIT) / 8 ] &= ~( 1 << ( 7 - ( (BIT) & 7 ) ) ) )
-
-// BSD-style bit array macros. These store bits within a byte as MSB first (e.g. bit 0 is rightmost bit in byte).
-
-#if( !defined( setbit ) )
-	#define	setbit( ARRAY, INDEX )		( ( (uint8_t *)(ARRAY) )[ (INDEX) / 8 ] |= ( 1 << ( (INDEX) % 8 ) ) )
-#endif
-#if( !defined( clrbit ) )
-	#define	clrbit( ARRAY, INDEX )		( ( (uint8_t *)(ARRAY) )[ (INDEX) / 8 ] &= ( ~( 1 << ( (INDEX) % 8 ) ) ) )
-#endif
-#if( !defined( isset ) )
-	#define	isset( ARRAY, INDEX )		( ( (uint8_t *)(ARRAY) )[ (INDEX) / 8 ] & ( 1 << ( (INDEX) % 8 ) ) )
-#endif
-#if( !defined( isclr ) )
-	#define	isclr( ARRAY, INDEX )		( ( ( (uint8_t *)(ARRAY) )[ (INDEX) / 8 ] & ( 1 << ( (INDEX) % 8 ) ) ) == 0 )
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	InsertBits
-	@abstract	Inserts BITS (both 0 and 1 bits) into X, controlled by MASK and SHIFT, and returns the result.
-	@discussion
-	
-	MASK is the bitmask of the bits in the final position.
-	SHIFT is the number of bits to shift left for 1 to reach the first bit position of MASK.
-	
-	For example, if you wanted to insert 0x3 into the leftmost 4 bits of a 32-bit value:
-	
-	InsertBits( 0, 0x3, 0xF0000000U, 28 ) == 0x30000000
-*/
-#define	InsertBits( X, BITS, MASK, SHIFT )		( ( (X) & ~(MASK) ) | ( ( (BITS) << (SHIFT) ) & (MASK) ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	ExtractBits
-	@abstract	Extracts bits from X, controlled by MASK and SHIFT, and returns the result.
-	@discussion
-	
-	MASK is the bitmask of the bits in the final position.
-	SHIFT is the number of bits to shift right to right justify MASK.
-	
-	For example, if you had a 32-bit value (e.g. 0x30000000) wanted the left-most 4 bits (e.g. 3 in this example):
-	
-	ExtractBits( 0x30000000U, 0xF0000000U, 28 ) == 0x3
-*/
-#define	ExtractBits( X, MASK, SHIFT )			( ( (X) >> (SHIFT) ) & ( (MASK) >> (SHIFT) ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	SetOrClearBits
-	@abstract	Sets bits if the test is non-zero or clears bits if the test is zero.
-	@discussion
-	
-	int		x;
-	
-	SetOrClearBits( &x, 0x7, true  ); // Sets   bits 0, 1, 2
-	SetOrClearBits( &x, 0x7, false ); // Clears bits 0, 1, 2
-*/
-#define SetOrClearBits( VALUE_PTR, BITS, TEST ) \
-	do { *(VALUE_PTR) = (TEST) ? ( *(VALUE_PTR) | (BITS) ) : ( *(VALUE_PTR) & ~(BITS) ); } while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	Stringify
 	@abstract	Stringify's an expression.
 	@discussion
@@ -4225,7 +4021,6 @@ typedef struct // From ACAppleLosslessCodec.h.
 #define ForgetCustomEx( X, STOPPER, DELETER )	do { if( *(X) ) { STOPPER( *(X) ); DELETER( *(X) ); *(X) = NULL; } } while( 0 )
 #define	ObjCForgetCustom( X, STOPPER )			do { [*(X) STOPPER]; arc_safe_release( *(X) ); *(X) = nil; } while( 0 )
 
-#define AudioConverterForget( X )		ForgetCustom( X, AudioConverterDispose )
 #if( COMPILER_ARC )
 	#define	BlockForget( X )			do { *(X) = nil; } while( 0 )
 #else
@@ -4540,45 +4335,6 @@ typedef struct // From ACAppleLosslessCodec.h.
 #define MemIEqual( PTR1, LEN1, PTR2, LEN2 ) \
 	( ( ( LEN1 ) == ( LEN2 ) ) && ( memicmp( ( PTR1 ), ( PTR2 ), ( LEN1 ) ) == 0 ) )
 
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	DECLARE_QSORT_FUNC / DEFINE_QSORT_FUNC
-	@abstract	Declares/defines a qsort-compatible sort function for numeric types.
-	@abstract
-	
-	Use it like this in your header file:
-	
-		DECLARE_QSORT_NUMERIC_COMPARATOR( cmp_double );
-	
-	Then in your source file:
-	
-		DEFINE_QSORT_NUMERIC_COMPARATOR( double, cmd_double );
-	
-	Then to use it in code:
-	
-		qsort( array, count, elementSize, cmd_double );
-*/
-
-#define DECLARE_QSORT_NUMERIC_COMPARATOR( NAME )	int	NAME( const void *a, const void *b )
-
-#define DEFINE_QSORT_NUMERIC_COMPARATOR( TYPE, NAME ) \
-	int	NAME( const void *a, const void *b ) \
-	{ \
-		TYPE const		aa = *( (const TYPE *) a ); \
-		TYPE const		bb = *( (const TYPE *) b ); \
-		\
-		return( ( aa > bb ) - ( aa < bb ) ); \
-	}
-
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_int8 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_uint8 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_int16 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_uint16 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_int32 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_uint32 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_int64 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_uint64 );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_float );
-DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_double );
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@defined	HAS_FEATURE
@@ -4952,32 +4708,6 @@ DECLARE_QSORT_NUMERIC_COMPARATOR( qsort_cmp_double );
 #define kPOSIXSignalErrorBase			300300 // 300300-300399
 #define POSIXSignalToOSStatus( X )		( (OSStatus)( kPOSIXSignalErrorBase + (X) ) )
 
-// NSErrorCreateWithOSStatus -- Creates an NSError object from an OSStatus, following the convention of nil == noErr.
-#define NSErrorCreateWithOSStatus( ERR ) \
-	( (ERR) ? [[NSError alloc] initWithDomain:NSOSStatusErrorDomain code:(ERR) userInfo:nil] : nil )
-
-// NSErrorCreateWithOSStatusEx -- Creates an NSError object from an OSStatus with description, following the convention of nil == noErr.
-#define NSErrorCreateWithOSStatusEx( ERR ) \
-	( (ERR) ? [[NSError alloc] initWithDomain:NSOSStatusErrorDomain code:(ERR) \
-		userInfo:@{ NSLocalizedDescriptionKey : @(DebugGetErrorString( (ERR), NULL, 0 )) }] : nil )
-
-// NSErrorToOSStatusSimple -- Map an NSError to OSStatus, but doesn't try to check the domain.
-#define NSErrorToOSStatusSimple( ERR )	( (OSStatus)( (ERR) ? ( (ERR).code ? (ERR).code : kUnknownErr ) : kNoErr ) )
-
-// NSErrorWithOSStatus -- Makes an NSError object from an OSStatus, following the convention of nil == noErr.
-#define NSErrorWithOSStatus( ERR ) \
-	( (ERR) ? [NSError errorWithDomain:NSOSStatusErrorDomain code:(ERR) userInfo:nil] : nil )
-
-// NSErrorWithOSStatusEx -- Makes an NSError object from an OSStatus with description, following the convention of nil == noErr.
-#define NSErrorWithOSStatusEx( ERR ) \
-	( (ERR) ? [NSError errorWithDomain:NSOSStatusErrorDomain code:(ERR) \
-		userInfo:@{ NSLocalizedDescriptionKey : @(DebugGetErrorString( (ERR), NULL, 0 )) }] : nil )
-
-// Throws an exception to report that a subclass must implement the method.
-#define	NSExceptionSubClassMustImplement() \
-	[NSException raise:NSGenericException format:@"### %c[%@ %@] must be implemented by subclass.", \
-		( [self class] == self ) ? '+' : '-', NSStringFromClass( [self class] ), NSStringFromSelector( _cmd )]
-
 #if 0
 #pragma mark == LogLevel ==
 #endif
@@ -5254,13 +4984,6 @@ STATIC_INLINE void	LittleEndianIntegerIncrement( uint8_t *inInteger, size_t inLe
 }
 
 //---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		Celsius <-> Fahrenheit conversions.
-	@discussion	Macros to convert between Celsius and Fahrenheit.
-*/
-#define CelsiusToFahrenheit( X )	( ( ( (X) * 9 ) / 5 ) + 32 )
-#define FahrenheitToCelsius( X )	( ( ( (X) - 32 ) * 5 ) / 9 )
-
-//---------------------------------------------------------------------------------------------------------------------------
 /*!	@group		dB <-> linear Conversions
 	@discussion	Macros to convert between dB attentuation values and linear volume levels.
 	
@@ -5281,14 +5004,6 @@ STATIC_INLINE void	LittleEndianIntegerIncrement( uint8_t *inInteger, size_t inLe
 */
 #define FloatToQ( X, N )		( (int)( (X) * ( 1 << (N) ) ) )
 #define QToFloat( X, N )		( ( (float)(X) ) / ( (float)( 1 << (N) ) ) )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@typedef	dispatch_status_block_t
-	@abstract	Block type for a commonly used block with a status parameter.
-*/
-#if( COMPILER_HAS_BLOCKS )
-	typedef void ( ^dispatch_status_block_t )( OSStatus inStatus );
-#endif
 
 //---------------------------------------------------------------------------------------------------------------------------
 /*!	@function	memcmp_constant_time
@@ -5359,282 +5074,6 @@ STATIC_INLINE void	MemZeroSecure( void *inPtr, size_t inLen )
 	#define MinimalMutexLock( NAME )					EnterCriticalSection( &NAME )
 	#define MinimalMutexUnlock( NAME )					LeaveCriticalSection( &NAME )
 #endif
-
-#if 0
-#pragma mark == Time96 ==
-#endif
-
-//===========================================================================================================================
-//	Time96
-//
-//	Support for 96-bit (32.64) binary time.
-//===========================================================================================================================
-
-typedef struct
-{
-	int32_t		secs; //! Number of seconds. Epoch depends on usage. 0, 1970-01-01 00:00:00 (Unix time), etc.
-	uint64_t	frac; //! Fraction of a second in units of 1/2^64.
-	
-}	Time96;
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96ToDouble / DoubleToTime96
-	@abstract	Convert between Time96 and floating-point seconds values.
-*/
-#define Time96ToDouble( T96 )	( ( (double) (T96)->secs ) + ( ( (double) (T96)->frac ) * ( 1.0 / 18446744073709551615.0 ) ) )
-#define DoubleToTime96( D, T96 ) \
-	do \
-	{ \
-		double		_DoubleToTime96_secs; \
-		\
-		_DoubleToTime96_secs = floor( (D) ); \
-		(T96)->secs = (int32_t) _DoubleToTime96_secs; \
-		(T96)->frac = (uint64_t)( ( (D) - _DoubleToTime96_secs ) * 18446744073709551615.0 ); \
-		\
-	}	while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96ToNTP / NTPToTime96
-	@abstract	Convert between Time96 and NTP 32.32 values.
-*/
-#define Time96ToNTP( T96 )		( ( ( (uint64_t) (T96)->secs ) << 32 ) | ( (T96)->frac >> 32 ) )
-#define NTPToTime96( NTP, T96 ) \
-	do \
-	{ \
-		(T96)->secs = (int32_t)( (NTP) >> 32 ); \
-		(T96)->frac =          ( (NTP) << 32 ); \
-		\
-	}	while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96ToNTP / NTPToTime96
-	@abstract	Convert between Time96 and NTP 32.32 values.
-*/
-#define Time96ToNTP( T96 )		( ( ( (uint64_t) (T96)->secs ) << 32 ) | ( (T96)->frac >> 32 ) )
-#define NTPToTime96( NTP, T96 ) \
-	do \
-	{ \
-		(T96)->secs = (int32_t)( (NTP) >> 32 ); \
-		(T96)->frac =          ( (NTP) << 32 ); \
-		\
-	}	while( 0 )
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96FracToNanoseconds / NanosecondsToTime96Frac
-	@abstract	Convert between Time96 fractional seconds and nanoseconds.
-*/
-#define Time96FracToNanoseconds( FRAC )		( ( UINT64_C( 1000000000 ) * (uint32_t)( (FRAC) >> 32 ) ) >> 32 )
-#define NanosecondsToTime96Frac( NS )		( (NS) * UINT64_C( 18446744073 ) ) // 2^64 / 1000000000 = 18446744073
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96_AddFrac
-	@abstract	Adds a fractional seconds (1/2^64 units) value to a time.
-*/
-STATIC_INLINE void	Time96_AddFrac( Time96 *inTime, uint64_t inFrac )
-{
-	uint64_t		frac;
-	
-	frac = inTime->frac;
-	inTime->frac = frac + inFrac;
-	if( frac > inTime->frac ) inTime->secs += 1; // Increment seconds on fraction wrap.
-}
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96_Add
-	@abstract	Adds one time to another time.
-*/
-STATIC_INLINE void	Time96_Add( Time96 *inTime, const Time96 *inAdd )
-{
-	uint64_t		frac;
-	
-	frac = inTime->frac;
-	inTime->frac = frac + inAdd->frac;
-	if( frac > inTime->frac ) inTime->secs += 1; // Increment seconds on fraction wrap.
-	inTime->secs += inAdd->secs;
-}
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@function	Time96_Sub
-	@abstract	Subtracts one time from another time.
-*/
-STATIC_INLINE void	Time96_Sub( Time96 *inTime, const Time96 *inSub )
-{
-	uint64_t	frac;
-	
-	frac = inTime->frac;
-	inTime->frac = frac - inSub->frac;
-	if( frac < inTime->frac ) inTime->secs -= 1; // Decrement seconds on fraction wrap.
-	inTime->secs -= inSub->secs;
-}
-
-#if 0
-#pragma mark -
-#pragma mark == timeval macros ==
-#endif
-
-//===========================================================================================================================
-//	timeval macros
-//===========================================================================================================================
-
-#define	TIMEVAL_USECS_PER_SEC		1000000
-
-// A == B
-#define	TIMEVAL_EQ( A, B )	( ( (A).tv_sec == (B).tv_sec ) && ( (A).tv_usec == (B).tv_usec ) )
-
-// A < B
-#define	TIMEVAL_LT( A, B )	(   ( (A).tv_sec  < (B).tv_sec ) || \
-							  ( ( (A).tv_sec == (B).tv_sec ) && ( (A).tv_usec < (B).tv_usec ) ) )
-
-// A <= B
-#define	TIMEVAL_LE( A, B )	(   ( (A).tv_sec  < (B).tv_sec ) || \
-							  ( ( (A).tv_sec == (B).tv_sec ) && ( (A).tv_usec <= (B).tv_usec ) ) )
-
-// A > B
-#define	TIMEVAL_GT( A, B )	(   ( (A).tv_sec  > (B).tv_sec ) || \
-							  ( ( (A).tv_sec == (B).tv_sec ) && ( (A).tv_usec > (B).tv_usec ) ) )
-
-// A >= B
-#define	TIMEVAL_GE( A, B )	(   ( (A).tv_sec  > (B).tv_sec ) || \
-							  ( ( (A).tv_sec == (B).tv_sec ) && ( (A).tv_usec >= (B).tv_usec ) ) )
-
-// A  < B = -1
-// A  > B =  1
-// A == B =  0
-#define	TIMEVAL_CMP( A, B ) \
-		( (A).tv_sec  < (B).tv_sec )  ? -1 : \
-		( (A).tv_sec  > (B).tv_sec )  ?  1 : \
-		( (A).tv_usec < (B).tv_usec ) ? -1 : \
-		( (A).tv_usec > (B).tv_usec ) ?  1 : 0
-
-// Non-zero if tv_usec is between 0 and (1000000 - 1).
-#define	TIMEVAL_VALID( X )		( ( (X).tv_usec >= 0 ) && ( (X).tv_usec < TIMEVAL_USECS_PER_SEC ) )
-
-// Sets X to 0 seconds and 0 microseconds.
-#define	TIMEVAL_ZERO( X )		TIMEVAL_SET( X, 0, 0 )
-
-// Sets X from secs and microseconds.
-#define	TIMEVAL_SET( X, SECS, USECS ) \
-	do \
-	{ \
-		(X).tv_sec  = ( SECS ); \
-		(X).tv_usec = ( USECS ); \
-	\
-	}	while( 0 )
-
-// A += B
-#define	TIMEVAL_ADD( A, B ) \
-	do \
-	{ \
-		(A).tv_sec  += (B).tv_sec; \
-		(A).tv_usec += (B).tv_usec; \
-		TIMEVAL_NORMALIZE( A ); \
-	\
-	}	while( 0 )
-
-// A += X. X is the number of microseconds to add.
-#define	TIMEVAL_ADD_USEC( A, X ) \
-	do \
-	{ \
-		(A).tv_usec += (X); \
-		TIMEVAL_NORMALIZE( A ); \
-	\
-	}	while( 0 )
-
-// X = A + B
-#define	TIMEVAL_ADD_COPY( X, A, B ) \
-	do \
-	{ \
-		(X) = (A); \
-		(X).tv_sec  += (B).tv_sec; \
-		(X).tv_usec += (B).tv_usec; \
-		TIMEVAL_NORMALIZE( X ); \
-	\
-	}	while( 0 )
-
-
-// A -= B
-#define	TIMEVAL_SUB( A, B ) \
-	do \
-	{ \
-		if( TIMEVAL_GT( A, B ) ) \
-		{ \
-			(A).tv_sec  -= (B).tv_sec; \
-			(A).tv_usec -= (B).tv_usec; \
-			TIMEVAL_NORMALIZE( A ); \
-		} \
-		else \
-		{ \
-			(A).tv_sec  = 0; \
-			(A).tv_usec = 0; \
-		} \
-	\
-	}	while( 0 )
-
-// X = A - B
-#define	TIMEVAL_SUB_COPY( X, A, B ) \
-	do \
-	{ \
-		(X) = (A); \
-		TIMEVAL_SUB( (X), (B) ); \
-	\
-	}	while( 0 )
-
-// A *= X. X must be a positive integer. X must be <= 2147 to avoid overflow.
-#define	TIMEVAL_MUL( A, X ) \
-	do \
-	{ \
-		(A).tv_sec  *= (X); \
-		(A).tv_usec *= (X); \
-		TIMEVAL_NORMALIZE( A ); \
-	\
-	}	while( 0 )
-
-// X = A * Y. Y must be a positive integer. Y must be <= 2147 to avoid overflow.
-#define	TIMEVAL_MUL_COPY( X, A, Y ) \
-	do \
-	{ \
-		(X) = (A); \
-		(X).tv_sec  *= (Y); \
-		(X).tv_usec *= (Y); \
-		TIMEVAL_NORMALIZE( X ); \
-	\
-	}	while( 0 )
-
-// Adjusts tv_sec and tv_usec so tv_usec is between 0 and (1000000 - 1).
-#define	TIMEVAL_NORMALIZE( X ) \
-	do \
-	{ \
-		for( ;; ) \
-		{ \
-			if( (X).tv_usec >= TIMEVAL_USECS_PER_SEC ) \
-			{ \
-				(X).tv_sec  += 1; \
-				(X).tv_usec -= TIMEVAL_USECS_PER_SEC; \
-			} \
-			else if( (X).tv_usec < 0 ) \
-			{ \
-				(X).tv_sec  -= 1; \
-				(X).tv_usec += TIMEVAL_USECS_PER_SEC; \
-			} \
-			else \
-			{ \
-				break; \
-			} \
-		} \
-		\
-	}	while( 0 )
-
-// X as single, unsigned 32-bit microseconds value. X must be <= 4294 to avoid overflow.
-#define	TIMEVAL_USEC32( X )				( ( ( (uint32_t)(X).tv_sec ) * TIMEVAL_USECS_PER_SEC ) + (X).tv_usec )
-
-// X as single, signed 64-bit microseconds value.
-#define	TIMEVAL_USEC64( X )				( ( ( (int64_t)(X).tv_sec ) * TIMEVAL_USECS_PER_SEC ) + (X).tv_usec )
-
-// A - B as single, signed 64-bit microseconds value (negative if A < B).
-#define	TIMEVAL_USEC64_DIFF( A, B )		( TIMEVAL_USEC64( A ) - TIMEVAL_USEC64( B ) )
-
-// X as a single, floating point seconds value.
-#define TIMEVAL_FP_SECS( X )			( ( (double)(X).tv_sec ) + ( ( (double)(X).tv_usec ) * ( 1.0 / 1000000.0 ) ) )
 
 #if 0
 #pragma mark == ANSI/ASCII Escape Sequences ==
@@ -5786,76 +5225,5 @@ STATIC_INLINE void	Time96_Sub( Time96 *inTime, const Time96 *inSub )
 
 #define kASCII_RecordSeparatorChar		'\x1E'
 #define kASCII_RecordSeparatorStr		"\x1E"
-
-#if 0
-#pragma mark == GreenThreads ==
-#endif
-
-//---------------------------------------------------------------------------------------------------------------------------
-/*!	@group		GreenThreads
-	@abstract	Green thread implementation for lightweight, stackless, cooperatively-scheduled threads.
-	@discussion
-	
-	Based on protothreads: <http://www.sics.se/~adam/pt/>
-	
-	Examples:
-		
-		int	main( int argc, const char **argv )
-		{
-			GreenTopThread		thread;
-			
-			GREENTHREAD_START( &thread, MyThread, NULL );
-			while( MyThread( &thread, NULL ) != kGState_Done ) {} // Bad to spin wait like this...only here to so how it works.
-			return( 0 );
-		}
-		
-		GState	MyThread( GreenThread *inThread, void *inArg )
-		{
-			(void) inArg;
-			
-			GREENTHREAD_BEGIN( inThread );
-			
-			printf( "Step 1\n" );
-			GREENTHREAD_YIELD();
-			
-			printf( "Step 2\n" );
-			GREENTHREAD_YIELD();
-			
-			GREENTHREAD_END();
-		}
-	
-	Implementation Details:
-	
-		* GREENTHREAD_END() begins with "do {} while( 0 );" to allow it to be placed immediately after an exit label.
-		  Otherwise, some compilers generate warnings about not having a statement after a label.
-		
-		* GREENTHREAD_YIELD() has an extra "do {} while( 0 );" to avoid warnings about a label without a statement after it.
-*/
-typedef int_fast8_t		GState;
-	#define kGState_Waiting			0 //! Thread is waiting for a condition to become true.
-	#define kGState_Done			1 //! Thread has exited.
-
-typedef struct GreenThread		GreenThread;
-typedef struct GreenTopThread	GreenTopThread;
-
-typedef GState ( *GreenThreadFunc )( GreenThread *inThread, void *inArg );
-struct GreenThread
-{
-	int					pc;
-	GreenTopThread *	topThread;
-};
-
-struct GreenTopThread
-{
-	GreenThread			gt;
-	GreenThreadFunc		func;
-};
-
-#define GREENTHREAD_START( GTT, FUNC, ARG )		do { (GTT)->gt.pc = 0; (GTT)->gt.topThread = (GTT); (GTT)->func = (FUNC); (FUNC)( &(GTT)->gt, (ARG) ); } while( 0 )
-#define GREENTHREAD_ENTER( GT )					{ GreenThread * const __GreenThread = (GT); switch( (GT)->pc ) { case 0:
-#define GREENTHREAD_EXIT()						do {} while( 0 ); } return( kGState_Done ); } do {} while( 0 )
-#define GREENTHREAD_YIELD()						do { __GreenThread->pc = __LINE__; return( kGState_Waiting ); case __LINE__: do {} while( 0 ); } while( 0 )
-#define GREENTHREAD_CALL( GT, FUNC, ARG )		do { (GT)->pc = 0; (GT)->topThread = __GreenThread->topThread; GREENTHREAD_WAIT_UNTIL( (FUNC)( (GT), (ARG) ) == kGState_Done ); } while( 0 )
-#define GREENTHREAD_WAIT_UNTIL( X )				do { __GreenThread->pc = __LINE__; case __LINE__: if( !(X) ) return( kGState_Waiting ); } while( 0 )
 
 #endif // __CommonServices_h__

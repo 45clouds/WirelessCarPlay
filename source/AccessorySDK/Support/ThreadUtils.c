@@ -2,7 +2,7 @@
 	File:    	ThreadUtils.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,70 +48,13 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2014 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2014 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "ThreadUtils.h"
 
 #if( TARGET_MACH )
 	#include <mach/mach.h>
-#endif
-
-//===========================================================================================================================
-//	GetMachThreadPriority
-//===========================================================================================================================
-
-#if( TARGET_MACH )
-int	GetMachThreadPriority( int *outPolicy, OSStatus *outErr )
-{
-	OSStatus						err;	
-	mach_port_t						machThread;
-	unsigned int					count;
-	thread_basic_info_data_t		threadBasicInfo;
-	policy_info_data_t				policyInfo;
-	int								currentPriority;
-	
-	currentPriority = 0;
-	
-	machThread = pthread_mach_thread_np( pthread_self() );
-	count = THREAD_BASIC_INFO_COUNT;
-	err = thread_info( machThread, THREAD_BASIC_INFO, (thread_info_t) &threadBasicInfo, &count );
-	require_noerr( err, exit );
-	if( outPolicy ) *outPolicy = threadBasicInfo.policy;
-	
-	switch( threadBasicInfo.policy )
-	{
-		case POLICY_TIMESHARE:
-			count = POLICY_TIMESHARE_INFO_COUNT;
-			err = thread_info( machThread, THREAD_SCHED_TIMESHARE_INFO, (thread_info_t) &policyInfo.ts, &count );
-			require_noerr( err, exit );
-			currentPriority = (int) policyInfo.ts.base_priority;
-			break;
-			
-		case POLICY_FIFO:
-			count = POLICY_FIFO_INFO_COUNT;
-			err = thread_info( machThread, THREAD_SCHED_FIFO_INFO, (thread_info_t) &policyInfo.fifo, &count );
-			require_noerr( err, exit );
-			currentPriority = (int) policyInfo.fifo.base_priority;
-			break;
-			
-		case POLICY_RR:
-			count = POLICY_RR_INFO_COUNT;
-			err = thread_info( machThread, THREAD_SCHED_RR_INFO, (thread_info_t) &policyInfo.rr, &count );
-			require_noerr( err, exit );
-			currentPriority = (int) policyInfo.rr.base_priority;
-			break;
-			
-		default:
-			dlogassert( "Unknown Mach thread policy: %d", (int) threadBasicInfo.policy );
-			err = kUnsupportedErr;
-			goto exit;
-	}
-	
-exit:
-	if( outErr ) *outErr = err;
-	return( currentPriority );
-}
 #endif
 
 #if( TARGET_OS_WINDOWS )

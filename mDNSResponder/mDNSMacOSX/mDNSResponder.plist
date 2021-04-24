@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+<dict>
+	<key>OpenSourceProject</key>
+	<string>libipsec</string>
+	<key>OpenSourceVersion</key>
+	<string>Original version number unavailable, possibly RELENG_4_9_0_RELEASE</string>
+	<key>OpenSourceWebsiteURL</key>
+	<string>http://www.freebsd.org</string>
+	<key>OpenSourceSCM</key>
+	<string>svn export http://svn.freebsd.org/base/release/4.9.0/lib/libipsec</string>
+	<key>OpenSourceImportDate</key>
+	<string>2007-07-31</string>
+	<key>OpenSourceModifications</key>
+	<array>
+		<string>Removed all files except ipsec_strerror.h libpfkey.h pfkey.c</string>
+		<string>Added Apple Computer copyright and Apache license</string>
+		<string>Removed unused include netkey/key_var.h</string>
+		<string>Fixed compiler warnings such as "unused function parameter" and "signed/unsigned comparison"</string>
+		<string>Added code to conditionally compile only on OSX</string>
+		<string>Whitespace changes</string>
+	</array>
+	<key>OpenSourceLicense</key>
+	<string>bsd</string>
+	<key>OpenSourceLicenseFile</key>
+	<string>mDNSResponder.txt</string>
+</dict>
+</array>
+</plist>

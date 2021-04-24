@@ -2,13 +2,13 @@
 	File:    	BonjourBrowser.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
 	Apple software is governed by and subject to the terms and conditions of your MFi License,
 	including, but not limited to, the restrictions specified in the provision entitled ”Public 
-	Software�? and is further subject to your agreement to the following additional terms, and your 
+	Software”, and is further subject to your agreement to the following additional terms, and your 
 	agreement that the use, installation, modification or redistribution of this Apple software
 	constitutes acceptance of these additional terms. If you do not agree with these additional terms,
 	please do not use, install, modify or redistribute this Apple software.
@@ -28,7 +28,7 @@
 	incorporated.  
 	
 	Unless you explicitly state otherwise, if you provide any ideas, suggestions, recommendations, bug 
-	fixes or enhancements to Apple in connection with this software (“Feedback�?, you hereby grant to
+	fixes or enhancements to Apple in connection with this software (“Feedback”), you hereby grant to
 	Apple a non-exclusive, fully paid-up, perpetual, irrevocable, worldwide license to make, use, 
 	reproduce, incorporate, modify, display, perform, sell, make or have made derivative works of,
 	distribute (directly or indirectly) and sublicense, such Feedback in connection with Apple products 
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2010-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2010-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "BonjourBrowser.h"
@@ -59,7 +59,6 @@
 #include "CommonServices.h"
 #include "DebugServices.h"
 #include "NetUtils.h"
-#include "PrintFUtils.h"
 #include "StringUtils.h"
 #include "TickUtils.h"
 
@@ -70,7 +69,7 @@
 #if( TARGET_OS_POSIX )
 	#include <net/if.h>
 #endif
-#include <glib.h>
+
 //===========================================================================================================================
 //	Types
 //===========================================================================================================================
@@ -126,9 +125,6 @@ struct BonjourBrowser
 	dispatch_queue_t					eventQueue;			// Dispatch queue to invoke callbacks on.
 	BonjourBrowserEventHandlerFunc		eventHandler_f;		// Function to call when events occur.
 	void *								eventHandler_ctx;	// User-supplied context to pass to eventHandler_f.
-#if( COMPILER_HAS_BLOCKS )
-	BonjourBrowserEventHandlerBlock		eventHandler_b;		// Block to invoke when events occur.
-#endif
 };
 
 // BonjourDevice
@@ -258,7 +254,6 @@ static CFDictionaryRef		_BonjourService_CreateDictionary( BonjourServiceRef inSe
 static OSStatus				_BonjourService_GetDeviceID( BonjourServiceRef inService, char *inKeyBuf, size_t inKeyMaxLen );
 static const char *			_BonjourService_GetName( BonjourServiceRef inService, size_t *outNameLen );
 static Boolean				_BonjourService_IsAutoStopTXT( BonjourServiceRef inService );
-static CFComparisonResult	_BonjourService_Comparator( const void *inA, const void *inB, void *inContext );
 
 //===========================================================================================================================
 //	Globals
@@ -294,7 +289,6 @@ ulog_define( BonjourIssues, kLogLevelNotice, kLogFlags_Default, "BonjourIssues",
 #pragma mark == BonjourBrowser ==
 #endif
 
-GSList * carplayDevlist =  NULL;
 //===========================================================================================================================
 //	BonjourBrowserGetTypeID
 //===========================================================================================================================
@@ -358,9 +352,6 @@ static void	_BonjourBrowser_Finalize( CFTypeRef inCF )
 	check( !browser->detailedBrowseRef );
 	check( !browser->services );
 	check( !browser->devices );
-#if( COMPILER_HAS_BLOCKS )
-	ForgetBlock( &browser->eventHandler_b );
-#endif
 	check( !browser->serviceType );
 	check( !browser->domain );
 	check( !browser->ifname );
@@ -396,17 +387,6 @@ void	BonjourBrowser_SetEventHandler( BonjourBrowserRef inBrowser, BonjourBrowser
 	inBrowser->eventHandler_f	= inFunc;
 	inBrowser->eventHandler_ctx	= inContext;
 }
-
-//===========================================================================================================================
-//	BonjourBrowser_SetEventHandlerBlock
-//===========================================================================================================================
-
-#if( COMPILER_HAS_BLOCKS )
-void	BonjourBrowser_SetEventHandlerBlock( BonjourBrowserRef inBrowser, BonjourBrowserEventHandlerBlock inHandler )
-{
-	ReplaceBlock( &inBrowser->eventHandler_b, inHandler );
-}
-#endif
 
 //===========================================================================================================================
 //	BonjourBrowser_Start
@@ -607,7 +587,7 @@ static void	_BonjourBrowser_EnsureStarted( BonjourBrowserRef inBrowser )
 		bb_ulog( kLogLevelTrace, "Starting browse for %s on if %s, flags 0x%X\n", 
 			inBrowser->serviceType, inBrowser->ifname ? inBrowser->ifname : "<any>", flags32Alt );
 		err = DNSServiceBrowse( &service, kDNSServiceFlagsShareConnection | flags32Alt, ifindex, 
-			inBrowser->serviceType, inBrowser->domain, _BonjourBrowser_BrowseHandler, inBrowser );		
+			inBrowser->serviceType, inBrowser->domain, _BonjourBrowser_BrowseHandler, inBrowser );
 		require_noerr( err, exit );
 		inBrowser->browseRef = service;
 	}
@@ -892,7 +872,7 @@ static void DNSSD_API
 	Boolean						add;
 	
 	(void) inRef;
-
+	
 	if( inError == kDNSServiceErr_ServiceNotRunning )
 	{
 		bb_ulog( kLogLevelWarning, "### Browser for %s server crashed\n", browser->serviceType );
@@ -907,7 +887,7 @@ static void DNSSD_API
 	require_action( browser->started, exit, bb_ulog( kLogLevelWarning, "### Browse response after stop\n" ) );
 	
 	add = ( inFlags & kDNSServiceFlagsAdd ) ? true : false;
-	bb_ulog( kLogLevelNotice, "Bonjour PTR %s %s.%s%s on %u\n", add ? "Add" : "Rmv", inName, inType, inDomain, inIfIndex );
+	bb_ulog( kLogLevelVerbose, "Bonjour PTR %s %s.%s%s on %u\n", add ? "Add" : "Rmv", inName, inType, inDomain, inIfIndex );
 	
 	for( nextService = &browser->services; ( service = *nextService ) != NULL; nextService = &service->nextForBrowser )
 	{
@@ -928,18 +908,6 @@ static void DNSSD_API
 		require_noerr( err, exit );
 		
 		*nextService = service;
-
-		carplayInfo	* _devInfo;
-		_devInfo				=	( carplayInfo *)g_new( carplayInfo,1 );
-		_devInfo->name			=	g_strdup( service->name );		
-		_devInfo->ifname		=	g_strdup( service->ifname );	
-		_devInfo->ifindex		=	service->ifindex;
-		_devInfo->transportType	=	service->transportType;
-		_devInfo->mac_addr		=	NULL;	
-
-		carplayDevlist =	g_slist_prepend(carplayDevlist, _devInfo);
-		printf( "\033[1;32;40m Bonjour PTR add device info :name = %s ifname = %s ifindex = %d transportType = %d\033[0m\n",
-				_devInfo->name,_devInfo->ifname,_devInfo->ifindex,_devInfo->transportType);
 	}
 	else
 	{
@@ -947,29 +915,6 @@ static void DNSSD_API
 		*nextService = service->nextForBrowser;
 		_BonjourBrowser_RemoveService( browser, service, true );
 		_BonjourService_Free( service );
-
-		GSList *iterator = NULL;
-		for (iterator = carplayDevlist; iterator; iterator = iterator->next) 
-		{
-			printf( "\033[1;32;40m Bonjour PTR remove device ifindex : ifindex = %d cur list ifindex = %d\033[0m\n",
-					service->ifindex,((carplayInfo *)iterator->data)->ifindex);
-
-			if ((service->ifindex == ((carplayInfo *)iterator->data)->ifindex)&&( g_strcmp0( service->name,   ((carplayInfo *)iterator->data)->name   ) == 0))
-			{
-				printf( "\033[1;32;40m Bonjour PTR remove device info : name = %s mac_addr = %s ifname = %s\033[0m\n",
-					((carplayInfo *)iterator->data)->name,((carplayInfo *)iterator->data)->mac_addr,((carplayInfo *)iterator->data)->ifname);
-
-				if( ((carplayInfo *)iterator->data)->name != NULL )
-					g_free(((carplayInfo *)iterator->data)->name );
-				if( ((carplayInfo *)iterator->data)->mac_addr != NULL )
-					g_free(((carplayInfo *)iterator->data)->mac_addr );
-				if( ((carplayInfo *)iterator->data)->ifname != NULL )
-					g_free(((carplayInfo *)iterator->data)->ifname );
-
-				carplayDevlist = g_slist_remove( carplayDevlist, iterator->data );
-				break;
-			}
-		}
 	}
 	
 exit:
@@ -1025,11 +970,7 @@ static OSStatus
 	CFDictionaryRef				deviceInfo;
 	CFMutableDictionaryRef		mutableDeviceInfo = NULL;
 	
-#if( COMPILER_HAS_BLOCKS )
-	require_action_quiet( inBrowser->eventHandler_f || inBrowser->eventHandler_b, exit, err = kNoErr );
-#else
 	require_action_quiet( inBrowser->eventHandler_f, exit, err = kNoErr );
-#endif
 	
 	if( inDevice )
 	{
@@ -1066,37 +1007,18 @@ static OSStatus
 		deviceInfo = NULL;
 	}
 	
-#if( COMPILER_HAS_BLOCKS )
-	if( inBrowser->eventHandler_b )
-	{
-		BonjourBrowserEventHandlerBlock		eventHandler_b;
-		
-		eventHandler_b = Block_copy( inBrowser->eventHandler_b );
-		require_action( eventHandler_b, exit, err = kUnknownErr );
-		CFRetainNullSafe( deviceInfo );
-		
-		dispatch_async( inBrowser->eventQueue, 
-		^{
-			eventHandler_b( inEventType, deviceInfo );
-			Block_release( eventHandler_b );
-			CFReleaseNullSafe( deviceInfo );
-		} );
-	}
-	else
-#endif
-	{
-		BonjourBrowser_PostEventParams *		params;
-		
-		params = (BonjourBrowser_PostEventParams *) calloc( 1, sizeof( *params ) );
-		require_action( params, exit, err = kNoMemoryErr );
-		params->eventType			= inEventType;
-		params->eventHandler_f		= inBrowser->eventHandler_f;
-		params->eventHandler_ctx	= inBrowser->eventHandler_ctx;
-		params->deviceInfo			= deviceInfo;
-		CFRetainNullSafe( deviceInfo );
-		
-		dispatch_async_f( inBrowser->eventQueue, params, _BonjourBrowser_PostEventOnEventQueue );
-	}
+	BonjourBrowser_PostEventParams *		params;
+	
+	params = (BonjourBrowser_PostEventParams *) calloc( 1, sizeof( *params ) );
+	require_action( params, exit, err = kNoMemoryErr );
+	params->eventType			= inEventType;
+	params->eventHandler_f		= inBrowser->eventHandler_f;
+	params->eventHandler_ctx	= inBrowser->eventHandler_ctx;
+	params->deviceInfo			= deviceInfo;
+	CFRetainNullSafe( deviceInfo );
+	
+	dispatch_async_f( inBrowser->eventQueue, params, _BonjourBrowser_PostEventOnEventQueue );
+	
 	err = kNoErr;
 	
 exit:
@@ -1111,6 +1033,7 @@ exit:
 static void	_BonjourBrowser_PostEventOnEventQueue( void *inArg )
 {
 	BonjourBrowser_PostEventParams * const		params = (BonjourBrowser_PostEventParams *) inArg;
+	
 	params->eventHandler_f( params->eventType, params->deviceInfo, params->eventHandler_ctx );
 	CFReleaseNullSafe( params->deviceInfo );
 	free( params );
@@ -2028,63 +1951,6 @@ static Boolean	_BonjourService_IsAutoStopTXT( BonjourServiceRef inService )
 	return( false );
 }
 
-//===========================================================================================================================
-//	_BonjourService_Comparator
-//===========================================================================================================================
-
-static CFComparisonResult	_BonjourService_Comparator( const void *inA, const void *inB, void *inContext )
-{
-	CFComparisonResult			cmp;
-	uint64_t const				flags	= *( (uint64_t *) inContext );
-	CFDictionaryRef const		aInfo	= (CFDictionaryRef) inA;
-	CFDictionaryRef const		bInfo	= (CFDictionaryRef) inB;
-	CFStringRef					cfstr;
-	NetTransportType			aTT, bTT;
-	int							a, b;
-	
-	// Prefer local over Wide Area Bonjour.
-	
-	cfstr = CFDictionaryGetCFString( aInfo, CFSTR( kBonjourDeviceKey_Domain ), NULL );
-	a = cfstr && CFEqual( cfstr, CFSTR( "local." ) );
-	cfstr = CFDictionaryGetCFString( bInfo, CFSTR( kBonjourDeviceKey_Domain ), NULL );
-	b = cfstr && CFEqual( cfstr, CFSTR( "local." ) );
-	cmp = b - a;
-	require_quiet( cmp == 0, exit );
-	
-	// Prefer DirectLink.
-	
-	aTT = (NetTransportType) CFDictionaryGetInt64( aInfo, CFSTR( kBonjourDeviceKey_TransportType ), NULL );
-	bTT = (NetTransportType) CFDictionaryGetInt64( bInfo, CFSTR( kBonjourDeviceKey_TransportType ), NULL );
-	a = ( aTT & kNetTransportType_DirectLink ) ? 1 : 0;
-	b = ( bTT & kNetTransportType_DirectLink ) ? 1 : 0;
-	cmp = b - a;
-	require_quiet( cmp == 0, exit );
-	
-	// Optionally prefer P2P.
-	
-	if( flags & kBonjourBrowserFlag_P2P )
-	{
-		cmp = NetTransportTypeIsP2P( bTT ) - NetTransportTypeIsP2P( aTT );
-		require_quiet( cmp == 0, exit );
-	}
-	
-	// Prefer wired.
-	
-	cmp = NetTransportTypeIsWired( bTT ) - NetTransportTypeIsWired( aTT );
-	require_quiet( cmp == 0, exit );
-	
-	// Optionally prefer non-P2P.
-	
-	if( !( flags & kBonjourBrowserFlag_P2P ) )
-	{
-		cmp = !NetTransportTypeIsP2P( bTT ) - !NetTransportTypeIsP2P( aTT );
-		require_quiet( cmp == 0, exit );
-	}
-	
-exit:
-	return( cmp );
-}
-
 #if 0
 #pragma mark -
 #pragma mark == Accessors ==
@@ -2185,51 +2051,6 @@ uint64_t	BonjourDevice_GetDeviceID( CFDictionaryRef inDeviceInfo, uint8_t outDev
 exit:
 	if( outErr ) *outErr = err;
 	return( value );
-}
-
-//===========================================================================================================================
-//	BonjourDevice_CopyDNSNames
-//===========================================================================================================================
-
-char *	BonjourDevice_CopyDNSNames( CFDictionaryRef inDeviceInfo, uint64_t inFlags, OSStatus *outErr )
-{
-	char *					result		= NULL;
-	char *					dnsNames	= NULL;
-	OSStatus				err;
-	CFArrayRef				services;
-	CFMutableArrayRef		mutableServices;
-	CFIndex					i, n;
-	CFDictionaryRef			info;
-	CFStringRef				cfstr;
-	
-	services = (CFArrayRef) CFDictionaryGetValue( inDeviceInfo, CFSTR( kBonjourDeviceKey_Services ) );
-	if( services )	mutableServices = CFArrayCreateMutableCopy( NULL, 0, services );
-	else			mutableServices = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
-	require_action( mutableServices, exit, err = kNoMemoryErr );
-	
-	CFArraySortValues( mutableServices, CFRangeMake( 0, CFArrayGetCount( mutableServices ) ), 
-		_BonjourService_Comparator, &inFlags );
-	n = CFArrayGetCount( mutableServices );
-	for( i = 0; i < n; ++i )
-	{
-		info = (CFDictionaryRef) CFArrayGetValueAtIndex( mutableServices, i );
-		cfstr = CFDictionaryGetCFString( info, CFSTR( kBonjourDeviceKey_DNSName ), NULL );
-		if( !cfstr ) continue;
-		
-		err = AppendPrintF( &dnsNames, "%s%@", dnsNames ? kASCII_RecordSeparatorStr : "", cfstr );
-		require_action( err > 0, exit, err = kUnknownErr );
-	}
-	require_action_quiet( dnsNames, exit, err = kNotFoundErr );
-	
-	result = dnsNames;
-	dnsNames = NULL;
-	err = kNoErr;
-	
-exit:
-	FreeNullSafe( dnsNames );
-	CFReleaseNullSafe( mutableServices );
-	if( outErr ) *outErr = err;
-	return( result );
 }
 
 //===========================================================================================================================
@@ -2548,92 +2369,13 @@ OSStatus	BonjourBrowser_Test( void )
 {
 	OSStatus						err;
 	CFMutableDictionaryRef			info		= NULL;
-	char *							dnsNames	= NULL;
 	BonjourBrowser_TestContext		context		= { NULL };
 	BonjourBrowser_TestContext *	contextPtr;
 	dispatch_queue_t				queue		= NULL;
 	BonjourBrowserRef				browser		= NULL;
 	CFMutableDictionaryRef			dict		= NULL;
 	int64_t							s64;
-	
-	// BonjourDevice_CopyDNSNames test.
-	
-	err = CFPropertyListCreateFormatted( NULL, &info, 
-		"{"
-			"%kO="
-			"["
-				"{"
-					"%kO=%O"	// dnsName
-					"%kO=%O"	// domain
-					"%kO=%i"	// transportType
-				"}"
-				"{"
-					"%kO=%O"	// dnsName
-					"%kO=%O"	// domain
-					"%kO=%i"	// transportType
-				"}"
-				"{"
-					"%kO=%O"	// dnsName
-					"%kO=%O"	// domain
-					"%kO=%i"	// transportType
-				"}"
-				"{"
-					"%kO=%O"	// dnsName
-					"%kO=%O"	// domain
-					"%kO=%i"	// transportType
-				"}"
-				"{"
-					"%kO=%O"	// dnsName
-					"%kO=%O"	// domain
-					"%kO=%i"	// transportType
-				"}"
-			"]"
-		"}", 
-		CFSTR( kBonjourDeviceKey_Services ), 
-			CFSTR( kBonjourDeviceKey_DNSName ),			CFSTR( "Ethernet" ), 
-			CFSTR( kBonjourDeviceKey_Domain ),			CFSTR( "local." ), 
-			CFSTR( kBonjourDeviceKey_TransportType ),	kNetTransportType_Ethernet, 
-			
-			CFSTR( kBonjourDeviceKey_DNSName ),			CFSTR( "WiFiDirect" ), 
-			CFSTR( kBonjourDeviceKey_Domain ),			CFSTR( "local." ), 
-			CFSTR( kBonjourDeviceKey_TransportType ),	kNetTransportType_WiFiDirect, 
-			
-			CFSTR( kBonjourDeviceKey_DNSName ),			CFSTR( "DirectLink-local" ), 
-			CFSTR( kBonjourDeviceKey_Domain ),			CFSTR( "local." ), 
-			CFSTR( kBonjourDeviceKey_TransportType ),	kNetTransportType_DirectLink, 
-			
-			CFSTR( kBonjourDeviceKey_DNSName ),			CFSTR( "DirectLink-wide" ), 
-			CFSTR( kBonjourDeviceKey_Domain ),			CFSTR( "apple.com." ), 
-			CFSTR( kBonjourDeviceKey_TransportType ),	kNetTransportType_DirectLink, 
-			
-			CFSTR( kBonjourDeviceKey_DNSName ),			CFSTR( "WiFi" ), 
-			CFSTR( kBonjourDeviceKey_Domain ),			CFSTR( "local." ), 
-			CFSTR( kBonjourDeviceKey_TransportType ),	kNetTransportType_WiFi
-	);
-	require_noerr( err, exit );
-	
-	dnsNames = BonjourDevice_CopyDNSNames( info, 0, &err );
-	require_noerr( err, exit );
-	err = ( strcmp( dnsNames, 
-		"DirectLink-local"	kASCII_RecordSeparatorStr
-		"Ethernet"			kASCII_RecordSeparatorStr
-		"WiFi"				kASCII_RecordSeparatorStr
-		"WiFiDirect"		kASCII_RecordSeparatorStr 
-		"DirectLink-wide" ) == 0 ) ? kNoErr : -1;
-	free( dnsNames );
-	require_noerr( err, exit );
-	
-	dnsNames = BonjourDevice_CopyDNSNames( info, kBonjourBrowserFlag_P2P, &err );
-	require_noerr( err, exit );
-	err = ( strcmp( dnsNames, 
-		"DirectLink-local"	kASCII_RecordSeparatorStr
-		"WiFiDirect"		kASCII_RecordSeparatorStr 
-		"Ethernet"			kASCII_RecordSeparatorStr
-		"WiFi"				kASCII_RecordSeparatorStr
-		"DirectLink-wide" ) == 0 ) ? kNoErr : -1;
-	free( dnsNames );
-	require_noerr( err, exit );
-	
+
 	// Bonjour Device Accessors.
 	
 	dict = (CFMutableDictionaryRef) CFCreateF( &err, 
@@ -2697,15 +2439,7 @@ OSStatus	BonjourBrowser_Test( void )
 	BonjourBrowser_SetDispatchQueue( browser, queue );
 	
 	contextPtr = &context;
-#if( COMPILER_HAS_BLOCKS )
-	BonjourBrowser_SetEventHandlerBlock( browser,
-	^( BonjourBrowserEventType inEventType, CFDictionaryRef inEventInfo )
-	{
-		BonjourBrowser_TestHandler( inEventType, inEventInfo, contextPtr );
-	} );
-#else
 	BonjourBrowser_SetEventHandler( browser, BonjourBrowser_TestHandler, contextPtr );
-#endif
 	
 	dlog( kLogLevelVerbose, "Starting...\n" );
 	err = BonjourBrowser_Start( browser, "_raop._tcp", NULL, kDNSServiceInterfaceIndexAny, 0 );

@@ -2,7 +2,7 @@
 	File:    	CFLiteBinaryPlist.c
 	Package: 	Apple CarPlay Communication Plug-in.
 	Abstract: 	n/a 
-	Version: 	410.8
+	Version: 	410.12
 	
 	Disclaimer: IMPORTANT: This Apple software is supplied to you, by Apple Inc. ("Apple"), in your
 	capacity as a current, and in good standing, Licensee in the MFi Licensing Program. Use of this
@@ -48,7 +48,7 @@
 	(INCLUDING NEGLIGENCE), STRICT LIABILITY OR OTHERWISE, EVEN IF APPLE HAS BEEN ADVISED OF THE 
 	POSSIBILITY OF SUCH DAMAGE.
 	
-	Copyright (C) 2006-2015 Apple Inc. All Rights Reserved.
+	Copyright (C) 2006-2016 Apple Inc. All Rights Reserved. Not to be used or disclosed without permission from Apple.
 */
 
 #include "CFLiteBinaryPlist.h"
@@ -82,11 +82,6 @@
 
 #define kMaxDepth								32
 
-#define	kCFLHeaderSignaturePtr					"CFB1"
-#define	kCFLHeaderSignatureLen					sizeof_string( kCFLHeaderSignaturePtr )
-#define	kCFLTrailerSignaturePtr					"END!"
-#define	kCFLTrailerSignatureLen					sizeof_string( kCFLTrailerSignaturePtr )
-
 #define	kCFLBinaryPlistMarkerNull				0x00
 #define	kCFLBinaryPlistMarkerNullTerminator		0x01
 #define	kCFLBinaryPlistMarkerFalse				0x08
@@ -114,7 +109,9 @@
 
 typedef struct
 {
-	CFMutableDataRef				data;
+	uint8_t*						ptr;
+	size_t							ptrSize;
+	size_t							ptrFull;
 	union
 	{
 		uint16_t					u16[ 128 ];
@@ -128,16 +125,13 @@ typedef struct
 	uint8_t							objectRefSize;
 	uint8_t							offsetIntSize;
 	size_t							offsetTableOffset;
-	uint32_t						flags;
-	CFBinaryPlistStreamedWrite_f	writer_f;
-	void *							writer_ctx;
 	
 }	CFBinaryPlistContext;
 
 #define CFBinaryPlistContextInit( CTX ) \
 	do \
 	{ \
-		(CTX)->data					= NULL; \
+		(CTX)->ptr					= NULL; \
 		(CTX)->array				= NULL; \
 		(CTX)->uniqueDict			= NULL; \
 		(CTX)->uniqueCount			= 0; \
@@ -145,33 +139,17 @@ typedef struct
 		(CTX)->objectRefSize		= 0; \
 		(CTX)->offsetIntSize		= 0; \
 		(CTX)->offsetTableOffset	= 0; \
-		(CTX)->flags				= 0; \
-		(CTX)->writer_f				= NULL; \
-		(CTX)->writer_ctx			= NULL; \
 		\
 	}	while( 0 )
 
 #define CFBinaryPlistContextFree( CTX ) \
 	do \
 	{ \
-		ForgetCF( &(CTX)->data ); \
+		ForgetMem( &(CTX)->ptr ); \
 		ForgetCF( &(CTX)->array ); \
 		ForgetCF( &(CTX)->uniqueDict ); \
 		\
 	}	while( 0 )
-
-// CFBinaryPlistStreamedReadContext
-
-typedef struct
-{
-	CFBinaryPlistStreamedFlags		flags;
-	CFDataRef						data;
-	const uint8_t *					base;
-	CFMutableDictionaryRef			uniqueDict;
-	CFIndex							uniqueCount;
-	int32_t							depth;
-	
-}	CFBinaryPlistStreamedReadContext;
 
 // CFBinaryPlistDictionaryApplierContext
 
@@ -212,31 +190,6 @@ check_compile_time( sizeof(   CFBinaryPlistTrailer )					== 32 );
 
 static void		_GlobalEnsureInitialized( void );
 
-static OSStatus	_WriteStreamed( CFBinaryPlistContext *ctx, CFTypeRef inObj );
-static OSStatus	_WriteStreamedObject( CFBinaryPlistContext *inContext, CFTypeRef inObj );
-static void		_WriteStreamedDictionaryApplier( const void *inKey, const void *inValue, void *inContext );
-static OSStatus	_WriteStreamedUpdateUID( CFBinaryPlistContext *ctx, CFTypeRef inObj, Boolean *outSkip );
-CF_RETURNS_RETAINED
-static CFTypeRef
-	_ReadStreamed( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t *						inPtr, 
-		const uint8_t * const				inEnd, 
-		OSStatus *							outErr );
-static OSStatus
-	_ReadStreamedObject( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t **					ioPtr, 
-		const uint8_t *						inEnd, 
-		CFTypeRef *							outObj );
-static OSStatus
-	_ReadStreamedUIDObject( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t **					ioPtr, 
-		const uint8_t *						inEnd, 
-		uint8_t								inLen, 
-		CFTypeRef *							outObj );
-
 static void		_FlattenPlist( CFBinaryPlistContext *ctx, CFTypeRef inObj );
 static void		_FlattenArray( const void *inValue, void *inContext );
 static void		_FlattenDictionaryKey( const void *inKey, const void *inValue, void *inContext );
@@ -268,19 +221,16 @@ static OSStatus
 	_ReadInteger( 
 		const uint8_t **	ioPtr, 
 		const uint8_t *		inEnd, 
-		uint64_t *			outValue, 
-		Boolean				inAllowSmall, 
-		Boolean				inLittleEndian );
+		uint64_t *			outValue );
 static OSStatus
 	_ReadSizedInteger( 
 		const uint8_t **	ioPtr, 
 		const uint8_t *		inEnd, 
 		size_t				inLen, 
-		uint64_t *			outValue, 
-		Boolean				inLittleEndian );
+		uint64_t *			outValue );
 static OSStatus	_WriteBytes( CFBinaryPlistContext *inContext, const void *inData, size_t inSize );
-static OSStatus	_WriteInteger( CFBinaryPlistContext *ctx, uint64_t inValue, Boolean inAllowSmall, Boolean inLittleEndian );
-static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum, Boolean inAllowSmall, Boolean inLittleEndian );
+static OSStatus	_WriteInteger( CFBinaryPlistContext *ctx, uint64_t inValue );
+static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum );
 
 //===========================================================================================================================
 //	Globals
@@ -314,904 +264,16 @@ static void	_GlobalEnsureInitialized( void )
 
 #if 0
 #pragma mark -
-#pragma mark == Streamed ==
-#endif
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedCreateData
-//===========================================================================================================================
-
-CFDataRef	CFBinaryPlistStreamedCreateData( CFTypeRef inObj, OSStatus *outErr )
-{
-	return( CFBinaryPlistStreamedCreateDataEx( inObj, kCFBinaryPlistStreamedFlags_Default, outErr ) );
-}
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedCreateDataEx
-//===========================================================================================================================
-
-CFDataRef	CFBinaryPlistStreamedCreateDataEx( CFTypeRef inObj, CFBinaryPlistStreamedFlags inFlags, OSStatus *outErr )
-{
-	CFDataRef					data = NULL;
-	OSStatus					err;
-	CFBinaryPlistContext		ctx;
-	
-	_GlobalEnsureInitialized();
-	CFBinaryPlistContextInit( &ctx );
-	
-	ctx.data = CFDataCreateMutable( NULL, 0 );
-	require_action( ctx.data, exit, err = kNoMemoryErr );
-	
-	ctx.flags = inFlags;
-	
-	err = _WriteStreamed( &ctx, inObj );
-	require_noerr( err, exit );
-	
-	data = ctx.data;
-	ctx.data = NULL;
-	
-exit:
-	CFBinaryPlistContextFree( &ctx );
-	if( outErr ) *outErr = err;
-	return( data );
-}
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedWriteBytes
-//===========================================================================================================================
-
-OSStatus
-	CFBinaryPlistStreamedWriteBytes( 
-		const void *					inData, 
-		size_t							inLen, 
-		CFBinaryPlistStreamedWrite_f	inCallback, 
-		void *							inContext )
-{
-	OSStatus					err;
-	CFBinaryPlistContext		ctx;
-	uint8_t						marker;
-	
-	_GlobalEnsureInitialized();
-	CFBinaryPlistContextInit( &ctx );
-	ctx.writer_f	= inCallback;
-	ctx.writer_ctx	= inContext;
-	
-	if( inLen < 15 ) marker = (uint8_t)( kCFLBinaryPlistMarkerData | inLen );
-	else			 marker = kCFLBinaryPlistMarkerData | 0xF;
-	err = _WriteBytes( &ctx, &marker, 1 );
-	require_noerr( err, exit );
-	
-	if( inLen >= 15 )
-	{
-		err = _WriteInteger( &ctx, inLen, true, true );
-		require_noerr( err, exit );
-	}
-	
-	err = _WriteBytes( &ctx, inData, inLen );
-	require_noerr( err, exit );
-	
-exit:
-	CFBinaryPlistContextFree( &ctx );
-	return( err );
-}
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedWriteObject
-//===========================================================================================================================
-
-OSStatus
-	CFBinaryPlistStreamedWriteObject( 
-		CFTypeRef						inObj, 
-		CFBinaryPlistStreamedFlags		inFlags, 
-		CFBinaryPlistStreamedWrite_f	inCallback, 
-		void *							inContext )
-{
-	OSStatus					err;
-	CFBinaryPlistContext		ctx;
-	
-	_GlobalEnsureInitialized();
-	CFBinaryPlistContextInit( &ctx );
-	ctx.flags		= inFlags;
-	ctx.writer_f	= inCallback;
-	ctx.writer_ctx	= inContext;
-	err = _WriteStreamed( &ctx, inObj );
-	CFBinaryPlistContextFree( &ctx );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_WriteStreamed
-//===========================================================================================================================
-
-static OSStatus	_WriteStreamed( CFBinaryPlistContext *ctx, CFTypeRef inObj )
-{
-	CFBinaryPlistStreamedFlags const		flags = ctx->flags;
-	OSStatus								err;
-	
-	if( flags & kCFBinaryPlistStreamedFlag_Unique )
-	{
-		CFDictionaryKeyCallBacks		dictCallbacks;
-		
-		dictCallbacks			= kCFTypeDictionaryKeyCallBacks;
-		dictCallbacks.equal		= _ObjectsExactlyEqual;
-		dictCallbacks.retain	= NULL;
-		dictCallbacks.release	= NULL;
-		ctx->uniqueDict = CFDictionaryCreateMutable( NULL, 0, &dictCallbacks, NULL );
-		require_action( ctx->uniqueDict, exit, err = kNoMemoryErr );
-	}
-	if( flags & kCFBinaryPlistStreamedFlag_Header )
-	{
-		err = _WriteBytes( ctx, kCFLHeaderSignaturePtr, kCFLHeaderSignatureLen );
-		require_noerr( err, exit );
-	}
-	if( flags & ( kCFBinaryPlistStreamedFlag_Begin | kCFBinaryPlistStreamedFlag_End | kCFBinaryPlistStreamedFlag_Body ) )
-	{
-		err = _WriteStreamedObject( ctx, inObj );
-		require_noerr( err, exit );
-	}
-	if( flags & kCFBinaryPlistStreamedFlag_Trailer )
-	{
-		err = _WriteBytes( ctx, kCFLTrailerSignaturePtr, kCFLTrailerSignatureLen );
-		require_noerr( err, exit );
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_WriteStreamedObject
-//===========================================================================================================================
-
-static OSStatus	_WriteStreamedObject( CFBinaryPlistContext *ctx, CFTypeRef inObj )
-{
-	CFBinaryPlistStreamedFlags const		flags	= ctx->flags;
-	CFTypeID const							type	= CFGetTypeID( inObj );
-	OSStatus								err;
-	uint8_t									marker;
-	CFRange									range;
-	CFIndex									i, n, size, used;
-	const char *							cptr;
-	CFTypeRef								obj;
-	uint8_t									buf[ 9 ];
-	Boolean									skip;
-	
-	// String
-	
-	if( type == gCFStringType )
-	{
-		// When uniquing, check if non-empty strings have already been written and write a UID instead.
-		
-		if( ctx->uniqueDict && ( CFStringGetLength( (CFStringRef) inObj ) > 0 ) )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inObj, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
-		// Write UTF-8 bytes with a NUL terminator.
-		
-		marker = kCFLBinaryPlistMarkerUTF8String;
-		err = _WriteBytes( ctx, &marker, 1 );
-		require_noerr( err, exit );
-		
-		cptr = CFStringGetCStringPtr( (CFStringRef) inObj, kCFStringEncodingUTF8 );
-		if( cptr )
-		{
-			err = _WriteBytes( ctx, cptr, strlen( cptr ) + 1 );
-			require_noerr( err, exit );
-		}
-		else
-		{
-			range.location	= 0;
-			range.length	= CFStringGetLength( (CFStringRef) inObj );
-			while( range.length > 0 )
-			{
-				size = (CFIndex) sizeof( ctx->tempBuf );
-				n = CFStringGetBytes( (CFStringRef) inObj, range, kCFStringEncodingUTF8, 0, false, ctx->tempBuf.u8, size, &used );
-				require_action( n > 0, exit, err = kUnsupportedErr );
-				
-				err = _WriteBytes( ctx, ctx->tempBuf.u8, (size_t) used );
-				require_noerr( err, exit );
-				range.location	+= n;
-				range.length	-= n;
-			}
-			
-			err = _WriteBytes( ctx, "", 1 );
-			require_noerr( err, exit );
-		}
-	}
-	
-	// Number
-	
-	else if( type == gCFNumberType )
-	{
-		err = _WriteNumber( ctx, (CFNumberRef) inObj, true, true );
-		require_noerr( err, exit );
-	}
-	
-	// Boolean
-	
-	else if( type == gCFBooleanType )
-	{
-		marker = ( inObj == kCFBooleanTrue ) ? kCFLBinaryPlistMarkerTrue : kCFLBinaryPlistMarkerFalse;
-		err = _WriteBytes( ctx, &marker, 1 );
-		require_noerr( err, exit );
-	}
-	
-	// Data
-	
-	else if( type == gCFDataType )
-	{
-		// When uniquing, check if data objects > 1 byte have already been written and write a UID instead.
-		
-		n = CFDataGetLength( (CFDataRef) inObj );
-		if( ( n > 1 ) && ctx->uniqueDict )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inObj, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
-		// For lengths  < 0xF, the count is stored in the low 4 bits of the marker.
-		// For lengths >= 0xF, 0xF is stored in the low 4 bits of the marker and an integer count follows.
-		
-		if( n < 15 ) marker = (uint8_t)( kCFLBinaryPlistMarkerData | n );
-		else		 marker = kCFLBinaryPlistMarkerData | 0xF;
-		err = _WriteBytes( ctx, &marker, 1 );
-		require_noerr( err, exit );
-		
-		if( n >= 15 )
-		{
-			err = _WriteInteger( ctx, (uint64_t) n, true, true );
-			require_noerr( err, exit );
-		}
-		
-		err = _WriteBytes( ctx, CFDataGetBytePtr( (CFDataRef) inObj ), (size_t) n );
-		require_noerr( err, exit );
-	}
-	
-	// Date
-	
-	else if( type == gCFDateType )
-	{
-		if( ctx->uniqueDict )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inObj, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
-		buf[ 0 ] = kCFLBinaryPlistMarkerDateFloat;
-		WriteLittleFloat64( &buf[ 1 ], CFDateGetAbsoluteTime( (CFDateRef) inObj ) );
-		err = _WriteBytes( ctx, buf, 9 );
-		require_noerr( err, exit );
-	}
-	
-	// Dictionary
-	
-	else if( type == gCFDictionaryType )
-	{
-		if( flags & kCFBinaryPlistStreamedFlag_Begin )
-		{
-			marker = kCFLBinaryPlistMarkerDictionary;
-			err = _WriteBytes( ctx, &marker, 1 );
-			require_noerr( err, exit );
-		}
-		if( flags & kCFBinaryPlistStreamedFlag_Body )
-		{
-			CFDictionaryRef const		dict = (CFDictionaryRef) inObj;
-			
-			n = CFDictionaryGetCount( dict );
-			if( n <= 16 )
-			{
-				const void *		keys[ 16 ];
-				const void *		values[ 16 ];
-				
-				CFDictionaryGetKeysAndValues( dict, keys, values );
-				for( i = 0; i < n; ++i )
-				{
-					err = _WriteStreamedObject( ctx, keys[ i ] );
-					require_noerr( err, exit );
-					
-					err = _WriteStreamedObject( ctx, values[ i ] );
-					require_noerr( err, exit );
-				}
-			}
-			else
-			{
-				CFBinaryPlistDictionaryApplierContext		dictApplierCtx;
-				
-				dictApplierCtx.plistCtx	= ctx;
-				dictApplierCtx.dict		= dict;
-				dictApplierCtx.err		= kNoErr;
-				CFDictionaryApplyFunction( dictApplierCtx.dict, _WriteStreamedDictionaryApplier, &dictApplierCtx );
-				require_noerr_action( dictApplierCtx.err, exit, err = dictApplierCtx.err );
-			}
-		}
-		if( flags & kCFBinaryPlistStreamedFlag_End )
-		{
-			marker = kCFLBinaryPlistMarkerNullTerminator;
-			err = _WriteBytes( ctx, &marker, 1 );
-			require_noerr( err, exit );
-		}
-	}
-	
-	// Array
-	
-	else if( type == gCFArrayType )
-	{
-		if( flags & kCFBinaryPlistStreamedFlag_Begin )
-		{
-			marker = kCFLBinaryPlistMarkerArray;
-			err = _WriteBytes( ctx, &marker, 1 );
-			require_noerr( err, exit );
-		}
-		if( flags & kCFBinaryPlistStreamedFlag_Body )
-		{
-			n = CFArrayGetCount( (CFArrayRef) inObj );
-			for( i = 0; i < n; ++i )
-			{
-				obj = CFArrayGetValueAtIndex( (CFArrayRef) inObj, i );
-				err = _WriteStreamedObject( ctx, obj );
-				require_noerr( err, exit );
-			}
-		}
-		if( flags & kCFBinaryPlistStreamedFlag_End )
-		{
-			marker = kCFLBinaryPlistMarkerNullTerminator;
-			err = _WriteBytes( ctx, &marker, 1 );
-			require_noerr( err, exit );
-		}
-	}
-	
-	// Null
-	
-	else if( inObj == ( (CFTypeRef) kCFNull ) )
-	{
-		marker = kCFLBinaryPlistMarkerNull;
-		err = _WriteBytes( ctx, &marker, 1 );
-		require_noerr( err, exit );
-	}
-	
-	// Unknown
-	
-	else
-	{
-		dlogassert( "Unknown object type: %u", type );
-		err = kUnsupportedErr;
-		goto exit;
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	_WriteStreamedDictionaryApplier
-//===========================================================================================================================
-
-static void	_WriteStreamedDictionaryApplier( const void *inKey, const void *inValue, void *inContext )
-{
-	CFBinaryPlistDictionaryApplierContext * const		ctx = (CFBinaryPlistDictionaryApplierContext *) inContext;
-	OSStatus											err;
-	
-	require_noerr_action_quiet( ctx->err, exit, err = kNoErr );
-	
-	err = _WriteStreamedObject( ctx->plistCtx, inKey );
-	require_noerr( err, exit );
-	
-	err = _WriteStreamedObject( ctx->plistCtx, inValue );
-	require_noerr( err, exit );
-	
-exit:
-	if( err ) ctx->err = err;
-}
-
-//===========================================================================================================================
-//	_WriteStreamedUpdateUID
-//===========================================================================================================================
-
-static OSStatus	_WriteStreamedUpdateUID( CFBinaryPlistContext *ctx, CFTypeRef inObj, Boolean *outSkip )
-{
-	OSStatus		err;
-	uintptr_t		uid;
-	uint8_t			buf[ 9 ];
-	size_t			len;
-	
-	uid = (uintptr_t) CFDictionaryGetValue( ctx->uniqueDict, inObj );
-	if( uid )
-	{
-		uid -= 1;
-		if( uid <= 0xFF )
-		{
-			buf[ 0 ] = kCFLBinaryPlistMarkerUID | 0;
-			buf[ 1 ] = (uint8_t) uid;
-			len = 2;
-		}
-		else if( uid <= 0xFFFF )
-		{
-			buf[ 0 ] = kCFLBinaryPlistMarkerUID | 1;
-			WriteLittle16( &buf[ 1 ], uid );
-			len = 3;
-		}
-		else if( uid <= 0xFFFFFF )
-		{
-			buf[ 0 ] = kCFLBinaryPlistMarkerUID | 2;
-			WriteLittle24( &buf[ 1 ], uid );
-			len = 4;
-		}
-		else if( uid <= UINT32_C( 0xFFFFFFFF ) )
-		{
-			buf[ 0 ] = kCFLBinaryPlistMarkerUID | 3;
-			WriteLittle32( &buf[ 1 ], uid );
-			len = 5;
-		}
-		else
-		{
-			dlogassert( "UID too big" );
-			err = kRangeErr;
-			goto exit;
-		}
-		err = _WriteBytes( ctx, buf, len );
-		require_noerr( err, exit );
-		
-		*outSkip = true;
-	}
-	else
-	{
-		CFDictionaryAddValue( ctx->uniqueDict, inObj, (const void *)(uintptr_t) ++ctx->uniqueCount );
-		*outSkip = false;
-	}
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-#if 0
-#pragma mark -
-#endif
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedCreateWithBytes
-//===========================================================================================================================
-
-CFTypeRef	CFBinaryPlistStreamedCreateWithBytes( const void *inPtr, size_t inLen, OSStatus *outErr )
-{
-	CFBinaryPlistStreamedFlags		flags;
-	
-	flags = kCFBinaryPlistStreamedFlag_Header | kCFBinaryPlistStreamedFlag_Trailer | kCFBinaryPlistStreamedFlag_Body;
-	return( CFBinaryPlistStreamedCreateWithBytesEx( inPtr, inLen, flags, outErr ) );
-}
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedCreateWithBytesEx
-//===========================================================================================================================
-
-CFTypeRef
-	CFBinaryPlistStreamedCreateWithBytesEx( 
-		const void *				inPtr, 
-		size_t						inLen, 
-		CFBinaryPlistStreamedFlags	inFlags, 
-		OSStatus *					outErr )
-{
-	CFBinaryPlistStreamedReadContext		ctx;
-	
-	ctx.flags		= inFlags;
-	ctx.data		= NULL;
-	ctx.base		= (const uint8_t *) inPtr;
-	ctx.uniqueDict	= NULL;
-	ctx.uniqueCount	= 0;
-	ctx.depth		= 0;
-	return( _ReadStreamed( &ctx, ctx.base, ctx.base + inLen, outErr ) );
-}
-
-//===========================================================================================================================
-//	CFBinaryPlistStreamedCreateWithData
-//===========================================================================================================================
-
-CFTypeRef	CFBinaryPlistStreamedCreateWithData( CFDataRef inData, CFBinaryPlistStreamedFlags inFlags, OSStatus *outErr )
-{
-	CFBinaryPlistStreamedReadContext		ctx;
-	
-	ctx.flags		= inFlags;
-	ctx.data		= inData;
-	ctx.base		= CFDataGetBytePtr( inData );
-	ctx.uniqueDict	= NULL;
-	ctx.uniqueCount	= 0;
-	ctx.depth		= 0;
-	return( _ReadStreamed( &ctx, ctx.base, ctx.base + CFDataGetLength( inData ), outErr ) );
-}
-
-//===========================================================================================================================
-//	_ReadStreamed
-//===========================================================================================================================
-
-static CFTypeRef
-	_ReadStreamed( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t *						inPtr, 
-		const uint8_t * const				inEnd, 
-		OSStatus *							outErr )
-{
-	CFTypeRef		result	= NULL;
-	CFTypeRef		obj		= NULL;
-	OSStatus		err;
-	
-	_GlobalEnsureInitialized();
-	
-	if( ctx->flags & kCFBinaryPlistStreamedFlag_Unique )
-	{
-		CFDictionaryValueCallBacks		dictCallbacks;
-		
-		dictCallbacks			= kCFTypeDictionaryValueCallBacks;
-		dictCallbacks.equal		= _ObjectsExactlyEqual;
-		dictCallbacks.retain	= NULL;
-		dictCallbacks.release	= NULL;
-		ctx->uniqueDict = CFDictionaryCreateMutable( NULL, 0, NULL, &dictCallbacks );
-		require_action( ctx->uniqueDict, exit, err = kNoMemoryErr );
-	}
-	if( ctx->flags & kCFBinaryPlistStreamedFlag_Header )
-	{
-		require_action_quiet( ( inEnd - inPtr ) >= ( (ptrdiff_t) kCFLHeaderSignatureLen ), exit, err = kSizeErr );
-		require_action_quiet( memcmp( inPtr, kCFLHeaderSignaturePtr, kCFLHeaderSignatureLen ) == 0, exit, err = kSignatureErr );
-		inPtr += kCFLHeaderSignatureLen;
-	}
-	if( ctx->flags & kCFBinaryPlistStreamedFlag_Body )
-	{
-		err = _ReadStreamedObject( ctx, &inPtr, inEnd, &obj );
-		require_noerr_quiet( err, exit );
-		require_action_quiet( obj, exit, err = kMalformedErr );
-	}
-	if( ctx->flags & kCFBinaryPlistStreamedFlag_Trailer )
-	{
-		require_action_quiet( ( inEnd - inPtr ) >= ( (ptrdiff_t) kCFLTrailerSignatureLen ), exit, err = kSizeErr );
-		require_action_quiet( memcmp( inPtr, kCFLTrailerSignaturePtr, kCFLTrailerSignatureLen ) == 0, exit, err = kSignatureErr );
-	}
-	result	= obj;
-	obj		= NULL;
-	err		= kNoErr;
-	
-exit:
-	CFReleaseNullSafe( obj );
-	ForgetCF( &ctx->uniqueDict );
-	if( outErr ) *outErr = err;
-	return( result );
-}
-
-//===========================================================================================================================
-//	_ReadStreamedObject
-//===========================================================================================================================
-
-static OSStatus
-	_ReadStreamedObject( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t **					ioPtr, 
-		const uint8_t *						inEnd, 
-		CFTypeRef *							outObj )
-{
-	OSStatus					err;
-	const uint8_t *				p;
-	const uint8_t *				r;
-	uint8_t						marker;
-	Value64						v64;
-	CFMutableArrayRef			array	= NULL;
-	CFMutableDictionaryRef		dict	= NULL;
-	CFTypeRef					key		= NULL;
-	CFTypeRef					value	= NULL;
-	CFNumberRef					num;
-	CFDateRef					date;
-	
-	p = *ioPtr;
-	require_action_quiet( p < inEnd, exit, err = kUnderrunErr );
-	
-	marker = *p++;
-	switch( marker & 0xF0 )
-	{
-		case 0: // 0 is the upper 4 bits for several object types so just use it directly.
-			switch( marker )
-			{
-				case kCFLBinaryPlistMarkerNull:				*outObj = kCFNull;			break;
-				case kCFLBinaryPlistMarkerNullTerminator:	*outObj = NULL;				break;
-				case kCFLBinaryPlistMarkerFalse:			*outObj = kCFBooleanFalse;	break;
-				case kCFLBinaryPlistMarkerTrue:				*outObj = kCFBooleanTrue;	break;
-				default: err = kTypeErr; goto exit;
-			}
-			break;
-		
-		case kCFLBinaryPlistMarkerInt:
-			
-			// Read the integer as 2^nnnn bytes where bits nnnn come from the lower 4 bits of the marker.
-			
-			marker &= 0x0F;
-			if( marker < 4 )
-			{
-				err = _ReadSizedInteger( &p, inEnd, 1 << marker, &v64.u64, true );
-				require_noerr_quiet( err, exit );
-				
-				num = CFNumberCreate( NULL, kCFNumberSInt64Type, &v64.u64 );
-				require_action( num, exit, err = kNoMemoryErr );
-			}
-			else if( marker == 4 )
-			{
-				uint128_compat		u128;
-				
-				require_action_quiet( ( inEnd - p ) >= 16, exit, err = kSizeErr );
-				u128.hi = ReadLittle64( p ); p += 8;
-				u128.lo = ReadLittle64( p ); p += 8;
-				num = CFNumberCreate( NULL, kCFNumberSInt128Type_compat, &u128 );
-				require_action( num, exit, err = kNoMemoryErr );
-			}
-			else
-			{
-				err = kCountErr;
-				goto exit;
-			}
-			*outObj = num;
-			
-			if( ( marker > 0 ) && ctx->uniqueDict )
-			{
-				CFDictionaryAddValue( ctx->uniqueDict, (const void *)(uintptr_t) ctx->uniqueCount++, num );
-			}
-			break;
-		
-		case kCFLBinaryPlistMarkerReal:
-			
-			// The low 4 bits of the marker are log2( byteCount ) so 2^2 = 4-byte Float32, 2^3 = 8-byte Float64.
-			
-			switch( marker & 0x0F )
-			{
-				case 2:
-					require_action_quiet( ( inEnd - p ) >= 4, exit, err = kSizeErr );
-					v64.f32[ 0 ] = ReadLittleFloat32( p );
-					num = CFNumberCreate( NULL, kCFNumberFloat32Type, &v64.f32[ 0 ] );
-					require_action( num, exit, err = kNoMemoryErr );
-					p += 4;
-					*outObj = num;
-					break;
-				
-				case 3:
-					require_action_quiet( ( inEnd - p ) >= 8, exit, err = kSizeErr );
-					v64.f64 = ReadLittleFloat64( p );
-					num = CFNumberCreate( NULL, kCFNumberFloat64Type, &v64.f64 );
-					require_action( num, exit, err = kNoMemoryErr );
-					p += 8;
-					*outObj = num;
-					break;
-				
-				default:
-					err = kSizeErr;
-					goto exit;
-			}
-			if( ctx->uniqueDict )
-			{
-				CFDictionaryAddValue( ctx->uniqueDict, (const void *)(uintptr_t) ctx->uniqueCount++, num );
-			}
-			break;
-		
-		case kCFLBinaryPlistMarkerDateBase:
-			
-			// Date is a little endian 64-bit IEEE float stored seconds with an epoch of 2001-01-01 00:00:00.
-			
-			require_action_quiet( marker == kCFLBinaryPlistMarkerDateFloat, exit, err = kTypeErr );
-			require_action_quiet( ( inEnd - p ) >= 8, exit, err = kSizeErr );
-			date = CFDateCreate( NULL, ReadLittleFloat64( p ) );
-			require_action( date, exit, err = kNoMemoryErr );
-			p += 8;
-			*outObj = date;
-			
-			if( ctx->uniqueDict )
-			{
-				CFDictionaryAddValue( ctx->uniqueDict, (const void *)(uintptr_t) ctx->uniqueCount++, date );
-			}
-			break;
-		
-		case kCFLBinaryPlistMarkerData:
-		{
-			CFDataRef		data;
-			
-			// For values < 0xF, the low 4 bits of the marker are the count.
-			// For values >= 0xF, the low 4 bits of the marker are 0xF and an integer count follows.
-			
-			v64.u64 = marker & 0x0F;
-			if( v64.u64 == 0xF )
-			{
-				err = _ReadInteger( &p, inEnd, &v64.u64, true, true );
-				require_noerr_quiet( err, exit );
-				require_action_quiet( v64.u64 <= 0x7FFFFFFF, exit, err = kRangeErr );
-			}
-			require_action_quiet( (ptrdiff_t) v64.u64 <= ( inEnd - p ) , exit, err = kUnderrunErr );
-			
-			#if( TARGET_OS_DARWIN || CFLITE_ENABLED ) // Subdata optimization not available everywhere.
-			if( ctx->data && ( ctx->flags & kCFBinaryPlistStreamedFlag_NoCopy ) )
-			{
-				CFRange		range;
-				
-				range.location	= (CFIndex)( p - ctx->base );
-				range.length	= (CFIndex) v64.u64;
-				data = CFDataCreateSubdataWithRangeNoCopy( ctx->data, range, &err );
-				require_noerr( err, exit );
-			}
-			else
-			#endif
-			{
-				data = CFDataCreate( NULL, p, (CFIndex) v64.u64 );
-				require_action( data, exit, err = kNoMemoryErr );
-			}
-			p += v64.u64;
-			*outObj = data;
-			
-			if( ( v64.u64 > 1 ) && ctx->uniqueDict )
-			{
-				CFDictionaryAddValue( ctx->uniqueDict, (const void *)(uintptr_t) ctx->uniqueCount++, data );
-			}
-			break;
-		}
-		
-		case kCFLBinaryPlistMarkerUTF8String:
-		{
-			CFStringRef		str;
-			
-			// UTF-8 strings are stored as NUL-terminated bytes so read until NUL
-			
-			for( r = p; ( r < inEnd ) && ( *r != '\0' ); ++r ) {}
-			require_action_quiet( r < inEnd, exit, err = kUnderrunErr );
-			
-			str = CFStringCreateWithCString( NULL, (const char *) p, kCFStringEncodingUTF8 );
-			require_action( str, exit, err = kMalformedErr );
-			*outObj = str;
-			
-			if( ( *p != '\0' ) && ctx->uniqueDict )
-			{
-				CFDictionaryAddValue( ctx->uniqueDict, (const void *)(uintptr_t) ctx->uniqueCount++, str );
-			}
-			p = r + 1;
-			break;
-		}
-		
-		case kCFLBinaryPlistMarkerSmallInteger:
-			
-			// Small integers store the value directly in the low 4 bits of the marker.
-			
-			v64.s8[ 0 ] = marker & 0x0F;
-			num = CFNumberCreate( NULL, kCFNumberSInt8Type, &v64.s8[ 0 ] );
-			require_action( num, exit, err = kNoMemoryErr );
-			*outObj = num;
-			break;
-		
-		case kCFLBinaryPlistMarkerArray:
-			
-			// Arrays are objects serialized sequentially with a null terminator object at the end.
-			
-			array = CFArrayCreateMutable( NULL, 0, &kCFTypeArrayCallBacks );
-			require_action( array, exit, err = kNoMemoryErr );
-			
-			for( ;; )
-			{
-				require_action_quiet( ctx->depth < kMaxDepth, exit, err = kOverrunErr );
-				++ctx->depth;
-				err = _ReadStreamedObject( ctx, &p, inEnd, &value );
-				--ctx->depth;
-				require_noerr_quiet( err, exit );
-				if( !value ) break;
-				
-				CFArrayAppendValue( array, value );
-				CFRelease( value );
-				value = NULL;
-			}
-			*outObj = array; array = NULL;
-			break;
-		
-		case kCFLBinaryPlistMarkerDictionary:
-			
-			// Dictionaries are key/value object pairs serialized sequentially with a null terminator key at the end.
-			
-			dict = CFDictionaryCreateMutable( NULL, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-			require_action( dict, exit, err = kNoMemoryErr );
-			
-			for( ;; )
-			{
-				require_action_quiet( ctx->depth < kMaxDepth, exit, err = kOverrunErr );
-				++ctx->depth;
-				err = _ReadStreamedObject( ctx, &p, inEnd, &key );
-				--ctx->depth;
-				require_noerr_quiet( err, exit );
-				if( !key ) break;
-				
-				++ctx->depth;
-				err = _ReadStreamedObject( ctx, &p, inEnd, &value );
-				--ctx->depth;
-				require_noerr_quiet( err, exit );
-				require_action_quiet( value, exit, err = kUnderrunErr );
-				
-				CFDictionarySetValue( dict, key, value );
-				CFRelease( key );	key		= NULL;
-				CFRelease( value );	value	= NULL;
-			}
-			
-			*outObj = dict; dict = NULL;
-			break;
-		
-		case kCFLBinaryPlistMarkerUID:
-			err = _ReadStreamedUIDObject( ctx, &p, inEnd, marker & 0x0F, outObj );
-			require_noerr_quiet( err, exit );
-			break;
-		
-		default:
-			err = kUnsupportedErr;
-			goto exit;
-	}
-	*ioPtr = p;
-	err = kNoErr;
-	
-exit:
-	CFReleaseNullSafe( key );
-	CFReleaseNullSafe( value );
-	CFReleaseNullSafe( array );
-	CFReleaseNullSafe( dict );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_ReadStreamedUIDObject
-//===========================================================================================================================
-
-static OSStatus
-	_ReadStreamedUIDObject( 
-		CFBinaryPlistStreamedReadContext *	ctx, 
-		const uint8_t **					ioPtr, 
-		const uint8_t *						inEnd, 
-		uint8_t								inLen, 
-		CFTypeRef *							outObj )
-{
-	const uint8_t *		ptr = *ioPtr;
-	OSStatus			err;
-	uintptr_t			uid;
-	CFTypeRef			obj;
-	
-	require_action_quiet( ( inEnd - ptr ) >= inLen, exit, err = kSizeErr );
-	switch( inLen )
-	{
-		case 0:	uid = Read8( ptr );			ptr += 1; break;
-		case 1: uid = ReadLittle16( ptr );	ptr += 2; break;
-		case 2: uid = ReadLittle24( ptr );	ptr += 3; break;
-		case 3: uid = ReadLittle32( ptr );	ptr += 4; break;
-		default: err = kRangeErr; goto exit;
-	}
-	
-	require_action_quiet( ctx->uniqueDict, exit, err = kUnsupportedDataErr );
-	obj = CFDictionaryGetValue( ctx->uniqueDict, (const void *) uid );
-	require_action_quiet( obj, exit, err = kIDErr );
-	CFRetain( obj );
-	
-	*ioPtr	= ptr;
-	*outObj	= obj;
-	err		= kNoErr;
-	
-exit:
-	return( err );
-}
-
-#if 0
-#pragma mark -
 #pragma mark == Version 0 ==
 #endif
 
 //===========================================================================================================================
-//	CFBinaryPlistV0CreateData
+//	CFBinaryPlistV0Create
 //===========================================================================================================================
 
-CFDataRef	CFBinaryPlistV0CreateData( CFTypeRef inObj, OSStatus *outErr )
+const void* CFBinaryPlistV0Create( CFTypeRef inObj, size_t *outSize, OSStatus *outErr )
 {
-	return( CFBinaryPlistV0CreateDataEx( inObj, 0, outErr ) );
-}
-
-CFDataRef	CFBinaryPlistV0CreateDataEx( CFTypeRef inObj, uint32_t inFlags, OSStatus *outErr )
-{
-	CFDataRef						result = NULL;
+	const void*						result = NULL;
 	OSStatus						err;
 	CFBinaryPlistContext			ctx;
 	CFDictionaryKeyCallBacks		dictCallbacks;
@@ -1223,12 +285,13 @@ CFDataRef	CFBinaryPlistV0CreateDataEx( CFTypeRef inObj, uint32_t inFlags, OSStat
 	
 	_GlobalEnsureInitialized();
 	CFBinaryPlistContextInit( &ctx );
-	ctx.flags = inFlags;
 	
 	// Flatten the plist to an array of unique objects.
 	
-	ctx.data = CFDataCreateMutable( NULL, 0 );
-	require_action( ctx.data, exit, err = kNoMemoryErr );
+	ctx.ptrSize = 1024;
+	ctx.ptr = malloc( ctx.ptrSize );
+	require_action( ctx.ptr, exit, err = kNoMemoryErr );
+	ctx.ptrFull = 0;
 	
 	ctx.array = CFArrayCreateMutable( NULL, 0, NULL );
 	require_action( ctx.array, exit, err = kNoMemoryErr );
@@ -1276,14 +339,28 @@ CFDataRef	CFBinaryPlistV0CreateDataEx( CFTypeRef inObj, uint32_t inFlags, OSStat
 	err = _WriteBytes( &ctx, &trailer, sizeof( trailer ) );
 	require_noerr( err, exit );
 	
-	result = ctx.data;
-	ctx.data = NULL;
+	result = ctx.ptr;
+	*outSize = ctx.ptrFull;
+	ctx.ptr = NULL;
 	
 exit:
 	FreeNullSafe( offsets );
 	CFBinaryPlistContextFree( &ctx );
 	if( outErr ) *outErr = err;
 	return( result );
+}
+
+//===========================================================================================================================
+//	CFBinaryPlistV0CreateData
+//===========================================================================================================================
+
+CFDataRef	CFBinaryPlistV0CreateData( CFTypeRef inObj, OSStatus *outErr )
+{
+	size_t len;
+	const void* ptr = CFBinaryPlistV0Create( inObj, &len, outErr );
+	if( !ptr )
+		return NULL;
+	return CFDataCreateWithBytesNoCopy(kCFAllocatorDefault, ptr, len, kCFAllocatorMalloc);
 }
 
 //===========================================================================================================================
@@ -1400,7 +477,7 @@ static OSStatus	_WriteV0Object( CFBinaryPlistContext *ctx, CFTypeRef inObj )
 	}
 	else if( type == gCFNumberType )
 	{
-		err = _WriteNumber( ctx, (CFNumberRef) inObj, false, false );
+		err = _WriteNumber( ctx, (CFNumberRef) inObj );
 		require_noerr( err, exit );
 	}
 	else if( type == gCFBooleanType )
@@ -1417,7 +494,7 @@ static OSStatus	_WriteV0Object( CFBinaryPlistContext *ctx, CFTypeRef inObj )
 		require_noerr( err, exit );
 		if( count >= 15 )
 		{
-			err = _WriteInteger( ctx, (uint64_t) count, false, false );
+			err = _WriteInteger( ctx, (uint64_t) count );
 			require_noerr( err, exit );
 		}
 		err = _WriteBytes( ctx, CFDataGetBytePtr( (CFDataRef) inObj ), (size_t) count );
@@ -1431,7 +508,7 @@ static OSStatus	_WriteV0Object( CFBinaryPlistContext *ctx, CFTypeRef inObj )
 		require_noerr( err, exit );
 		if( count >= 15 )
 		{
-			err = _WriteInteger( ctx, (uint64_t) count, false, false );
+			err = _WriteInteger( ctx, (uint64_t) count );
 			require_noerr( err, exit );
 		}
 		CFDictionaryApplyFunction( (CFDictionaryRef) inObj, _WriteV0DictionaryKey, ctx );
@@ -1445,7 +522,7 @@ static OSStatus	_WriteV0Object( CFBinaryPlistContext *ctx, CFTypeRef inObj )
 		require_noerr( err, exit );
 		if( count >= 15 )
 		{
-			err = _WriteInteger( ctx, (uint64_t) count, false, false );
+			err = _WriteInteger( ctx, (uint64_t) count );
 			require_noerr( err, exit );
 		}
 		CFArrayApplyFunction( (CFArrayRef) inObj, CFRangeMake( 0, count ), _WriteV0ArrayValue, ctx );
@@ -1469,7 +546,7 @@ static OSStatus	_WriteV0Object( CFBinaryPlistContext *ctx, CFTypeRef inObj )
 	}
 	else
 	{
-		dlogassert( "Unsupported object type: %u", type );
+		dlogassert( "Unsupported object type: %lu", type );
 		err = kUnsupportedDataErr;
 		goto exit;
 	}
@@ -1579,11 +656,6 @@ static OSStatus	_WriteV0String( CFBinaryPlistContext *ctx, CFStringRef inStr )
 		marker = kCFLBinaryPlistMarkerASCIIString;
 		count  = len;
 	}
-	else if( ctx->flags & kCFBinaryPlistFlag_UTF8Strings )
-	{
-		marker = kCFLBinaryPlistMarkerUTF8String;
-		count  = len;
-	}
 	else
 	{
 		#if( TARGET_OS_DARWIN && !COMMON_SERVICES_NO_CORE_SERVICES )
@@ -1628,7 +700,7 @@ static OSStatus	_WriteV0String( CFBinaryPlistContext *ctx, CFStringRef inStr )
 	require_noerr( err, exit );
 	if( count >= 15 )
 	{
-		err = _WriteInteger( ctx, count, false, false );
+		err = _WriteInteger( ctx, count );
 		require_noerr( err, exit );
 	}
 	err = _WriteBytes( ctx, src, len );
@@ -1700,7 +772,7 @@ CFPropertyListRef	CFBinaryPlistV0CreateWithData( const void *inPtr, size_t inLen
 	offset = trailer.offsetTableOffset + ( trailer.topObject * trailer.offsetIntSize );
 	require_action_quiet( offset < ( (uint64_t)( end - src ) ), exit, err = kRangeErr );
 	ptr = src + offset;
-	err = _ReadSizedInteger( &ptr, end, trailer.offsetIntSize, &offset, false );
+	err = _ReadSizedInteger( &ptr, end, trailer.offsetIntSize, &offset );
 	require_noerr_quiet( err, exit );
 	
 	// Read the root object (and any objects it contains).
@@ -1832,7 +904,7 @@ static CFTypeRef
 			count = marker & 0x0F;
 			if( count == 0xF )
 			{
-				err = _ReadInteger( &ptr, inEnd, &count, false, false );
+				err = _ReadInteger( &ptr, inEnd, &count );
 				require_noerr_quiet( err, exit );
 			}
 			require_action_quiet( count <= ( (size_t)( inEnd - ptr ) ), exit, err = kSizeErr );
@@ -1847,7 +919,7 @@ static CFTypeRef
 			count = marker & 0x0F;
 			if( count == 0xF )
 			{
-				err = _ReadInteger( &ptr, inEnd, &count, false, false );
+				err = _ReadInteger( &ptr, inEnd, &count );
 				require_noerr_quiet( err, exit );
 			}
 			require_action_quiet( count <= ( (size_t)( inEnd - ptr ) ), exit, err = kSizeErr );
@@ -1863,7 +935,7 @@ static CFTypeRef
 			count = marker & 0x0F;
 			if( count == 0xF )
 			{
-				err = _ReadInteger( &ptr, inEnd, &count, false, false );
+				err = _ReadInteger( &ptr, inEnd, &count );
 				require_noerr_quiet( err, exit );
 			}
 			count *= 2;
@@ -1878,7 +950,7 @@ static CFTypeRef
 			count = marker & 0x0F;
 			if( count == 0xF )
 			{
-				err = _ReadInteger( &ptr, inEnd, &count, false, false );
+				err = _ReadInteger( &ptr, inEnd, &count );
 				require_noerr_quiet( err, exit );
 			}
 			
@@ -1904,7 +976,7 @@ static CFTypeRef
 			count = marker & 0x0F;
 			if( count == 0xF )
 			{
-				err = _ReadInteger( &ptr, inEnd, &count, false, false );
+				err = _ReadInteger( &ptr, inEnd, &count );
 				require_noerr_quiet( err, exit );
 			}
 			require_action_quiet( count <= ( ( (size_t)( inEnd - ptr ) ) / ctx->objectRefSize ), exit, err = kCountErr );
@@ -2009,9 +1081,7 @@ static OSStatus
 	_ReadInteger( 
 		const uint8_t **	ioPtr, 
 		const uint8_t *		inEnd, 
-		uint64_t *			outValue, 
-		Boolean				inAllowSmall, 
-		Boolean				inLittleEndian )
+		uint64_t *			outValue )
 {
 	OSStatus			err;
 	const uint8_t *		ptr;
@@ -2020,17 +1090,11 @@ static OSStatus
 	ptr = *ioPtr;
 	require_action_quiet( ptr < inEnd, exit, err = kUnderrunErr );
 	marker = *ptr++;
-	if( inAllowSmall && ( ( marker & 0xF0 ) == kCFLBinaryPlistMarkerSmallInteger ) )
-	{
-		// Small integers store the value directly in the low 4 bits of the marker.
-		
-		*outValue = marker & 0x0F;
-	}
-	else if( ( marker & 0xF0 ) == kCFLBinaryPlistMarkerInt )
+	if( ( marker & 0xF0 ) == kCFLBinaryPlistMarkerInt )
 	{
 		// Read the integer as 2^nnnn bytes where bits nnnn come from the lower 4 bits of the marker.
 		
-		err = _ReadSizedInteger( &ptr, inEnd, 1 << ( marker & 0x0F ), outValue, inLittleEndian );
+		err = _ReadSizedInteger( &ptr, inEnd, 1 << ( marker & 0x0F ), outValue );
 		require_noerr_quiet( err, exit );
 	}
 	else
@@ -2054,8 +1118,7 @@ static OSStatus
 		const uint8_t **	ioPtr, 
 		const uint8_t *		inEnd, 
 		size_t				inLen, 
-		uint64_t *			outValue, 
-		Boolean				inLittleEndian )
+		uint64_t *			outValue )
 {
 	const uint8_t *		ptr = *ioPtr;
 	OSStatus			err;
@@ -2068,15 +1131,15 @@ static OSStatus
 			break;
 		
 		case 2:
-			*outValue = inLittleEndian ? ReadLittle16( ptr ) : ReadBig16( ptr );
+			*outValue = ReadBig16( ptr );
 			break;
 		
 		case 4:
-			*outValue = inLittleEndian ? ReadLittle32( ptr ) : ReadBig32( ptr );
+			*outValue = ReadBig32( ptr );
 			break;
 		
 		case 8:
-			*outValue = inLittleEndian ? ReadLittle64( ptr ) : ReadBig64( ptr );
+			*outValue = ReadBig64( ptr );
 			break;
 		
 		default:
@@ -2098,14 +1161,17 @@ static OSStatus	_WriteBytes( CFBinaryPlistContext *ctx, const void *inData, size
 {
 	OSStatus		err;
 	
-	if( ctx->data )
+	if( ctx->ptr )
 	{
-		CFDataAppendBytes( ctx->data, (const UInt8 *) inData, (CFIndex) inSize );
-	}
-	else if( ctx->writer_f )
-	{
-		err = ctx->writer_f( inData, inSize, ctx->writer_ctx );
-		require_noerr_quiet( err, exit );
+		if( ctx->ptrFull + inSize > ctx->ptrSize ) {
+			size_t newSize = (ctx->ptrSize + inSize + 0x3FF) & ~0x3FF;
+			void* newPtr = realloc( ctx->ptr, newSize );
+			require_action( newPtr, exit, err = kNoMemoryErr );
+			ctx->ptr = newPtr;
+			ctx->ptrSize = newSize;
+		}
+		memcpy( &ctx->ptr[ ctx->ptrFull ], inData, inSize );
+		ctx->ptrFull += inSize;
 	}
 	else
 	{
@@ -2123,18 +1189,13 @@ exit:
 //	_WriteInteger
 //===========================================================================================================================
 
-static OSStatus	_WriteInteger( CFBinaryPlistContext *ctx, uint64_t inValue, Boolean inAllowSmall, Boolean inLittleEndian )
+static OSStatus	_WriteInteger( CFBinaryPlistContext *ctx, uint64_t inValue )
 {
 	OSStatus		err;
 	uint8_t			buf[ 9 ];
 	size_t			len;
 	
-	if( inAllowSmall && ( inValue <= 15 ) )
-	{
-		buf[ 0 ] = (uint8_t)( kCFLBinaryPlistMarkerSmallInteger | inValue );
-		len = 1;
-	}	
-	else if( inValue <= UINT64_C( 0xFF ) )
+	if( inValue <= UINT64_C( 0xFF ) )
 	{
 		buf[ 0 ] = kCFLBinaryPlistMarkerInt | 0;
 		buf[ 1 ] = (uint8_t) inValue;
@@ -2143,22 +1204,19 @@ static OSStatus	_WriteInteger( CFBinaryPlistContext *ctx, uint64_t inValue, Bool
 	else if( inValue <= UINT64_C( 0xFFFF ) )
 	{
 		buf[ 0 ] = kCFLBinaryPlistMarkerInt | 1;
-		if( inLittleEndian )	WriteLittle16( &buf[ 1 ], inValue );
-		else					WriteBig16( &buf[ 1 ], inValue );
+		WriteBig16( &buf[ 1 ], inValue );
 		len = 3;
 	}
 	else if( inValue <= UINT64_C( 0xFFFFFFFF ) )
 	{
 		buf[ 0 ] = kCFLBinaryPlistMarkerInt | 2;
-		if( inLittleEndian )	WriteLittle32( &buf[ 1 ], inValue );
-		else					WriteBig32( &buf[ 1 ], inValue );
+		WriteBig32( &buf[ 1 ], inValue );
 		len = 5;
 	}
 	else
 	{
 		buf[ 0 ] = kCFLBinaryPlistMarkerInt | 3;
-		if( inLittleEndian )	WriteLittle64( &buf[ 1 ], inValue );
-		else					WriteBig64( &buf[ 1 ], inValue );
+		WriteBig64( &buf[ 1 ], inValue );
 		len = 9;
 	}
 	
@@ -2173,30 +1231,21 @@ exit:
 //	_WriteNumber
 //===========================================================================================================================
 
-static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum, Boolean inAllowSmall, Boolean inLittleEndian )
+static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum )
 {
 	OSStatus		err;
 	Value64			v;
 	uint8_t			buf[ 17 ];
 	size_t			len;
-	Boolean			skip;
 	
 	if( CFNumberIsFloatType( inNum ) )
 	{
-		if( ctx->flags & kCFBinaryPlistStreamedFlag_Unique )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inNum, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
 		if( CFNumberGetByteSize( inNum ) <= ( (CFIndex) sizeof( Float32 ) ) )
 		{
 			CFNumberGetValue( inNum, kCFNumberFloat32Type, &v.f32[ 0 ] );
 			
 			buf[ 0 ] = kCFLBinaryPlistMarkerReal | 2; // 2 for 2^2 = 4 byte Float32.
-			if( inLittleEndian )	WriteLittleFloat32( &buf[ 1 ], v.f32[ 0 ] );
-			else					WriteBigFloat32( &buf[ 1 ], v.f32[ 0 ] );
+			WriteBigFloat32( &buf[ 1 ], v.f32[ 0 ] );
 			len = 5;
 		}
 		else
@@ -2204,8 +1253,7 @@ static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum, Bool
 			CFNumberGetValue( inNum, kCFNumberFloat64Type, &v.f64 );
 			
 			buf[ 0 ] = kCFLBinaryPlistMarkerReal | 3; // 2 for 2^3 = 8 byte Float64.
-			if( inLittleEndian )	WriteLittleFloat64( &buf[ 1 ], v.f64 );
-			else					WriteBigFloat64( &buf[ 1 ], v.f64 );
+			WriteBigFloat64( &buf[ 1 ], v.f64 );
 			len = 9;
 		}
 		err = _WriteBytes( ctx, buf, len );
@@ -2215,26 +1263,11 @@ static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum, Bool
 	{
 		int128_compat		u128;
 		
-		if( ctx->flags & kCFBinaryPlistStreamedFlag_Unique )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inNum, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
 		CFNumberGetValue( inNum, kCFNumberSInt128Type_compat, &u128 );
 		
 		buf[ 0 ] = kCFLBinaryPlistMarkerInt | 4;
-		if( inLittleEndian )
-		{
-			WriteLittle64( &buf[ 1 ], u128.hi );
-			WriteLittle64( &buf[ 9 ], u128.lo );
-		}
-		else
-		{
-			WriteBig64( &buf[ 1 ], u128.hi );
-			WriteBig64( &buf[ 9 ], u128.lo );
-		}
+		WriteBig64( &buf[ 1 ], u128.hi );
+		WriteBig64( &buf[ 9 ], u128.lo );
 		
 		err = _WriteBytes( ctx, buf, 17 );
 		require_noerr( err, exit );
@@ -2243,14 +1276,7 @@ static OSStatus	_WriteNumber( CFBinaryPlistContext *ctx, CFNumberRef inNum, Bool
 	{
 		CFNumberGetValue( inNum, kCFNumberSInt64Type, &v.u64 );
 		
-		if( ( ctx->flags & kCFBinaryPlistStreamedFlag_Unique ) && ( v.u64 > 0xFF ) )
-		{
-			err = _WriteStreamedUpdateUID( ctx, inNum, &skip );
-			require_noerr( err, exit );
-			require_quiet( !skip, exit );
-		}
-		
-		err = _WriteInteger( ctx, v.u64, inAllowSmall, inLittleEndian );
+		err = _WriteInteger( ctx, v.u64 );
 		require_noerr( err, exit );
 	}
 	
@@ -2341,24 +1367,19 @@ static const uint8_t		kV0Test3[] = // Simple examples of most types.
 	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xA8
 };
 
-static OSStatus	TestCFLiteBinaryPlistStreamedWrite( void );
-static OSStatus	TestCFLiteBinaryPlistStreamedUniquing( void );
-
 OSStatus	CFLiteBinaryPlistTest( void )
 {
 	OSStatus						err;
-	CFBinaryPlistStreamedFlags		flags;
 	CFMutableDictionaryRef			plist;
 	CFMutableDictionaryRef			plist2	= NULL;
 	CFNumberRef						num		= NULL;
-	int								x, x2;
+	int								x;
 	double							d;
 	CFDataRef						data	= NULL;
 	CFDataRef						data2	= NULL;
 	CFStringRef						str;
 	CFMutableArrayRef				array	= NULL;
 	CFMutableDictionaryRef			dict	= NULL;
-	CFDateRef						date;
 	char							cstr[ 260 ];
 	size_t							i;
 	uint8_t							buf[ 32 ];
@@ -2368,22 +1389,6 @@ OSStatus	CFLiteBinaryPlistTest( void )
 	
 	plist = CFDictionaryCreateMutable( kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
 	require_action( plist, exit, err = kNoMemoryErr );
-	
-	data = CFBinaryPlistStreamedCreateData( plist, &err );
-	require_noerr( err, exit );
-	
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithBytes( CFDataGetBytePtr( data ), 
-		(size_t) CFDataGetLength( data ), &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, plist2 ), exit, err = kResponseErr );
-	ForgetCF( &plist2 );
-	
-	flags = kCFBinaryPlistStreamedFlags_ReadDefault | kCFBinaryPlistStreamedFlag_NoCopy;
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithData( data, flags, &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, plist2 ), exit, err = kResponseErr );
-	ForgetCF( &data );
-	ForgetCF( &plist2 );
 	
 	data = CFBinaryPlistV0CreateData( plist, &err );
 	require_noerr( err, exit );
@@ -2525,11 +1530,6 @@ OSStatus	CFLiteBinaryPlistTest( void )
 	CFDictionarySetValue( plist, CFSTR( "dictionary" ), dict );
 	ForgetCF( &dict );
 	
-	date = CFDateCreateWithComponents( kCFAllocatorDefault, 2006, 3, 9, 23, 56, 35 );
-	require_action( date, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( plist, CFSTR( "date" ), date );
-	CFRelease( date );
-	
 	// V0 Basic
 	
 	data = CFBinaryPlistV0CreateData( plist, &err );
@@ -2548,16 +1548,6 @@ OSStatus	CFLiteBinaryPlistTest( void )
 	ForgetCF( &plist2 );
 #endif
 	ForgetCF( &data );
-	
-	data = CFBinaryPlistV0CreateDataEx( plist, kCFBinaryPlistFlag_UTF8Strings, &err );
-	require_noerr( err, exit );
-	
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistV0CreateWithData( CFDataGetBytePtr( data ), 
-		(size_t) CFDataGetLength( data ), &err );
-	ForgetCF( &data );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, plist2 ), exit, err = kResponseErr );
-	ForgetCF( &plist2 );
 	
 	// V0 Test 1
 	
@@ -2611,78 +1601,6 @@ OSStatus	CFLiteBinaryPlistTest( void )
 	
 	ForgetCF( &plist2 );
 	
-	// Streamed 1
-	
-	data = CFBinaryPlistStreamedCreateData( plist, &err );
-	require_noerr( err, exit );
-	
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithBytes( CFDataGetBytePtr( data ), 
-		(size_t) CFDataGetLength( data ), &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, plist2 ), exit, err = kResponseErr );
-	ForgetCF( &plist2 );
-	
-	flags = kCFBinaryPlistStreamedFlags_ReadDefault | kCFBinaryPlistStreamedFlag_NoCopy;
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithData( data, flags, &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, plist2 ), exit, err = kResponseErr );
-	ForgetCF( &data );
-	ForgetCF( &plist2 );
-	
-	// Streamed 2
-	
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithBytesEx( "\x70" "test", 6, 
-		kCFBinaryPlistStreamedFlag_Body, &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist2, CFSTR( "test" ) ), exit, err = kResponseErr );
-	ForgetCF( &plist2 );
-	
-	data = CFDataCreate( NULL, (const uint8_t *) "\x70" "test", 6 );
-	require_action( data, exit, err = kNoMemoryErr );
-	flags = kCFBinaryPlistStreamedFlag_Body | kCFBinaryPlistStreamedFlag_NoCopy;
-	plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithData( data, flags, &err );
-	ForgetCF( &data );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist2, CFSTR( "test" ) ), exit, err = kResponseErr );
-	ForgetCF( &plist2 );
-	
-	// Small integer test.
-	
-	memcpy( buf, "CFB1" "\x90" "END!", 9 );
-	for( x = 0; x <= 30; ++x )
-	{
-		num = CFNumberCreate( NULL, kCFNumberIntType, &x );
-		require_action( num, exit, err = kResponseErr );
-		data = CFBinaryPlistStreamedCreateData( num, &err );
-		require_noerr( err, exit );
-		
-		if( ( x >= 0 ) && ( x <= 15 ) )
-		{
-			buf[ 4 ] = (uint8_t )( 0x90 | x );
-			require_action( MemEqual( CFDataGetBytePtr( data ), (size_t) CFDataGetLength( data ), buf, 9 ), exit, err = kResponseErr );
-		}
-		
-		plist2 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithBytes( CFDataGetBytePtr( data ), 
-			(size_t) CFDataGetLength( data ), &err );
-		require_noerr( err, exit );
-		require_action( CFIsType( plist2, CFNumber ), exit, err = kResponseErr );
-		require_action( CFEqual( plist2, num ), exit, err = kResponseErr );
-		
-		x2 = -1;
-		CFNumberGetValue( (CFNumberRef) plist2, kCFNumberIntType, &x2 );
-		require_action( x == x2, exit, err = kResponseErr );
-		
-		ForgetCF( &num );
-		ForgetCF( &plist2 );
-		ForgetCF( &data );
-	}
-	
-	err = TestCFLiteBinaryPlistStreamedWrite();
-	require_noerr( err, exit );
-	
-	err = TestCFLiteBinaryPlistStreamedUniquing();
-	require_noerr( err, exit );
-	
 exit:
 	CFReleaseNullSafe( array );
 	CFReleaseNullSafe( data );
@@ -2692,452 +1610,6 @@ exit:
 	CFReleaseNullSafe( plist );
 	CFReleaseNullSafe( plist2 );
 	printf( "CFLiteBinaryPlistTest: %s\n", !err ? "PASSED" : "FAILED" );
-	return( err );
-}
-
-//===========================================================================================================================
-//	TestCFLiteBinaryPlistStreamedWrite
-//===========================================================================================================================
-
-static const uint8_t		kTestStreamedPlist1[] =
-{
-	0x43, 0x46, 0x42, 0x31, 0xD0, 0x90, 0x70, 0x6E, 0x75, 0x6D, 0x2D, 0x30, 0x2D, 0x6B, 0x65, 0x79, 
-	0x00, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x6E, 0x65, 0x67, 0x2D, 0x31, 0x32, 0x33, 
-	0x00, 0x13, 0x85, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 
-	0x72, 0x2D, 0x62, 0x69, 0x67, 0x33, 0x32, 0x00, 0x12, 0xFF, 0xFF, 0xFF, 0x7F, 0x70, 0x6E, 0x75, 
-	0x6D, 0x62, 0x65, 0x72, 0x2D, 0x6D, 0x69, 0x6E, 0x36, 0x34, 0x00, 0x13, 0x00, 0x00, 0x00, 0x00, 
-	0x00, 0x00, 0x00, 0x80, 0x70, 0x64, 0x61, 0x74, 0x61, 0x2D, 0x31, 0x34, 0x00, 0x4E, 0x00, 0x11, 
-	0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0x70, 0x73, 0x74, 0x72, 
-	0x69, 0x6E, 0x67, 0x2D, 0x65, 0x6D, 0x70, 0x74, 0x79, 0x00, 0x70, 0x00, 0x70, 0x64, 0x61, 0x74, 
-	0x61, 0x2D, 0x31, 0x35, 0x00, 0x4F, 0x9F, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 
-	0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x31, 0x35, 
-	0x00, 0x9F, 0x9A, 0x70, 0x6E, 0x75, 0x6D, 0x2D, 0x31, 0x30, 0x2D, 0x6B, 0x65, 0x79, 0x00, 0x70, 
-	0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x30, 0x00, 0x90, 0x70, 0x73, 0x74, 0x72, 0x69, 0x6E, 
-	0x67, 0x2D, 0x61, 0x62, 0x63, 0x00, 0x70, 0x61, 0x62, 0x63, 0x00, 0x70, 0x64, 0x61, 0x74, 0x61, 
-	0x2D, 0x31, 0x36, 0x00, 0x4F, 0x10, 0x10, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 
-	0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x70, 0x62, 0x6F, 0x6F, 0x6C, 0x65, 0x61, 0x6E, 0x2D, 
-	0x74, 0x72, 0x75, 0x65, 0x00, 0x09, 0x10, 0x64, 0x70, 0x6E, 0x75, 0x6D, 0x2D, 0x31, 0x30, 0x30, 
-	0x2D, 0x6B, 0x65, 0x79, 0x00, 0x9F, 0x70, 0x6E, 0x75, 0x6D, 0x2D, 0x31, 0x35, 0x2D, 0x6B, 0x65, 
-	0x79, 0x00, 0x70, 0x64, 0x61, 0x74, 0x65, 0x00, 0x33, 0x00, 0x00, 0x00, 0xC3, 0xF2, 0xE8, 0xBA, 
-	0x41, 0x70, 0x64, 0x61, 0x74, 0x61, 0x2D, 0x38, 0x00, 0x48, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 
-	0x66, 0x77, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x6D, 0x61, 0x78, 0x36, 0x34, 0x00, 
-	0x13, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x7F, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 
-	0x2D, 0x35, 0x00, 0x95, 0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x31, 0x34, 0x00, 0x9E, 
-	0x70, 0x6E, 0x75, 0x6D, 0x62, 0x65, 0x72, 0x2D, 0x31, 0x36, 0x00, 0x10, 0x10, 0x70, 0x6E, 0x65, 
-	0x73, 0x74, 0x65, 0x64, 0x2D, 0x61, 0x72, 0x72, 0x61, 0x79, 0x00, 0xA0, 0x70, 0x61, 0x72, 0x72, 
-	0x61, 0x79, 0x2D, 0x73, 0x74, 0x72, 0x69, 0x6E, 0x67, 0x00, 0x12, 0x40, 0x42, 0x0F, 0x00, 0x09, 
-	0xD0, 0x70, 0x61, 0x72, 0x72, 0x61, 0x79, 0x2D, 0x64, 0x69, 0x63, 0x74, 0x2D, 0x6B, 0x65, 0x79, 
-	0x31, 0x00, 0x70, 0x61, 0x72, 0x72, 0x61, 0x79, 0x2D, 0x64, 0x69, 0x63, 0x74, 0x2D, 0x76, 0x61, 
-	0x6C, 0x75, 0x65, 0x31, 0x00, 0x70, 0x61, 0x72, 0x72, 0x61, 0x79, 0x2D, 0x64, 0x69, 0x63, 0x74, 
-	0x2D, 0x6B, 0x65, 0x79, 0x32, 0x00, 0x70, 0x61, 0x72, 0x72, 0x61, 0x79, 0x2D, 0x64, 0x69, 0x63, 
-	0x74, 0x2D, 0x76, 0x61, 0x6C, 0x75, 0x65, 0x32, 0x00, 0x01, 0x01, 0x70, 0x62, 0x6F, 0x6F, 0x6C, 
-	0x65, 0x61, 0x6E, 0x2D, 0x66, 0x61, 0x6C, 0x73, 0x65, 0x00, 0x08, 0x70, 0x64, 0x61, 0x74, 0x61, 
-	0x2D, 0x30, 0x00, 0x40, 0x01, 0x45, 0x4E, 0x44, 0x21
-};
-
-typedef struct
-{
-	uint8_t		buf[ 512 ];
-	size_t		len;
-	
-}	TestCFLiteBinaryPlistStreamedWriteContext;
-
-static OSStatus	_StreamedCallback( const void *inData, size_t inLen, void *inContext );
-
-static OSStatus	TestCFLiteBinaryPlistStreamedWrite( void )
-{
-	TestCFLiteBinaryPlistStreamedWriteContext		ctx;
-	OSStatus										err;
-	CFMutableDictionaryRef							dict;
-	CFTypeRef										plist	= NULL;
-	CFTypeRef										plist2	= NULL;
-	CFArrayRef										array	= NULL;
-	CFNumberRef										num;
-	CFDateRef										date;
-	
-	// Full plist test.
-	
-	dict = CFDictionaryCreateMutable( kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, CFSTR( "boolean-true" ), kCFBooleanTrue );
-	CFDictionarySetValue( dict, CFSTR( "boolean-false" ), kCFBooleanFalse );
-	CFDictionarySetData( dict, CFSTR( "data-0" ), "", 0 );
-	CFDictionarySetData( dict, CFSTR( "data-8" ), "\x00\x11\x22\x33\x44\x55\x66\x77", 8 );
-	CFDictionarySetData( dict, CFSTR( "data-14" ), "\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD", 14 );
-	CFDictionarySetData( dict, CFSTR( "data-15" ), "\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE", 15 );
-	CFDictionarySetData( dict, CFSTR( "data-16" ), "\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99\xAA\xBB\xCC\xDD\xEE\xFF", 16 );
-	CFDictionarySetInt64( dict, CFSTR( "number-0" ), 0 );
-	CFDictionarySetInt64( dict, CFSTR( "number-5" ), 5 );
-	CFDictionarySetInt64( dict, CFSTR( "number-14" ), 14 );
-	CFDictionarySetInt64( dict, CFSTR( "number-15" ), 15 );
-	CFDictionarySetInt64( dict, CFSTR( "number-16" ), 16 );
-	CFDictionarySetInt64( dict, CFSTR( "number-neg-123" ), -123 );
-	CFDictionarySetInt64( dict, CFSTR( "number-big32" ), INT_MAX );
-	CFDictionarySetInt64( dict, CFSTR( "number-min64" ), INT64_MIN );
-	CFDictionarySetInt64( dict, CFSTR( "number-max64" ), INT64_MAX );
-	CFDictionarySetValue( dict, CFSTR( "string-empty" ), CFSTR( "" ) );
-	CFDictionarySetValue( dict, CFSTR( "string-abc" ), CFSTR( "abc" ) );
-	
-	date = CFDateCreateWithComponents( NULL, 2015, 4, 23, 9, 28, 35 );
-	require_action( date, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, CFSTR( "date" ), date );
-	CFRelease( date );
-	
-	num = CFNumberCreateInt64( 0 );
-	require_action( num, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, num, CFSTR( "num-0-key" ) );
-	CFRelease( num );
-	
-	num = CFNumberCreateInt64( 10 );
-	require_action( num, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, num, CFSTR( "num-10-key" ) );
-	CFRelease( num );
-	
-	num = CFNumberCreateInt64( 15 );
-	require_action( num, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, num, CFSTR( "num-15-key" ) );
-	CFRelease( num );
-	
-	num = CFNumberCreateInt64( 100 );
-	require_action( num, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, num, CFSTR( "num-100-key" ) );
-	CFRelease( num );
-	
-	err = CFPropertyListAppendFormatted( NULL, dict, 
-		"%kO="
-		"["
-			"%O"
-			"%i"
-			"%O"
-			"{"
-				"%kO=%O"
-				"%kO=%O"
-			"}"
-		"]", 
-		CFSTR( "nested-array" ), 
-			CFSTR( "array-string" ), 
-			1000000, 
-			kCFBooleanTrue, 
-				CFSTR( "array-dict-key1" ), CFSTR( "array-dict-value1" ), 
-				CFSTR( "array-dict-key2" ), CFSTR( "array-dict-value2" ) );
-	require_noerr( err, exit );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( dict, 
-		kCFBinaryPlistStreamedFlag_Header	| 
-		kCFBinaryPlistStreamedFlag_Trailer	|
-		kCFBinaryPlistStreamedFlag_Begin	|
-		kCFBinaryPlistStreamedFlag_End	|
-		kCFBinaryPlistStreamedFlag_Body, 
-		_StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	
-	plist = CFBinaryPlistStreamedCreateWithBytes( ctx.buf, ctx.len, &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, dict ), exit, err = kMismatchErr );
-	
-	plist2 = CFBinaryPlistStreamedCreateWithBytes( kTestStreamedPlist1, sizeof( kTestStreamedPlist1 ), &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist2, dict ), exit, err = kMismatchErr );
-	
-	ForgetCF( &dict );
-	ForgetCF( &plist );
-	ForgetCF( &plist2 );
-	
-	// Dictionary test.
-	
-	dict = (CFMutableDictionaryRef) CFCreateF( &err, "{}", &err );
-	require_noerr( err, exit );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_Begin, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\xD0", 1 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_Header | kCFBinaryPlistStreamedFlag_Begin, 
-		_StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "CFB1" "\xD0", 5 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_End, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x01", 1 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_Trailer | kCFBinaryPlistStreamedFlag_End, 
-		_StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x01" "END!", 5 ), exit, err = kMismatchErr );
-	
-	ForgetCF( &dict );
-	
-	// Array test.
-	
-	array = (CFArrayRef) CFCreateF( &err, "[]", &err );
-	require_noerr( err, exit );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_Begin, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\xA0", 1 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_Header | kCFBinaryPlistStreamedFlag_Begin, 
-		_StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "CFB1" "\xA0", 5 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_End, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x01", 1 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_Trailer | kCFBinaryPlistStreamedFlag_End, 
-		_StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x01" "END!", 5 ), exit, err = kMismatchErr );
-	
-	ForgetCF( &array );
-	
-	// Raw bytes test.
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteBytes( "", 0, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x40", 1 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteBytes( "a", 1, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x41" "a", 2 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteBytes( "12345678901234", 14, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x4E" "123456789012345", 15 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteBytes( "123456789012345", 15, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x4F" "\x9F" "123456789012345", 17 ), exit, err = kMismatchErr );
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteBytes( "123456789012345678", 18, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	require_action( MemEqual( ctx.buf, ctx.len, "\x4F" "\x10" "\x12" "123456789012345678", 21 ), exit, err = kMismatchErr );
-	
-	// Begin/write/end tests.
-	
-	ctx.len = 0;
-	err = CFBinaryPlistStreamedWriteObject( NULL, kCFBinaryPlistStreamedFlag_Header, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	dict = (CFMutableDictionaryRef) CFCreateF( &err, "{}", &err );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_Begin, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteObject( CFSTR( "array" ), kCFBinaryPlistStreamedFlag_Body, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	array = (CFArrayRef) CFCreateF( &err, "[]", &err );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_Begin, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	
-	err = CFBinaryPlistStreamedWriteBytes( "a", 1, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteBytes( "xyz", 3, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteBytes( "12", 2, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	
-	err = CFBinaryPlistStreamedWriteObject( array, kCFBinaryPlistStreamedFlag_End, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteObject( dict, kCFBinaryPlistStreamedFlag_End, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	err = CFBinaryPlistStreamedWriteObject( NULL, kCFBinaryPlistStreamedFlag_Trailer, _StreamedCallback, &ctx );
-	require_noerr( err, exit );
-	
-	ForgetCF( &array );
-	ForgetCF( &dict );
-	
-	dict = (CFMutableDictionaryRef) CFCreateF( &err, 
-		"{"
-			"%kO="
-			"["
-				"%D"
-				"%D"
-				"%D"
-			"]"
-		"}", 
-		CFSTR( "array" ),
-			"a",	1, 
-			"xyz",	3, 
-			"12",	2 );
-	require_noerr( err, exit );
-	
-	plist = CFBinaryPlistStreamedCreateWithBytes( ctx.buf, ctx.len, &err );
-	require_noerr( err, exit );
-	require_action( CFEqual( plist, dict ), exit, err = kMismatchErr );
-	
-	ForgetCF( &dict );
-	ForgetCF( &plist );
-	
-exit:
-	CFReleaseNullSafe( array );
-	CFReleaseNullSafe( plist );
-	CFReleaseNullSafe( plist2 );
-	CFReleaseNullSafe( dict );
-	return( err );
-}
-
-//===========================================================================================================================
-//	_StreamedCallback
-//===========================================================================================================================
-
-static OSStatus	_StreamedCallback( const void *inData, size_t inLen, void *inContext )
-{
-	TestCFLiteBinaryPlistStreamedWriteContext * const		ctx = (TestCFLiteBinaryPlistStreamedWriteContext *) inContext;
-	OSStatus												err;
-	
-	require_action( ( sizeof( ctx->buf ) - ctx->len ) >= inLen, exit, err = kSizeErr );
-	memcpy( &ctx->buf[ ctx->len ], inData, inLen );
-	ctx->len += inLen;
-	err = kNoErr;
-	
-exit:
-	return( err );
-}
-
-//===========================================================================================================================
-//	TestCFLiteBinaryPlistStreamedUniquing
-//===========================================================================================================================
-
-static OSStatus	TestCFLiteBinaryPlistStreamedUniquing( void )
-{
-	CFBinaryPlistStreamedFlags		flags	= kCFBinaryPlistStreamedFlags_Default | kCFBinaryPlistStreamedFlag_Unique;
-	OSStatus						err;
-	CFMutableDictionaryRef			dict	= NULL;
-	CFMutableDictionaryRef			dict2;
-	CFMutableDictionaryRef			dict3;
-	CFDateRef						date;
-	CFMutableArrayRef				array;
-	CFDataRef						data	= NULL;
-	CFDataRef						data2	= NULL;
-	Boolean							good;
-	
-	dict = CFDictionaryCreateMutable( kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict, exit, err = kNoMemoryErr );
-	
-	CFDictionarySetValue( dict, CFSTR( "key false" ), kCFBooleanFalse );
-	CFDictionarySetValue( dict, CFSTR( "key true" ), kCFBooleanTrue );
-	CFDictionarySetInt64( dict, CFSTR( "key small int 0" ), 0 );
-	CFDictionarySetInt64( dict, CFSTR( "key small int 10" ), 10 );
-	CFDictionarySetInt64( dict, CFSTR( "key int 200" ), 200 );
-	CFDictionarySetInt64( dict, CFSTR( "key int 1234" ), 1234 );
-	CFDictionarySetInt64( dict, CFSTR( "key int 123456" ), 123456 );
-	CFDictionarySetInt64( dict, CFSTR( "key int 12345678901" ), INT64_C( 12345678901 ) );
-	CFDictionarySetDouble( dict, CFSTR( "key double 3.1415" ), 3.1415 );
-	CFDictionarySetDouble( dict, CFSTR( "key double 1234.567" ), 1234.567 );
-	
-	date = CFDateCreateWithComponents( NULL, 2015, 5, 7, 8, 57, 01 );
-	require_action( date, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, CFSTR( "key date 2015-05-07 08:57:01" ), date );
-	CFRelease( date );
-	
-	date = CFDateCreateWithComponents( NULL, 2002, 3, 4, 5, 6, 7 );
-	require_action( date, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, CFSTR( "key date 2002-03-04 05:06:07" ), date );
-	CFRelease( date );
-	
-	CFDictionarySetValue( dict, CFSTR( "key string empty" ), CFSTR( "" ) );
-	CFDictionarySetValue( dict, CFSTR( "key string a" ), CFSTR( "a" ) );
-	CFDictionarySetValue( dict, CFSTR( "key string ab" ), CFSTR( "ab" ) );
-	CFDictionarySetValue( dict, CFSTR( "key string abcdefghijklmnopqrstuvwyxz" ), CFSTR( "abcdefghijklmnopqrstuvwyxz" ) );
-	CFDictionarySetValue( dict, CFSTR( "key string ☃" ), CFSTR( "☃" ) );
-	
-	CFDictionarySetData( dict, CFSTR( "key data empty" ), "", 0 );
-	CFDictionarySetData( dict, CFSTR( "key data 00" ), "\x00", 1 );
-	CFDictionarySetData( dict, CFSTR( "key data 00 11 22 33 44 55 66 77 88 99" ), "\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99", 10 );
-	
-	array = CFArrayCreateMutable( kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks );
-	require_action( array, exit, err = kNoMemoryErr );
-	CFArrayAppendValue( array, CFSTR( "value string xyz" ) );
-	CFArrayAppendValue( array, CFSTR( "value string 1234" ) );
-	CFDictionarySetValue( dict, CFSTR( "key array strings: xyz, 1234" ), array );
-	CFRelease( array );
-	
-	dict2 = CFDictionaryCreateMutable( kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks );
-	require_action( dict2, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict2, CFSTR( "key string querty" ), CFSTR( "querty" ) );
-	CFDictionarySetValue( dict2, CFSTR( "key string keyboard" ), CFSTR( "keyboard" ) );
-	CFDictionarySetValue( dict, CFSTR( "key dict strings: querty, keyboard" ), dict2 );
-	CFRelease( dict2 );
-	
-	// Test with no dups.
-	
-	data = CFBinaryPlistStreamedCreateDataEx( dict, flags, &err );
-	require_noerr( err, exit );
-	
-	dict3 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithData( data, flags, &err );
-	ForgetCF( &data );
-	require_noerr( err, exit );
-	good = CFEqual( dict3, dict );
-	CFRelease( dict3 );
-	require_action( good, exit, err = kMismatchErr );
-	
-	// Test with dups.
-	
-	CFDictionarySetValue( dict, CFSTR( "key dup false" ), kCFBooleanFalse );
-	CFDictionarySetValue( dict, CFSTR( "key dup true" ), kCFBooleanTrue );
-	CFDictionarySetInt64( dict, CFSTR( "key dup small int 0" ), 0 );
-	CFDictionarySetInt64( dict, CFSTR( "key dup int 200" ), 200 );
-	CFDictionarySetInt64( dict, CFSTR( "key dup int 1234" ), 1234 );
-	CFDictionarySetDouble( dict, CFSTR( "key dup double 3.1415" ), 3.1415 );
-	CFDictionarySetData( dict, CFSTR( "key dup data empty" ), "", 0 );
-	CFDictionarySetData( dict, CFSTR( "key dup data 00" ), "\x00", 1 );
-	CFDictionarySetData( dict, CFSTR( "key dup data 00 11 22 33 44 55 66 77 88 99" ), "\x00\x11\x22\x33\x44\x55\x66\x77\x88\x99", 10 );
-	
-	date = CFDateCreateWithComponents( NULL, 2015, 5, 7, 8, 57, 01 );
-	require_action( date, exit, err = kNoMemoryErr );
-	CFDictionarySetValue( dict, CFSTR( "key dup date 2015-05-07 08:57:01" ), date );
-	CFRelease( date );
-	
-	CFDictionarySetValue( dict, CFSTR( "key dup string empty" ), CFSTR( "" ) );
-	CFDictionarySetValue( dict, CFSTR( "key dup string a" ), CFSTR( "a" ) );
-	CFDictionarySetValue( dict, CFSTR( "key dup string ab" ), CFSTR( "ab" ) );
-	CFDictionarySetValue( dict, CFSTR( "key dup string 2 ab" ), CFSTR( "ab" ) );
-	CFDictionarySetValue( dict, CFSTR( "key dup string 3 ab" ), CFSTR( "ab" ) );
-	CFDictionarySetValue( dict, CFSTR( "key string querty" ), CFSTR( "dup key string querty" ) );
-	
-	data = CFBinaryPlistStreamedCreateDataEx( dict, flags, &err );
-	require_noerr( err, exit );
-	
-	dict3 = (CFMutableDictionaryRef) CFBinaryPlistStreamedCreateWithData( data, flags, &err );
-	ForgetCF( &data );
-	require_noerr( err, exit );
-	good = CFEqual( dict3, dict );
-	CFRelease( dict3 );
-	require_action( good, exit, err = kMismatchErr );
-	
-	// Test that uniquing version is smaller.
-	
-	data = CFBinaryPlistStreamedCreateDataEx( dict, flags, &err );
-	require_noerr( err, exit );
-	
-	data2 = CFBinaryPlistStreamedCreateData( dict, &err );
-	require_noerr( err, exit );
-	
-	good = ( CFDataGetLength( data ) < CFDataGetLength( data2 ) ) ? true : false;
-	ForgetCF( &data );
-	ForgetCF( &data2 );
-	require_action( good, exit, err = kMismatchErr );
-	
-exit:
-	CFReleaseNullSafe( dict );
-	CFReleaseNullSafe( data );
-	CFReleaseNullSafe( data2 );
 	return( err );
 }
 
@@ -3153,12 +1625,10 @@ exit:
 	---------------------------
 	
 	HEADER
-		signature "CFB1" for version 1 streamed binary plists.
-		OR signature "bplist00" for version 0 binary plists (normal CF).
+		signature "bplist00" for version 0 binary plists (normal CF).
 	
 	ROOT OBJECT
 		Object Formats (marker byte optionally followed by additional info)
-		Streamed binary plists use little endian.
 		Version 0 binary plists use big endian.
 		
 		null	0000 0000							// Null object.
@@ -3186,8 +1656,7 @@ exit:
 		-- number of these is in the trailer
 	
 	TRAILER
-		signature ("END!") for streamed binary plists.
-		OR for version 0 binary plists:
+		for version 0 binary plists:
 			byte size of offset ints in offset table
 			byte size of object refs in arrays and dicts
 			number of offsets in offset table (also is number of objects)
