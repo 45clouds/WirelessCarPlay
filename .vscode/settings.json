@@ -1,0 +1,8 @@
+{
+    "makefile.alwaysPostConfigure": true,
+    "makefile.alwaysPreConfigure": true,
+    "dotnetAcquisitionExtension.existingDotnetPath": [
+        autoDetect
+        
+    ]
+}
